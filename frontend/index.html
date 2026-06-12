@@ -1,0 +1,1358 @@
+<!doctype html>
+<html lang="en" data-theme="corporate">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Market Signal Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      href="https://cdn.jsdelivr.net/npm/daisyui@4.12.23/dist/full.min.css"
+      rel="stylesheet"
+      type="text/css"
+    />
+  </head>
+  <body class="min-h-screen bg-base-200 text-base-content">
+    <div class="drawer lg:drawer-open">
+      <input id="app-drawer" type="checkbox" class="drawer-toggle" />
+      <main class="drawer-content">
+        <div class="navbar sticky top-0 z-20 border-b border-base-300 bg-base-100">
+          <div class="flex-none lg:hidden">
+            <label for="app-drawer" class="btn btn-square btn-ghost" aria-label="Open navigation">
+              <span class="text-xl">☰</span>
+            </label>
+          </div>
+          <div class="flex-1">
+            <div>
+              <h1 class="text-lg font-semibold">Trading Operations</h1>
+              <p class="text-xs text-base-content/60">Paper trading mode · Zerodha market data ready</p>
+            </div>
+          </div>
+          <div class="flex-none gap-2">
+            <div id="modeBadge" class="badge badge-success gap-2">PAPER</div>
+            <div id="streamBadge" class="badge badge-outline">Stream idle</div>
+          </div>
+        </div>
+
+        <section class="mx-auto flex w-full max-w-7xl flex-col gap-6 p-4 lg:p-6">
+          <div class="flex flex-wrap items-center gap-2 rounded-lg border border-base-300 bg-base-100 p-3">
+            <button id="runDemoBtn" class="btn btn-primary btn-sm" type="button">Run Demo Simulation</button>
+            <button id="refreshBtn" class="btn btn-outline btn-sm" type="button">Refresh Dashboard</button>
+            <button id="syncInstrumentsBtn" class="btn btn-outline btn-sm" type="button">Sync Instruments</button>
+            <button id="startStreamBtn" class="btn btn-outline btn-sm" type="button">Start Zerodha Stream</button>
+            <button id="stopStreamBtn" class="btn btn-outline btn-sm" type="button">Stop Stream</button>
+            <button id="squareOffBtn" class="btn btn-warning btn-sm" type="button">EOD Square-Off</button>
+            <button id="resetPaperTradesBtn" class="btn btn-error btn-outline btn-sm" type="button">Reset Paper Trades</button>
+            <span id="statusText" class="ml-auto text-sm text-base-content/60">Ready</span>
+          </div>
+
+          <div class="grid gap-4 md:grid-cols-4">
+            <div class="stats border border-base-300 bg-base-100 shadow-sm">
+              <div class="stat">
+                <div class="stat-title">Latest Prices</div>
+                <div id="latestPricesCount" class="stat-value text-2xl">0</div>
+                <div class="stat-desc">In memory</div>
+              </div>
+            </div>
+            <div class="stats border border-base-300 bg-base-100 shadow-sm">
+              <div class="stat">
+                <div class="stat-title">Open Positions</div>
+                <div id="openPositionsCount" class="stat-value text-2xl">0</div>
+                <div class="stat-desc">Paper only</div>
+              </div>
+            </div>
+            <div class="stats border border-base-300 bg-base-100 shadow-sm">
+              <div class="stat">
+                <div class="stat-title">Realized P&L</div>
+                <div id="realizedPnl" class="stat-value text-2xl">0.00</div>
+                <div class="stat-desc">Paper points</div>
+              </div>
+            </div>
+            <div class="stats border border-base-300 bg-base-100 shadow-sm">
+              <div class="stat">
+                <div class="stat-title">Trail Locked</div>
+                <div id="trailLocked" class="stat-value text-2xl">0.00</div>
+                <div class="stat-desc">Open positions</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+            <section class="rounded-lg border border-base-300 bg-base-100">
+              <div class="flex items-center justify-between border-b border-base-300 px-4 py-3">
+                <div>
+                  <h2 class="font-semibold">Live Instrument Monitor</h2>
+                  <p class="text-sm text-base-content/60">Each tick is routed through the workflow by instrument token.</p>
+                </div>
+                <button class="btn btn-sm btn-outline" type="button" id="tableRefreshBtn">Refresh</button>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="table table-sm">
+                  <thead>
+                    <tr>
+                      <th>Instrument</th>
+                      <th>LTP</th>
+                      <th>Levels</th>
+                      <th>Last Tick</th>
+                      <th>State</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="pricesTable">
+                    <tr><td colspan="6" class="text-base-content/60">No prices loaded.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="rounded-lg border border-base-300 bg-base-100">
+              <div class="flex items-center justify-between border-b border-base-300 px-4 py-3">
+                <div>
+                  <h2 class="font-semibold">Operator Setup</h2>
+                  <p class="text-sm text-base-content/60">Daily instrument and levels</p>
+                </div>
+                <span class="badge badge-outline">Paper</span>
+              </div>
+              <div class="grid gap-4 p-4">
+                <div class="grid gap-2">
+                  <div class="flex items-center justify-between">
+                    <div class="text-sm font-medium">Instrument</div>
+                    <div class="text-xs text-base-content/60">Zerodha synced</div>
+                  </div>
+                  <div class="grid gap-2 sm:grid-cols-[100px_100px_1fr]">
+                    <select id="instrumentExchangeFilter" class="select select-bordered">
+                      <option value="">All</option>
+                      <option value="NFO">NFO</option>
+                      <option value="BFO">BFO</option>
+                      <option value="MCX">MCX</option>
+                    </select>
+                    <select id="instrumentTypeFilter" class="select select-bordered">
+                      <option value="">All</option>
+                      <option value="CE">CE</option>
+                      <option value="PE">PE</option>
+                      <option value="FUT">FUT</option>
+                    </select>
+                    <div class="relative">
+                      <input id="instrumentSearchInput" class="input input-bordered w-full" placeholder="Type instrument symbol" autocomplete="off" />
+                      <div id="instrumentSuggestions" class="absolute z-40 mt-1 hidden max-h-64 w-full overflow-auto rounded-lg border border-base-300 bg-base-100 shadow"></div>
+                    </div>
+                  </div>
+                  <div class="flex items-center justify-between rounded-lg border border-base-300 bg-base-200 px-3 py-2">
+                    <div>
+                      <div class="text-xs text-base-content/60">Selected</div>
+                      <div id="selectedInstrumentText" class="font-medium">No instrument selected</div>
+                    </div>
+                    <span class="badge badge-ghost">Today</span>
+                  </div>
+                  <div class="grid grid-cols-2 gap-2">
+                    <div class="rounded-lg border border-base-300 px-3 py-2">
+                      <div class="text-xs text-base-content/60">Active Price</div>
+                      <div id="selectedInstrumentPrice" class="text-xl font-semibold">-</div>
+                    </div>
+                    <div class="rounded-lg border border-base-300 px-3 py-2">
+                      <div class="text-xs text-base-content/60">Last Tick</div>
+                      <div id="selectedInstrumentTickTime" class="text-sm font-medium">Waiting</div>
+                    </div>
+                  </div>
+                  <div id="activeLevelPreview" class="hidden rounded-lg border border-base-300 px-3 py-2"></div>
+                </div>
+
+                <form id="levelForm" class="grid gap-3 rounded-lg border border-base-300 p-3">
+                  <div id="levelEditBanner" class="hidden rounded-md bg-primary/10 px-3 py-2 text-sm font-medium text-primary"></div>
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <div class="text-sm font-medium">Levels</div>
+                      <div class="text-xs text-base-content/60">L0 stoploss · L1 entry · L2+ targets</div>
+                    </div>
+                    <button class="btn btn-outline btn-sm" id="addLevelBtn" type="button">+ Target</button>
+                  </div>
+                  <div class="grid gap-2" id="levelRows"></div>
+                  <button class="btn btn-primary btn-sm w-full" id="saveLevelsBtn" type="submit">Save Today's Levels</button>
+                </form>
+
+                <section class="grid gap-3 rounded-lg border border-base-300 p-3">
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <div class="text-sm font-medium">Today's Level Sets</div>
+                      <div class="text-xs text-base-content/60">Edit or delete levels already punched today</div>
+                    </div>
+                    <button class="btn btn-outline btn-sm" id="refreshLevelsBtn" type="button">Refresh</button>
+                  </div>
+                  <div id="levelSetsTable" class="grid gap-2">
+                    <div class="text-sm text-base-content/60">No level sets loaded.</div>
+                  </div>
+                </section>
+
+                <form id="mockTickForm" class="grid gap-3 rounded-lg border border-base-300 p-3">
+                  <div class="text-sm font-medium">Test Tick</div>
+                  <div class="grid grid-cols-[1fr_auto] gap-2">
+                    <input id="mockPriceInput" class="input input-bordered" type="number" value="110" placeholder="Price" />
+                    <button class="btn btn-outline btn-sm self-center" type="submit">Send</button>
+                  </div>
+                </form>
+
+                <form id="tickReplayForm" class="grid gap-3 rounded-lg border border-base-300 p-3">
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <div class="text-sm font-medium">Tick Replay</div>
+                      <div class="text-xs text-base-content/60">Comma, space, or newline separated prices</div>
+                    </div>
+                    <input id="replayDelayInput" class="input input-bordered input-sm w-24" type="number" min="0" value="250" aria-label="Replay delay in milliseconds" />
+                  </div>
+                  <textarea id="tickReplayInput" class="textarea textarea-bordered min-h-24" placeholder="1260, 1290, 1300, 1350, 1345"></textarea>
+                  <div class="flex items-center gap-2">
+                    <button id="tickReplayBtn" class="btn btn-secondary btn-sm" type="submit">Run Replay</button>
+                    <button id="tickReplaySampleBtn" class="btn btn-outline btn-sm" type="button">Sample</button>
+                    <button id="tickReplayResetBtn" class="btn btn-error btn-outline btn-sm" type="button">Reset Selected</button>
+                    <span id="tickReplayStatus" class="text-xs text-base-content/60">Idle</span>
+                  </div>
+                  <div id="tickReplayLog" class="hidden max-h-40 overflow-auto rounded-md bg-base-200 p-2 text-xs"></div>
+                </form>
+              </div>
+            </section>
+          </div>
+
+          <section class="rounded-lg border border-base-300 bg-base-100">
+            <div class="flex items-center justify-between border-b border-base-300 px-4 py-3">
+              <div>
+                <h2 class="font-semibold">Trade Decision Panel</h2>
+                <p class="text-sm text-base-content/60">Shows why each active instrument is waiting, in trade, or done.</p>
+              </div>
+              <span class="badge badge-outline">Live logic</span>
+            </div>
+            <div id="decisionPanel" class="grid gap-3 p-3 lg:grid-cols-2">
+              <div class="text-sm text-base-content/60">No active instruments loaded.</div>
+            </div>
+          </section>
+
+          <section class="rounded-lg border border-base-300 bg-base-100">
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-base-300 px-4 py-3">
+              <div>
+                <h2 class="font-semibold">Zerodha Connection</h2>
+                <p class="text-sm text-base-content/60">Connect once per trading day. Access token is stored in SQLite.</p>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button id="zerodhaStatusBtn" class="btn btn-outline btn-sm" type="button">Check Status</button>
+                <button id="zerodhaLoginBtn" class="btn btn-primary btn-sm" type="button">Connect Zerodha</button>
+                <button id="zerodhaStartBtn" class="btn btn-outline btn-sm" type="button">Start Stream</button>
+                <button id="zerodhaStopBtn" class="btn btn-outline btn-sm" type="button">Stop Stream</button>
+              </div>
+            </div>
+            <div class="grid gap-3 p-4 md:grid-cols-4">
+              <div>
+                <div class="text-xs text-base-content/60">API Key</div>
+                <div id="kiteApiKeyStatus" class="badge badge-outline">Unknown</div>
+              </div>
+              <div>
+                <div class="text-xs text-base-content/60">Today Session</div>
+                <div id="kiteSessionStatus" class="badge badge-outline">Unknown</div>
+              </div>
+              <div>
+                <div class="text-xs text-base-content/60">WebSocket</div>
+                <div id="kiteWebsocketStatus" class="badge badge-outline">Unknown</div>
+              </div>
+              <div>
+                <div class="text-xs text-base-content/60">User</div>
+                <div id="kiteUserStatus" class="font-medium">-</div>
+              </div>
+            </div>
+          </section>
+
+          <div class="grid gap-6 xl:grid-cols-2">
+            <section class="rounded-lg border border-base-300 bg-base-100">
+              <div class="border-b border-base-300 px-4 py-3">
+                <h2 class="font-semibold">Strategy State</h2>
+              </div>
+              <div class="p-4">
+                <ul id="auditTimeline" class="timeline timeline-vertical">
+                  <li><div class="timeline-end timeline-box">No events loaded.</div></li>
+                </ul>
+              </div>
+            </section>
+
+            <section class="rounded-lg border border-base-300 bg-base-100">
+              <div class="border-b border-base-300 px-4 py-3">
+                <h2 class="font-semibold">Paper Trades</h2>
+              </div>
+              <div class="border-b border-base-300 px-4 py-2 text-sm font-medium">Open Positions</div>
+              <div class="overflow-x-auto">
+                <table class="table table-sm">
+                  <thead>
+                    <tr>
+                      <th>Instrument</th>
+                      <th>Entry</th>
+                      <th>Trail SL</th>
+                      <th>P&L</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="positionsTable">
+                    <tr><td colspan="5" class="text-base-content/60">No open positions.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="border-y border-base-300 px-4 py-2 text-sm font-medium">Recent Orders</div>
+              <div class="overflow-x-auto">
+                <table class="table table-sm">
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Instrument</th>
+                      <th>Side</th>
+                      <th>Price</th>
+                      <th>Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody id="ordersTable">
+                    <tr><td colspan="5" class="text-base-content/60">No recent orders.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </section>
+      </main>
+
+      <aside class="drawer-side z-30">
+        <label for="app-drawer" aria-label="Close navigation" class="drawer-overlay"></label>
+        <nav class="min-h-full w-72 border-r border-base-300 bg-base-100 p-4">
+          <div class="mb-6">
+            <div class="text-xl font-bold">Market Signal</div>
+            <div class="text-sm text-base-content/60">Level-driven paper trading</div>
+          </div>
+          <ul class="menu gap-1">
+            <li><a class="active" href="./index.html">Dashboard</a></li>
+            <li><a>Instruments</a></li>
+            <li><a href="./levels.html">Daily Levels</a></li>
+            <li><a>Paper Trades</a></li>
+            <li><a>Backtest Lab</a></li>
+            <li><a>Audit Log</a></li>
+            <li><a>System Health</a></li>
+          </ul>
+        </nav>
+      </aside>
+    </div>
+    <script>
+      const API_BASE =
+        window.MARKET_SIGNAL_API_BASE ||
+        (window.location.port === "3000" ? "http://127.0.0.1:8000" : window.location.origin);
+      const WS_BASE = API_BASE.replace(/^http/, "ws");
+
+      const $ = (id) => document.getElementById(id);
+      let selectedInstrument = null;
+      let instrumentSearchTimer = null;
+      let editingLevelSetId = null;
+      let todayLevelSets = [];
+      let latestPricesByInstrumentId = new Map();
+      let trackedInstrumentsState = [];
+      let priceSocket = null;
+      let priceSocketReconnectTimer = null;
+      let levelDrafts = [
+        { level_name: "L0", price: "", role: "STOPLOSS" },
+        { level_name: "L1", price: "", role: "ENTRY" },
+        { level_name: "L2", price: "", role: "CHECKPOINT" },
+      ];
+
+      function setStatus(message, isError = false) {
+        $("statusText").textContent = message;
+        $("statusText").className = isError
+          ? "ml-auto text-sm text-error"
+          : "ml-auto text-sm text-base-content/60";
+      }
+
+      async function api(path, options = {}) {
+        const response = await fetch(`${API_BASE}${path}`, {
+          headers: { "Content-Type": "application/json" },
+          ...options,
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.detail || `Request failed: ${path}`);
+        }
+        return data;
+      }
+
+      function formatNumber(value) {
+        return Number(value || 0).toFixed(2);
+      }
+
+      function sleep(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+
+      function formatIstTime(value) {
+        if (!value) return "-";
+        const timestamp = String(value);
+        const hasTimezone = /Z$|[+-]\d{2}:\d{2}$/.test(timestamp);
+        const date = new Date(hasTimezone ? timestamp : `${timestamp}Z`);
+        return date.toLocaleTimeString("en-IN", {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: false,
+          timeZone: "Asia/Kolkata",
+        });
+      }
+
+      function displayIstTime(displayValue, rawValue) {
+        if (displayValue) return displayValue;
+        const formatted = formatIstTime(rawValue);
+        return formatted === "-" ? "-" : `${formatted} IST`;
+      }
+
+      function levelRoleLabel(level) {
+        if (level.level_name === "L0") return "Stoploss";
+        if (level.level_name === "L1") return "Entry";
+        return "Target";
+      }
+
+      function levelBadgeClass(level) {
+        if (level.level_name === "L0") return "badge-error";
+        if (level.level_name === "L1") return "badge-primary";
+        return "badge-success";
+      }
+
+      function renderLevelPills(levels) {
+        return levels
+          .slice()
+          .sort((left, right) => left.sort_order - right.sort_order)
+          .map((level) => `
+            <div class="rounded-lg border border-base-300 bg-base-100 px-3 py-2">
+              <div class="flex items-center justify-between gap-3">
+                <span class="badge ${levelBadgeClass(level)} badge-sm">${level.level_name}</span>
+                <span class="font-semibold">${formatNumber(level.price)}</span>
+              </div>
+              <div class="mt-1 text-xs text-base-content/60">${levelRoleLabel(level)}</div>
+            </div>
+          `).join("");
+      }
+
+      function showActiveLevelPreview(levelSet) {
+        const preview = $("activeLevelPreview");
+        if (!levelSet) {
+          preview.classList.add("hidden");
+          preview.innerHTML = "";
+          return;
+        }
+        preview.innerHTML = `
+          <div class="mb-2 flex items-center justify-between">
+            <div class="text-xs font-medium uppercase text-base-content/60">Saved Setup</div>
+            <span class="badge badge-success badge-sm">${levelSet.status}</span>
+          </div>
+          <div class="grid gap-2 sm:grid-cols-3">${renderLevelPills(levelSet.levels)}</div>
+        `;
+        preview.classList.remove("hidden");
+      }
+
+      function renderInlineLevels(levels) {
+        return levels
+          .slice()
+          .sort((left, right) => left.sort_order - right.sort_order)
+          .map((level) => `
+            <span class="whitespace-nowrap">
+              <span class="font-medium">${level.level_name}</span>
+              <span class="text-base-content/70">${formatNumber(level.price)}</span>
+            </span>
+          `).join(`<span class="text-base-content/30">/</span>`);
+      }
+
+      function tradeBadgeClass(status) {
+        if (status === "OPEN_TRADE") return "badge-primary";
+        if (status === "CLOSED_TRADE") return "badge-neutral";
+        return "badge-warning";
+      }
+
+      function renderTradeState(item) {
+        const trade = item.trade || { status: "WAITING_FOR_ENTRY", label: "Waiting for entry" };
+        if (trade.status === "OPEN_TRADE") {
+          return `
+            <div class="grid gap-1">
+              <span class="badge ${tradeBadgeClass(trade.status)} badge-sm">${trade.label}</span>
+              <div class="text-xs text-base-content/60">Entry ${formatNumber(trade.entry_price)} · Trail ${formatNumber(trade.trailing_stoploss_price)}</div>
+            </div>
+          `;
+        }
+        if (trade.status === "CLOSED_TRADE") {
+          return `
+            <div class="grid gap-1">
+              <span class="badge ${tradeBadgeClass(trade.status)} badge-sm">${trade.label}</span>
+              <div class="text-xs text-base-content/60">Exit ${formatNumber(trade.exit_price)} · P&L ${formatNumber(trade.realized_pnl)}</div>
+            </div>
+          `;
+        }
+        return `<span class="badge ${tradeBadgeClass(trade.status)} badge-sm">${trade.label}</span>`;
+      }
+
+      function decisionBadgeClass(state) {
+        if (state === "IN_TRADE") return "badge-primary";
+        if (state === "AT_ENTRY") return "badge-success";
+        if (state === "WAITING_FOR_PRICE") return "badge-warning";
+        return "badge-outline";
+      }
+
+      function renderDecisionPanel(items) {
+        $("decisionPanel").innerHTML = items.length
+          ? items.map((item) => {
+              const decision = item.decision || {};
+              const l0 = item.levels.find((level) => level.level_name === "L0");
+              const l1 = item.levels.find((level) => level.level_name === "L1");
+              const upperLevels = item.levels.filter((level) => Number(level.sort_order) > 1);
+              const targetText = upperLevels.length
+                ? upperLevels.map((level) => `${level.level_name} ${formatNumber(level.price)}`).join(" · ")
+                : "-";
+              return `
+                <div class="rounded-md border border-base-300 bg-base-100 p-3">
+                  <div class="mb-3 flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                      <div class="truncate font-semibold">${item.symbol}</div>
+                      <div class="text-xs text-base-content/60">${item.exchange}${item.instrument_type ? ` · ${item.instrument_type}` : ""}</div>
+                    </div>
+                    <span class="badge ${decisionBadgeClass(decision.state)} badge-sm">${decision.label || "Waiting"}</span>
+                  </div>
+                  <div class="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+                    <div>
+                      <div class="text-xs text-base-content/60">LTP</div>
+                      <div class="font-medium">${item.last_price === null ? "-" : formatNumber(item.last_price)}</div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-base-content/60">Entry L1</div>
+                      <div class="font-medium">${l1 ? formatNumber(l1.price) : "-"}</div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-base-content/60">Stop L0</div>
+                      <div class="font-medium">${l0 ? formatNumber(l0.price) : "-"}</div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-base-content/60">Distance</div>
+                      <div class="font-medium">${decision.distance_to_entry === null || decision.distance_to_entry === undefined ? "-" : formatNumber(decision.distance_to_entry)}</div>
+                    </div>
+                  </div>
+                  <div class="mt-3 rounded-md bg-base-200 px-3 py-2 text-sm">${decision.reason || "Waiting for strategy context."}</div>
+                  <div class="mt-2 text-xs text-base-content/60">Targets: ${targetText}</div>
+                </div>
+              `;
+            }).join("")
+          : `<div class="text-sm text-base-content/60">No active instruments loaded.</div>`;
+      }
+
+      function tradeFromRealtimePosition(position) {
+        if (!position) return null;
+        return {
+          status: position.is_open ? "OPEN_TRADE" : "CLOSED_TRADE",
+          label: position.is_open ? "Open trade" : "Closed trade",
+          quantity: position.quantity,
+          entry_price: position.entry_price,
+          stoploss_price: position.stoploss_price,
+          trailing_stoploss_price: position.trailing_stoploss_price,
+          high_water_mark: position.high_water_mark,
+          exit_price: position.exit_price,
+          realized_pnl: position.realized_pnl,
+        };
+      }
+
+      function renderLevelRows() {
+        $("levelRows").innerHTML = levelDrafts.map((level, index) => `
+          <div class="grid grid-cols-[76px_1fr_36px] items-center gap-2 rounded-lg border border-base-300 bg-base-200 px-3 py-2">
+            <div>
+              <div class="font-semibold leading-tight">${level.level_name}</div>
+              <div class="text-xs text-base-content/60">${levelRoleLabel(level)}</div>
+            </div>
+            <input
+              class="input input-bordered input-sm w-full bg-base-100"
+              data-level-index="${index}"
+              type="number"
+              value="${level.price}"
+              placeholder="${level.level_name} price"
+            />
+            ${index > 2
+              ? `<button class="btn btn-ghost btn-sm btn-square" data-remove-level="${index}" type="button" aria-label="Remove ${level.level_name}">x</button>`
+              : `<span></span>`}
+          </div>
+        `).join("");
+
+        document.querySelectorAll("[data-level-index]").forEach((input) => {
+          input.addEventListener("input", () => {
+            levelDrafts[Number(input.dataset.levelIndex)].price = Number(input.value);
+          });
+        });
+        document.querySelectorAll("[data-remove-level]").forEach((button) => {
+          button.addEventListener("click", () => {
+            levelDrafts.splice(Number(button.dataset.removeLevel), 1);
+            levelDrafts = levelDrafts.map((level, index) => ({
+              ...level,
+              level_name: `L${index}`,
+              role: index === 0 ? "STOPLOSS" : index === 1 ? "ENTRY" : "CHECKPOINT",
+            }));
+            renderLevelRows();
+          });
+        });
+      }
+
+      function resetLevelDrafts() {
+        levelDrafts = [
+          { level_name: "L0", price: "", role: "STOPLOSS" },
+          { level_name: "L1", price: "", role: "ENTRY" },
+          { level_name: "L2", price: "", role: "CHECKPOINT" },
+        ];
+        renderLevelRows();
+      }
+
+      function addLevelRow() {
+        const previous = levelDrafts[levelDrafts.length - 1];
+        levelDrafts.push({
+          level_name: `L${levelDrafts.length}`,
+          price: "",
+          role: "CHECKPOINT",
+        });
+        renderLevelRows();
+      }
+
+      function buildLevelPayload() {
+        if (levelDrafts.some((level) => !Number(level.price))) {
+          throw new Error("Enter prices for all levels before saving");
+        }
+        return levelDrafts.map((level, index) => ({
+          level_name: `L${index}`,
+          price: Number(level.price),
+          sort_order: index,
+          role: index === 0 ? "STOPLOSS" : index === 1 ? "ENTRY" : "CHECKPOINT",
+        }));
+      }
+
+      function parseReplayPrices(value) {
+        return value
+          .split(/[\s,]+/)
+          .map((item) => item.trim())
+          .filter(Boolean)
+          .map((item) => Number(item));
+      }
+
+      function setReplayLog(lines) {
+        const log = $("tickReplayLog");
+        log.innerHTML = lines.map((line) => `<div>${line}</div>`).join("");
+        log.classList.toggle("hidden", lines.length === 0);
+      }
+
+      function describeTickResult(response) {
+        const results = response.results || [];
+        const execution = results.find((item) => item.action);
+        const signal = results.find((item) => item.signal_type);
+        if (execution?.action) {
+          return `${execution.action.side} at ${formatNumber(execution.action.price)} · ${execution.message}`;
+        }
+        if (signal?.signal_type) {
+          return `${signal.signal_type} · ${signal.reason || "State updated"}`;
+        }
+        return `${response.direction || "UNKNOWN"} · no trade action`;
+      }
+
+      function resetSelectedInstrumentPrice() {
+        $("selectedInstrumentPrice").textContent = "-";
+        $("selectedInstrumentTickTime").textContent = "Waiting";
+      }
+
+      function updateSelectedInstrumentPrice() {
+        if (!selectedInstrument?.id) {
+          resetSelectedInstrumentPrice();
+          return;
+        }
+        const price = latestPricesByInstrumentId.get(Number(selectedInstrument.id));
+        if (!price) {
+          $("selectedInstrumentPrice").textContent = "-";
+          $("selectedInstrumentTickTime").textContent = "No tick yet";
+          return;
+        }
+        $("selectedInstrumentPrice").textContent = formatNumber(price.last_price);
+        $("selectedInstrumentTickTime").textContent = displayIstTime(price.timestamp_ist, price.timestamp);
+      }
+
+      function renderTrackedInstruments(items) {
+        $("pricesTable").innerHTML = items.length
+          ? items.map((item) => `
+              <tr>
+                <td>
+                  <div class="font-medium">${item.symbol}</div>
+                  <div class="text-xs text-base-content/60">${item.exchange}${item.instrument_type ? ` · ${item.instrument_type}` : ""}</div>
+                </td>
+                <td class="font-semibold">${item.last_price === null ? "-" : formatNumber(item.last_price)}</td>
+                <td>${item.levels.map((level) => `${level.level_name}:${formatNumber(level.price)}`).join(" · ")}</td>
+                <td>${item.last_tick_at ? displayIstTime(item.last_tick_at_ist, item.last_tick_at) : "Waiting"}</td>
+                <td>${renderTradeState(item)}</td>
+                <td><button class="btn btn-xs btn-outline" data-monitor-instrument-id="${item.instrument_id}" type="button">Use / Edit</button></td>
+              </tr>
+            `).join("")
+          : `<tr><td colspan="6" class="text-base-content/60">No active level instruments loaded.</td></tr>`;
+
+        document.querySelectorAll("[data-monitor-instrument-id]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const item = trackedInstrumentsState.find(
+              (trackedItem) => trackedItem.instrument_id === Number(button.dataset.monitorInstrumentId)
+            );
+            if (!item) return;
+            editLevelSet(levelSetFromTrackedInstrument(item));
+          });
+        });
+      }
+
+      function levelSetFromTrackedInstrument(item) {
+        return {
+          id: item.level_set_id,
+          instrument_id: item.instrument_id,
+          instrument: {
+            id: item.instrument_id,
+            symbol: item.symbol,
+            exchange: item.exchange,
+            instrument_type: item.instrument_type,
+            instrument_token: item.instrument_token,
+            lot_size: 1,
+          },
+          trading_day: todayIso(),
+          status: "ACTIVE",
+          levels: item.levels,
+        };
+      }
+
+      function applyRealtimeTick(message) {
+        if (!["tick", "ltp"].includes(message.type) || !message.tick) return;
+        const tick = message.tick;
+        const realtimeTrade = tradeFromRealtimePosition(message.position);
+        latestPricesByInstrumentId.set(Number(tick.instrument_id), {
+          instrument_id: tick.instrument_id,
+          instrument_token: tick.instrument_token,
+          symbol: tick.symbol,
+          last_price: tick.last_price,
+          timestamp: tick.timestamp,
+          timestamp_ist: tick.timestamp_ist,
+        });
+        trackedInstrumentsState = trackedInstrumentsState.map((item) => {
+          if (Number(item.instrument_id) !== Number(tick.instrument_id)) return item;
+          const updatedItem = {
+            ...item,
+            last_price: tick.last_price,
+            last_tick_at: tick.timestamp,
+            last_tick_at_ist: tick.timestamp_ist,
+            trade: realtimeTrade || item.trade,
+          };
+          return {
+            ...updatedItem,
+            decision: buildClientDecision(updatedItem),
+          };
+        });
+        renderTrackedInstruments(trackedInstrumentsState);
+        renderDecisionPanel(trackedInstrumentsState);
+        updateSelectedInstrumentPrice();
+      }
+
+      function buildClientDecision(item) {
+        const trade = item.trade || {};
+        const l1 = item.levels.find((level) => level.level_name === "L1");
+        if (!l1) {
+          return {
+            state: "NOT_READY",
+            label: "Missing L1",
+            reason: "Entry level L1 is required before strategy can trade.",
+            entry_price: null,
+            distance_to_entry: null,
+          };
+        }
+        if (trade.status === "OPEN_TRADE") {
+          return {
+            state: "IN_TRADE",
+            label: "In trade",
+            reason: `Bought at ${formatNumber(trade.entry_price)}; trailing stoploss is ${formatNumber(trade.trailing_stoploss_price)}.`,
+            entry_price: l1.price,
+            distance_to_entry: 0,
+          };
+        }
+        if (item.last_price === null || item.last_price === undefined) {
+          return {
+            state: "WAITING_FOR_PRICE",
+            label: "Waiting for price",
+            reason: "No live price has reached the backend yet.",
+            entry_price: l1.price,
+            distance_to_entry: null,
+          };
+        }
+        const distance = Number(l1.price) - Number(item.last_price);
+        if (distance > 0) {
+          return {
+            state: "WAITING_BELOW_ENTRY",
+            label: "Waiting below entry",
+            reason: `Needs to rise by ${formatNumber(distance)} to touch L1 entry ${formatNumber(l1.price)}.`,
+            entry_price: l1.price,
+            distance_to_entry: distance,
+          };
+        }
+        if (distance < 0) {
+          return {
+            state: "WAITING_ABOVE_ENTRY",
+            label: "Waiting above entry",
+            reason: `Needs to fall by ${formatNumber(Math.abs(distance))} to touch L1 entry ${formatNumber(l1.price)}.`,
+            entry_price: l1.price,
+            distance_to_entry: Math.abs(distance),
+          };
+        }
+        return {
+          state: "AT_ENTRY",
+          label: "At entry",
+          reason: "Price is at L1; next strategy tick can trigger entry if no trade exists today.",
+          entry_price: l1.price,
+          distance_to_entry: 0,
+        };
+      }
+
+      function connectPriceSocket() {
+        if (priceSocket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(priceSocket.readyState)) {
+          return;
+        }
+        priceSocket = new WebSocket(`${WS_BASE}/ws/prices`);
+        priceSocket.onopen = () => {
+          setStatus("Live price socket connected");
+        };
+        priceSocket.onmessage = (event) => {
+          try {
+            applyRealtimeTick(JSON.parse(event.data));
+          } catch (error) {
+            setStatus(error.message, true);
+          }
+        };
+        priceSocket.onclose = () => {
+          setStatus("Live price socket disconnected", true);
+          clearTimeout(priceSocketReconnectTimer);
+          priceSocketReconnectTimer = setTimeout(connectPriceSocket, 2000);
+        };
+        priceSocket.onerror = () => {
+          priceSocket.close();
+        };
+      }
+
+      function renderSummary(summary) {
+        $("latestPricesCount").textContent = summary.counts.latest_prices || 0;
+        $("openPositionsCount").textContent = summary.counts.open_positions || 0;
+        $("realizedPnl").textContent = formatNumber(summary.pnl.realized);
+        $("trailLocked").textContent = formatNumber(summary.pnl.open_trailing_locked);
+
+        const prices = summary.latest_prices || [];
+        latestPricesByInstrumentId = new Map(
+          prices.map((price) => [Number(price.instrument_id), price])
+        );
+        updateSelectedInstrumentPrice();
+        trackedInstrumentsState = summary.tracked_instruments || [];
+        renderTrackedInstruments(trackedInstrumentsState);
+        renderDecisionPanel(trackedInstrumentsState);
+
+        const positions = summary.open_positions || [];
+        $("positionsTable").innerHTML = positions.length
+          ? positions.map((position) => `
+              <tr>
+                <td>
+                  <div class="font-medium">${position.symbol || `#${position.instrument_id}`}</div>
+                  <div class="text-xs text-base-content/60">${position.exchange || ""}${position.instrument_type ? ` · ${position.instrument_type}` : ""}</div>
+                </td>
+                <td>${formatNumber(position.entry_price)}</td>
+                <td>${formatNumber(position.trailing_stoploss_price)}</td>
+                <td>${formatNumber((position.trailing_stoploss_price - position.entry_price) * position.quantity)}</td>
+                <td><span class="badge badge-primary badge-sm">${position.status}</span></td>
+              </tr>
+            `).join("")
+          : `<tr><td colspan="5" class="text-base-content/60">No open positions.</td></tr>`;
+
+        const orders = summary.orders || [];
+        $("ordersTable").innerHTML = orders.length
+          ? orders.map((order) => `
+              <tr>
+                <td>${displayIstTime(order.created_at_ist, order.created_at)}</td>
+                <td>
+                  <div class="font-medium">${order.symbol}</div>
+                  <div class="text-xs text-base-content/60">${order.exchange}${order.instrument_type ? ` · ${order.instrument_type}` : ""}</div>
+                </td>
+                <td><span class="badge badge-sm ${order.side === "BUY" ? "badge-success" : "badge-warning"}">${order.side}</span></td>
+                <td>${formatNumber(order.price)}</td>
+                <td>${order.reason}</td>
+              </tr>
+            `).join("")
+          : `<tr><td colspan="5" class="text-base-content/60">No recent orders.</td></tr>`;
+
+        const events = summary.audit_events || [];
+        $("auditTimeline").innerHTML = events.length
+          ? events.slice(0, 8).map((event, index) => `
+              <li>
+                ${index > 0 ? "<hr />" : ""}
+                <div class="timeline-start text-xs">${displayIstTime(event.created_at_ist, event.created_at)}</div>
+                <div class="timeline-middle h-3 w-3 rounded-full bg-primary"></div>
+                <div class="timeline-end timeline-box">${event.event_type}: ${event.message}</div>
+                ${index < events.length - 1 ? "<hr />" : ""}
+              </li>
+            `).join("")
+          : `<li><div class="timeline-end timeline-box">No events loaded.</div></li>`;
+      }
+
+      async function refreshDashboard() {
+        setStatus("Refreshing dashboard...");
+        const summary = await api("/dashboard/summary");
+        renderSummary(summary);
+        await refreshStreamStatus();
+        setStatus("Dashboard refreshed");
+      }
+
+      async function loadInstruments() {
+        const query = $("instrumentSearchInput")?.value?.trim() || "";
+        const exchange = $("instrumentExchangeFilter")?.value || "";
+        const instrumentType = $("instrumentTypeFilter")?.value || "";
+        if (query.length < 2) {
+          hideInstrumentSuggestions();
+          return;
+        }
+        const instruments = await api(
+          `/instruments?limit=100&query=${encodeURIComponent(query)}${exchange ? `&exchange=${exchange}` : ""}${instrumentType ? `&instrument_type=${instrumentType}` : ""}`
+        );
+        renderInstrumentSuggestions(instruments);
+      }
+
+      function hideInstrumentSuggestions() {
+        const menu = $("instrumentSuggestions");
+        menu.innerHTML = "";
+        menu.classList.add("hidden");
+      }
+
+      function renderInstrumentSuggestions(instruments) {
+        const menu = $("instrumentSuggestions");
+        if (!instruments.length) {
+          menu.innerHTML = `<div class="p-3 text-sm text-base-content/60">No synced instruments match this text.</div>`;
+          menu.classList.toggle("hidden", !$("instrumentSearchInput").value.trim());
+          return;
+        }
+        menu.innerHTML = instruments.map((instrument) => `
+          <button
+            class="block w-full px-3 py-2 text-left hover:bg-base-200"
+            data-instrument-id="${instrument.id}"
+            data-symbol="${instrument.symbol}"
+            data-exchange="${instrument.exchange}"
+            data-instrument-type="${instrument.instrument_type || ""}"
+            data-token="${instrument.instrument_token}"
+            data-lot-size="${instrument.lot_size}"
+            type="button"
+          >
+            <span class="font-medium">${instrument.symbol}</span>
+            <span class="text-xs text-base-content/60">${instrument.exchange}${instrument.instrument_type ? ` · ${instrument.instrument_type}` : ""}</span>
+          </button>
+        `).join("");
+        menu.classList.remove("hidden");
+        menu.querySelectorAll("[data-instrument-id]").forEach((button) => {
+          button.addEventListener("click", () => {
+            selectInstrument({
+              id: Number(button.dataset.instrumentId),
+              symbol: button.dataset.symbol,
+              exchange: button.dataset.exchange,
+              instrument_type: button.dataset.instrumentType,
+              instrument_token: Number(button.dataset.token),
+              lot_size: Number(button.dataset.lotSize || 1),
+            });
+          });
+        });
+      }
+
+      async function fetchSelectedInstrumentLtp(instrument) {
+        if (!instrument?.id) return;
+        $("selectedInstrumentTickTime").textContent = "Fetching...";
+        try {
+          const price = await api(`/zerodha/ltp?instrument_id=${instrument.id}`);
+          if (!selectedInstrument || Number(selectedInstrument.id) !== Number(instrument.id)) {
+            return;
+          }
+          latestPricesByInstrumentId.set(Number(price.instrument_id), price);
+          updateSelectedInstrumentPrice();
+          trackedInstrumentsState = trackedInstrumentsState.map((item) => {
+            if (Number(item.instrument_id) !== Number(price.instrument_id)) return item;
+            return {
+              ...item,
+              last_price: price.last_price,
+              last_tick_at: price.timestamp,
+              last_tick_at_ist: price.timestamp_ist,
+            };
+          });
+          renderTrackedInstruments(trackedInstrumentsState);
+        } catch (error) {
+          if (selectedInstrument && Number(selectedInstrument.id) === Number(instrument.id)) {
+            $("selectedInstrumentTickTime").textContent = "No live price";
+          }
+          setStatus(error.message, true);
+        }
+      }
+
+      function selectInstrument(instrument, options = {}) {
+        selectedInstrument = instrument;
+        $("selectedInstrumentText").textContent = `${instrument.symbol} · ${instrument.exchange}${instrument.instrument_type ? ` · ${instrument.instrument_type}` : ""}`;
+        $("instrumentSearchInput").value = instrument.symbol;
+        updateSelectedInstrumentPrice();
+        fetchSelectedInstrumentLtp(instrument);
+        if (!options.keepEditing) {
+          editingLevelSetId = null;
+          $("saveLevelsBtn").textContent = "Save Today's Levels";
+          $("levelEditBanner").classList.add("hidden");
+          $("levelEditBanner").textContent = "";
+          showActiveLevelPreview(null);
+          resetLevelDrafts();
+          loadExistingLevelSetForSelectedInstrument(instrument.id).catch((error) => setStatus(error.message, true));
+        }
+        hideInstrumentSuggestions();
+      }
+
+      function resetLevelEditor() {
+        editingLevelSetId = null;
+        selectedInstrument = null;
+        $("selectedInstrumentText").textContent = "No instrument selected";
+        resetSelectedInstrumentPrice();
+        $("instrumentSearchInput").value = "";
+        $("saveLevelsBtn").textContent = "Save Today's Levels";
+        $("levelEditBanner").classList.add("hidden");
+        $("levelEditBanner").textContent = "";
+        showActiveLevelPreview(null);
+        resetLevelDrafts();
+      }
+
+      function editLevelSet(levelSet) {
+        editingLevelSetId = levelSet.id;
+        selectInstrument(levelSet.instrument, { keepEditing: true });
+        levelDrafts = levelSet.levels
+          .slice()
+          .sort((left, right) => left.sort_order - right.sort_order)
+          .map((level, index) => ({
+            level_name: `L${index}`,
+            price: level.price,
+            role: index === 0 ? "STOPLOSS" : index === 1 ? "ENTRY" : "CHECKPOINT",
+          }));
+        $("saveLevelsBtn").textContent = "Update Today's Levels";
+        $("levelEditBanner").textContent = `Editing Set #${levelSet.id} · ${levelSet.instrument.symbol}`;
+        $("levelEditBanner").classList.remove("hidden");
+        renderLevelRows();
+        showActiveLevelPreview(levelSet);
+        setStatus(`Editing levels for ${levelSet.instrument.symbol}`);
+        $("levelForm").scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+
+      async function loadExistingLevelSetForSelectedInstrument(instrumentId) {
+        const levelSet = await findActiveLevelSetForInstrument(instrumentId);
+        if (!levelSet || !selectedInstrument || Number(selectedInstrument.id) !== Number(instrumentId)) {
+          return;
+        }
+        editLevelSet(levelSet);
+      }
+
+      async function refreshStreamStatus() {
+        const status = await api("/zerodha/stream/status");
+        $("streamBadge").textContent = status.running ? "Stream running" : "Stream idle";
+        $("streamBadge").className = status.running ? "badge badge-success" : "badge badge-outline";
+        $("kiteWebsocketStatus").textContent = status.running ? "Running" : "Idle";
+        $("kiteWebsocketStatus").className = status.running ? "badge badge-success" : "badge badge-outline";
+        return status;
+      }
+
+      async function refreshZerodhaStatus() {
+        setStatus("Checking Zerodha status...");
+        const status = await api("/zerodha/status");
+        $("kiteApiKeyStatus").textContent = status.api_key_configured ? "Configured" : "Missing";
+        $("kiteApiKeyStatus").className = status.api_key_configured ? "badge badge-success" : "badge badge-error";
+        $("kiteSessionStatus").textContent = status.db_session_active ? "Connected" : "Not connected";
+        $("kiteSessionStatus").className = status.db_session_active ? "badge badge-success" : "badge badge-warning";
+        $("kiteUserStatus").textContent = status.session_user || "-";
+        await refreshStreamStatus();
+        setStatus("Zerodha status refreshed");
+      }
+
+      async function runAction(label, path) {
+        try {
+          setStatus(`${label}...`);
+          await api(path, { method: "POST" });
+          await refreshDashboard();
+          setStatus(`${label} complete`);
+        } catch (error) {
+          setStatus(error.message, true);
+        }
+      }
+
+      async function resetPaperTrades() {
+        if (!window.confirm("Reset today's paper trades and orders? Levels and instruments will stay.")) {
+          return;
+        }
+        try {
+          setStatus("Resetting today's paper trades...");
+          const result = await api("/trading/paper-trades/reset-today", { method: "POST" });
+          await refreshDashboard();
+          setStatus(`Reset complete: ${result.positions_deleted} positions and ${result.orders_deleted} orders deleted`);
+        } catch (error) {
+          setStatus(error.message, true);
+        }
+      }
+
+      async function resetSelectedPaperTrades() {
+        if (!selectedInstrument?.id) throw new Error("Select an instrument first");
+        if (!window.confirm(`Reset today's paper trades for ${selectedInstrument.symbol}?`)) {
+          return;
+        }
+        setStatus(`Resetting ${selectedInstrument.symbol} paper trades...`);
+        const result = await api(`/trading/paper-trades/reset-today/${selectedInstrument.id}`, {
+          method: "POST",
+        });
+        await refreshDashboard();
+        $("tickReplayStatus").textContent = `Reset selected: ${result.positions_deleted} positions`;
+        setStatus(
+          `Reset ${selectedInstrument.symbol}: ${result.positions_deleted} positions and ${result.orders_deleted} orders deleted`
+        );
+      }
+
+      async function runTickReplay(event) {
+        event.preventDefault();
+        if (!selectedInstrument?.instrument_token) throw new Error("Select an instrument first");
+
+        const prices = parseReplayPrices($("tickReplayInput").value);
+        if (!prices.length) throw new Error("Enter at least one replay price");
+        if (prices.some((price) => !Number.isFinite(price) || price <= 0)) {
+          throw new Error("Replay prices must be positive numbers");
+        }
+
+        const delay = Math.max(Number($("replayDelayInput").value || 0), 0);
+        const startedAt = Date.now();
+        const replayLines = [];
+        $("tickReplayBtn").disabled = true;
+        $("tickReplayStatus").textContent = `Running 0/${prices.length}`;
+        setReplayLog([]);
+
+        try {
+          for (const [index, price] of prices.entries()) {
+            $("tickReplayStatus").textContent = `Running ${index + 1}/${prices.length}`;
+            const response = await api("/ticks/mock", {
+              method: "POST",
+              body: JSON.stringify({
+                instrument_token: selectedInstrument.instrument_token,
+                last_price: price,
+                timestamp: new Date(startedAt + index * 1000).toISOString(),
+              }),
+            });
+            replayLines.push(`${index + 1}. ${formatNumber(price)} -> ${describeTickResult(response)}`);
+            setReplayLog(replayLines);
+            await refreshDashboard();
+            if (delay > 0 && index < prices.length - 1) {
+              await sleep(delay);
+            }
+          }
+          $("tickReplayStatus").textContent = `Complete: ${prices.length} ticks`;
+          setStatus("Replay complete");
+        } finally {
+          $("tickReplayBtn").disabled = false;
+        }
+      }
+
+      function fillReplaySample() {
+        const l1 = levelDrafts.find((level) => level.level_name === "L1");
+        const l2 = levelDrafts.find((level) => level.level_name === "L2");
+        if (l1?.price && l2?.price) {
+          $("tickReplayInput").value = [
+            Number(l1.price) - 20,
+            Number(l1.price) - 5,
+            Number(l1.price),
+            Number(l2.price),
+            Number(l2.price) - 5,
+          ].join(", ");
+          return;
+        }
+        $("tickReplayInput").value = "1260, 1290, 1300, 1350, 1345";
+      }
+
+      async function syncInstruments() {
+        try {
+          setStatus("Syncing Zerodha instruments...");
+          const optionResult = await api("/instruments/sync/zerodha?exchange=NFO,BFO&instrument_types=CE,PE", { method: "POST" });
+          const commodityResult = await api("/instruments/sync/zerodha?exchange=MCX&instrument_types=FUT,CE,PE", { method: "POST" });
+          hideInstrumentSuggestions();
+          setStatus(`Synced ${optionResult.synced + commodityResult.synced} instruments`);
+        } catch (error) {
+          setStatus(error.message, true);
+        }
+      }
+
+      async function refreshRunningStreamSubscriptions() {
+        const status = await refreshStreamStatus();
+        if (!status.running) return;
+        await api("/zerodha/stream/start", { method: "POST" });
+        await refreshStreamStatus();
+      }
+
+      function todayIso() {
+        return new Date().toISOString().slice(0, 10);
+      }
+
+      async function loadLevelSets() {
+        if (!$("levelSetsTable")) return;
+        todayLevelSets = await api(`/level-sets?trading_day=${todayIso()}`);
+        $("levelSetsTable").innerHTML = todayLevelSets.length
+          ? todayLevelSets.map((set) => `
+              <div class="grid items-center gap-2 rounded-md border border-base-300 bg-base-100 px-3 py-2 md:grid-cols-[minmax(180px,1.2fr)_auto_minmax(240px,2fr)_auto]">
+                <div class="min-w-0">
+                  <div class="truncate text-sm font-semibold">${set.instrument?.symbol || `#${set.instrument_id}`}</div>
+                  <div class="text-xs text-base-content/60">${set.instrument?.exchange || ""}</div>
+                </div>
+                <span class="badge badge-sm ${set.status === "ACTIVE" ? "badge-success" : "badge-outline"}">${set.status}</span>
+                <div class="flex min-w-0 flex-wrap items-center gap-1 text-sm">${renderInlineLevels(set.levels)}</div>
+                <div class="flex justify-end gap-1">
+                  ${set.status === "ACTIVE"
+                    ? `
+                      <button class="btn btn-xs btn-outline" data-edit-level-set="${set.id}" type="button">Edit</button>
+                      <button class="btn btn-xs btn-error btn-outline" data-delete-level-set="${set.id}" type="button">Delete</button>
+                    `
+                    : ""}
+                </div>
+              </div>
+            `).join("")
+          : `<div class="text-sm text-base-content/60">No level sets loaded.</div>`;
+
+      }
+
+      async function findActiveLevelSetForInstrument(instrumentId) {
+        const levelSets = await api(
+          `/level-sets?trading_day=${todayIso()}&instrument_id=${instrumentId}`
+        );
+        return levelSets.find((set) => set.status === "ACTIVE") || null;
+      }
+
+      $("instrumentSearchInput").addEventListener("input", () => {
+        clearTimeout(instrumentSearchTimer);
+        instrumentSearchTimer = setTimeout(() => {
+          loadInstruments().catch((error) => setStatus(error.message, true));
+        }, 300);
+      });
+      $("instrumentSearchInput").addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          hideInstrumentSuggestions();
+        }
+      });
+      $("instrumentExchangeFilter").addEventListener("change", () => {
+        loadInstruments().catch((error) => setStatus(error.message, true));
+      });
+      $("instrumentTypeFilter").addEventListener("change", () => {
+        loadInstruments().catch((error) => setStatus(error.message, true));
+      });
+
+      $("levelForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        try {
+          const instrumentId = selectedInstrument?.id;
+          if (!instrumentId) throw new Error("Select an instrument first");
+          const levels = buildLevelPayload();
+          const existingLevelSet = editingLevelSetId
+            ? null
+            : await findActiveLevelSetForInstrument(instrumentId);
+          if (existingLevelSet) {
+            throw new Error("Levels already exist for this instrument today. Click Edit in Today’s Level Sets to update them.");
+          }
+          const wasEditing = Boolean(editingLevelSetId);
+          setStatus(wasEditing ? "Updating levels..." : "Saving levels...");
+          const savedLevelSet = wasEditing
+            ? await api(`/level-sets/${editingLevelSetId}`, {
+                method: "PUT",
+                body: JSON.stringify({
+                  updated_by: "dashboard",
+                  levels,
+                }),
+              })
+            : await api("/level-sets", {
+                method: "POST",
+                body: JSON.stringify({
+                  instrument_id: instrumentId,
+                  trading_day: todayIso(),
+                  created_by: "dashboard",
+                  levels,
+                }),
+              });
+          editingLevelSetId = savedLevelSet.id;
+          $("saveLevelsBtn").textContent = "Update Today's Levels";
+          showActiveLevelPreview(savedLevelSet);
+          await refreshDashboard();
+          await loadLevelSets();
+          await refreshRunningStreamSubscriptions();
+          setStatus(wasEditing ? "Levels updated" : "Levels saved");
+        } catch (error) {
+          setStatus(error.message, true);
+        }
+      });
+
+      $("mockTickForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        try {
+          if (!selectedInstrument?.instrument_token) throw new Error("Select an instrument first");
+          setStatus("Sending mock tick...");
+          await api("/ticks/mock", {
+            method: "POST",
+            body: JSON.stringify({
+              instrument_token: selectedInstrument.instrument_token,
+              last_price: Number($("mockPriceInput").value),
+            }),
+          });
+          await refreshDashboard();
+          setStatus("Mock tick processed");
+        } catch (error) {
+          setStatus(error.message, true);
+        }
+      });
+      $("tickReplayForm").addEventListener("submit", (event) => {
+        runTickReplay(event).catch((error) => {
+          $("tickReplayBtn").disabled = false;
+          $("tickReplayStatus").textContent = "Failed";
+          setStatus(error.message, true);
+        });
+      });
+      $("tickReplaySampleBtn").addEventListener("click", fillReplaySample);
+      $("tickReplayResetBtn").addEventListener("click", () => {
+        resetSelectedPaperTrades().catch((error) => {
+          $("tickReplayStatus").textContent = "Reset failed";
+          setStatus(error.message, true);
+        });
+      });
+
+      $("runDemoBtn").addEventListener("click", () => runAction("Running demo simulation", "/simulations/demo"));
+      $("refreshBtn").addEventListener("click", refreshDashboard);
+      $("refreshLevelsBtn")?.addEventListener("click", () => loadLevelSets().catch((error) => setStatus(error.message, true)));
+      $("levelSetsTable")?.addEventListener("click", async (event) => {
+        const editButton = event.target.closest("[data-edit-level-set]");
+        const deleteButton = event.target.closest("[data-delete-level-set]");
+        if (editButton) {
+          const levelSet = todayLevelSets.find((set) => set.id === Number(editButton.dataset.editLevelSet));
+          if (levelSet) editLevelSet(levelSet);
+          return;
+        }
+        if (deleteButton) {
+          try {
+            setStatus("Deleting level set...");
+            await api(`/level-sets/${deleteButton.dataset.deleteLevelSet}`, { method: "DELETE" });
+            await loadLevelSets();
+            await refreshDashboard();
+            await refreshRunningStreamSubscriptions();
+            if (editingLevelSetId === Number(deleteButton.dataset.deleteLevelSet)) resetLevelEditor();
+            setStatus("Level set deleted");
+          } catch (error) {
+            setStatus(error.message, true);
+          }
+        }
+      });
+      $("addLevelBtn").addEventListener("click", addLevelRow);
+      $("syncInstrumentsBtn").addEventListener("click", syncInstruments);
+      $("tableRefreshBtn").addEventListener("click", refreshDashboard);
+      $("startStreamBtn").addEventListener("click", () => runAction("Starting Zerodha stream", "/zerodha/stream/start"));
+      $("stopStreamBtn").addEventListener("click", () => runAction("Stopping stream", "/zerodha/stream/stop"));
+      $("squareOffBtn").addEventListener("click", () => runAction("Running EOD square-off", "/trading/eod-square-off"));
+      $("resetPaperTradesBtn").addEventListener("click", resetPaperTrades);
+      $("zerodhaStatusBtn").addEventListener("click", () => refreshZerodhaStatus().catch((error) => setStatus(error.message, true)));
+      $("zerodhaLoginBtn").addEventListener("click", () => {
+        window.location.href = `${API_BASE}/zerodha/login`;
+      });
+      $("zerodhaStartBtn").addEventListener("click", () => runAction("Starting Zerodha stream", "/zerodha/stream/start"));
+      $("zerodhaStopBtn").addEventListener("click", () => runAction("Stopping stream", "/zerodha/stream/stop"));
+
+      renderLevelRows();
+      connectPriceSocket();
+      refreshDashboard()
+        .then(loadLevelSets)
+        .then(refreshZerodhaStatus)
+        .catch((error) => setStatus(error.message, true));
+    </script>
+  </body>
+</html>

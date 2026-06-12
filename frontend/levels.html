@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en" data-theme="corporate">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Daily Levels | Market Signal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      href="https://cdn.jsdelivr.net/npm/daisyui@4.12.23/dist/full.min.css"
+      rel="stylesheet"
+      type="text/css"
+    />
+  </head>
+  <body class="min-h-screen bg-base-200 text-base-content">
+    <div class="drawer lg:drawer-open">
+      <input id="app-drawer" type="checkbox" class="drawer-toggle" />
+      <main class="drawer-content">
+        <div class="navbar sticky top-0 z-20 border-b border-base-300 bg-base-100">
+          <div class="flex-none lg:hidden">
+            <label for="app-drawer" class="btn btn-square btn-ghost" aria-label="Open navigation">
+              <span class="text-xl">☰</span>
+            </label>
+          </div>
+          <div class="flex-1">
+            <div>
+              <h1 class="text-lg font-semibold">Daily Levels</h1>
+              <p class="text-xs text-base-content/60">Day-bound level sets and execution history</p>
+            </div>
+          </div>
+          <div class="flex-none">
+            <a class="btn btn-outline btn-sm" href="./index.html">Dashboard</a>
+          </div>
+        </div>
+
+        <section class="mx-auto flex w-full max-w-7xl flex-col gap-6 p-4 lg:p-6">
+          <section class="rounded-lg border border-base-300 bg-base-100">
+            <div class="flex flex-wrap items-end gap-3 p-4">
+              <div>
+                <label class="label py-1" for="tradingDayInput">
+                  <span class="label-text">Trading day</span>
+                </label>
+                <input id="tradingDayInput" class="input input-bordered input-sm" type="date" />
+              </div>
+              <label class="label cursor-pointer gap-2 py-0">
+                <input id="includeCancelledInput" class="checkbox checkbox-sm" type="checkbox" />
+                <span class="label-text">Include cancelled</span>
+              </label>
+              <button id="loadLevelsBtn" class="btn btn-primary btn-sm" type="button">Load</button>
+              <span id="statusText" class="ml-auto text-sm text-base-content/60">Ready</span>
+            </div>
+          </section>
+
+          <section class="rounded-lg border border-base-300 bg-base-100">
+            <div class="flex items-center justify-between border-b border-base-300 px-4 py-3">
+              <div>
+                <h2 class="font-semibold">Selected Day</h2>
+                <p class="text-sm text-base-content/60">Actionable sets hide cancelled records unless selected above.</p>
+              </div>
+              <span id="selectedDayCount" class="badge badge-outline">0 records</span>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="table table-sm">
+                <thead>
+                  <tr>
+                    <th>Instrument</th>
+                    <th>Status</th>
+                    <th>Execution</th>
+                    <th>Levels</th>
+                    <th>Day</th>
+                  </tr>
+                </thead>
+                <tbody id="selectedDayTable">
+                  <tr><td colspan="5" class="text-base-content/60">No records loaded.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="rounded-lg border border-base-300 bg-base-100">
+            <div class="flex items-center justify-between border-b border-base-300 px-4 py-3">
+              <div>
+                <h2 class="font-semibold">History</h2>
+                <p class="text-sm text-base-content/60">Archived level sets show whether the day executed or not.</p>
+              </div>
+              <span id="historyCount" class="badge badge-outline">0 records</span>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="table table-sm">
+                <thead>
+                  <tr>
+                    <th>Trading Day</th>
+                    <th>Instrument</th>
+                    <th>Status</th>
+                    <th>Execution</th>
+                    <th>Levels</th>
+                  </tr>
+                </thead>
+                <tbody id="historyTable">
+                  <tr><td colspan="5" class="text-base-content/60">No history loaded.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+      </main>
+
+      <aside class="drawer-side z-30">
+        <label for="app-drawer" aria-label="Close navigation" class="drawer-overlay"></label>
+        <nav class="min-h-full w-72 border-r border-base-300 bg-base-100 p-4">
+          <div class="mb-6">
+            <div class="text-xl font-bold">Market Signal</div>
+            <div class="text-sm text-base-content/60">Level-driven paper trading</div>
+          </div>
+          <ul class="menu gap-1">
+            <li><a href="./index.html">Dashboard</a></li>
+            <li><a>Instruments</a></li>
+            <li><a class="active" href="./levels.html">Daily Levels</a></li>
+            <li><a>Paper Trades</a></li>
+            <li><a>Backtest Lab</a></li>
+            <li><a>Audit Log</a></li>
+            <li><a>System Health</a></li>
+          </ul>
+        </nav>
+      </aside>
+    </div>
+
+    <script>
+      const API_BASE =
+        window.MARKET_SIGNAL_API_BASE ||
+        (window.location.port === "3000" ? "http://127.0.0.1:8000" : window.location.origin);
+      const $ = (id) => document.getElementById(id);
+
+      function setStatus(message, isError = false) {
+        $("statusText").textContent = message;
+        $("statusText").className = isError
+          ? "ml-auto text-sm text-error"
+          : "ml-auto text-sm text-base-content/60";
+      }
+
+      async function api(path, options = {}) {
+        const response = await fetch(`${API_BASE}${path}`, {
+          headers: { "Content-Type": "application/json" },
+          ...options,
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || `Request failed: ${path}`);
+        return data;
+      }
+
+      function todayIso() {
+        return new Date().toISOString().slice(0, 10);
+      }
+
+      function formatNumber(value) {
+        return Number(value || 0).toFixed(2);
+      }
+
+      function levelBadgeClass(level) {
+        if (level.level_name === "L0") return "badge-error";
+        if (level.level_name === "L1") return "badge-primary";
+        return "badge-success";
+      }
+
+      function statusBadgeClass(status) {
+        if (status === "ACTIVE") return "badge-success";
+        if (status === "CANCELLED") return "badge-warning";
+        if (status === "EXPIRED") return "badge-neutral";
+        return "badge-outline";
+      }
+
+      function executionBadgeClass(status) {
+        if (status === "EXECUTED") return "badge-success";
+        if (status === "NOT_EXECUTED") return "badge-neutral";
+        return "badge-outline";
+      }
+
+      function renderLevels(levels) {
+        return levels
+          .slice()
+          .sort((left, right) => left.sort_order - right.sort_order)
+          .map((level) => `
+            <span class="badge ${levelBadgeClass(level)} badge-sm">
+              ${level.level_name} ${formatNumber(level.price)}
+            </span>
+          `).join(" ");
+      }
+
+      function instrumentLabel(levelSet) {
+        const instrument = levelSet.instrument || {};
+        return `
+          <div class="font-medium">${instrument.symbol || `#${levelSet.instrument_id}`}</div>
+          <div class="text-xs text-base-content/60">${instrument.exchange || ""}${instrument.instrument_type ? ` · ${instrument.instrument_type}` : ""}</div>
+        `;
+      }
+
+      function renderSelectedRows(levelSets) {
+        $("selectedDayCount").textContent = `${levelSets.length} records`;
+        $("selectedDayTable").innerHTML = levelSets.length
+          ? levelSets.map((set) => `
+              <tr>
+                <td>${instrumentLabel(set)}</td>
+                <td><span class="badge ${statusBadgeClass(set.status)} badge-sm">${set.status}</span></td>
+                <td><span class="badge ${executionBadgeClass(set.execution_status)} badge-sm">${set.execution_status}</span></td>
+                <td>${renderLevels(set.levels)}</td>
+                <td>${set.trading_day}</td>
+              </tr>
+            `).join("")
+          : `<tr><td colspan="5" class="text-base-content/60">No level sets for this day.</td></tr>`;
+      }
+
+      function renderHistoryRows(levelSets) {
+        const history = levelSets.filter((set) => set.status !== "ACTIVE");
+        $("historyCount").textContent = `${history.length} records`;
+        $("historyTable").innerHTML = history.length
+          ? history.map((set) => `
+              <tr>
+                <td>${set.trading_day}</td>
+                <td>${instrumentLabel(set)}</td>
+                <td><span class="badge ${statusBadgeClass(set.status)} badge-sm">${set.status}</span></td>
+                <td><span class="badge ${executionBadgeClass(set.execution_status)} badge-sm">${set.execution_status}</span></td>
+                <td>${renderLevels(set.levels)}</td>
+              </tr>
+            `).join("")
+          : `<tr><td colspan="5" class="text-base-content/60">No archived or cancelled level sets loaded.</td></tr>`;
+      }
+
+      async function loadLevels() {
+        const tradingDay = $("tradingDayInput").value || todayIso();
+        const includeCancelled = $("includeCancelledInput").checked;
+        setStatus("Loading level sets...");
+        const selectedDay = await api(
+          `/level-sets?trading_day=${tradingDay}${includeCancelled ? "&include_cancelled=true" : ""}`
+        );
+        const history = await api("/level-sets?include_cancelled=true");
+        renderSelectedRows(selectedDay);
+        renderHistoryRows(history);
+        setStatus("Level sets loaded");
+      }
+
+      $("tradingDayInput").value = todayIso();
+      $("loadLevelsBtn").addEventListener("click", () => loadLevels().catch((error) => setStatus(error.message, true)));
+      $("includeCancelledInput").addEventListener("change", () => loadLevels().catch((error) => setStatus(error.message, true)));
+      loadLevels().catch((error) => setStatus(error.message, true));
+    </script>
+  </body>
+</html>
