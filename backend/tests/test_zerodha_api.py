@@ -9,13 +9,14 @@ from sqlalchemy.pool import StaticPool
 
 from backend.app.broker import zerodha_config
 from backend.app.db.broker_sessions import save_zerodha_session
-from backend.app.db.session import Base, get_db
+from backend.app.db.session import Base, create_db, get_db
 from backend.app.main import app
 from backend.app.market.tick_cache import tick_cache
 from backend.app.models.tables import Instrument
 
 
 def test_zerodha_status_reports_missing_credentials(monkeypatch) -> None:
+    create_db()
     monkeypatch.setattr(zerodha_config.zerodha_settings, "kite_api_key", "")
     monkeypatch.setattr(zerodha_config.zerodha_settings, "kite_api_secret", "")
     monkeypatch.setattr(zerodha_config.zerodha_settings, "kite_access_token", "")
