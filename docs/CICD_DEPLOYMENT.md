@@ -1,11 +1,11 @@
 # CI/CD Deployment
 
-This project deploys automatically when code is merged to `master`.
+This project deploys automatically when code is merged to `main` or `master`.
 
 ## Flow
 
-1. Pull requests to `development` or `master` run tests.
-2. Pushes to `master` run tests.
+1. Pull requests to `development`, `main`, or `master` run tests.
+2. Pushes to `main` or `master` run tests.
 3. If tests pass, GitHub Actions syncs the repository to the server over SSH.
 4. The server rebuilds and restarts the app with Docker Compose.
 

@@ -3,10 +3,12 @@ name: CI/CD
 on:
   pull_request:
     branches:
+      - main
       - master
       - development
   push:
     branches:
+      - main
       - master
   workflow_dispatch:
 
@@ -40,7 +42,7 @@ jobs:
     name: Deploy to Server
     needs: test
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
 
     env:
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
