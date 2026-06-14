@@ -1,6 +1,8 @@
+from pathlib import Path
 from typing import Generator
 
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from backend.app.core.config import settings
@@ -9,6 +11,17 @@ from backend.app.core.config import settings
 class Base(DeclarativeBase):
     pass
 
+
+def _ensure_sqlite_parent_dir(database_url: str) -> None:
+    if not database_url.startswith("sqlite"):
+        return
+    database_path = make_url(database_url).database
+    if not database_path or database_path == ":memory:":
+        return
+    Path(database_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
+
+
+_ensure_sqlite_parent_dir(settings.database_url)
 
 engine = create_engine(
     settings.database_url,

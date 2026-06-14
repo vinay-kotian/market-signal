@@ -97,6 +97,13 @@ jobs:
               cp deploy/.env.production.example .env
               echo "Created $DEPLOY_PATH/.env from template. Fill in production values before using Zerodha."
             fi
+            if grep -q '^DATABASE_URL=sqlite:////app/data/' .env; then
+              sed -i 's#^DATABASE_URL=sqlite:////app/data/#DATABASE_URL=sqlite:////opt/market-signal/data/#' .env
+              echo "Updated Docker-era DATABASE_URL to the server data path."
+            fi
+            if ! grep -q '^DATABASE_URL=' .env; then
+              printf '\nDATABASE_URL=sqlite:////opt/market-signal/data/market_signal.db\n' >> .env
+            fi
             if ! python3 -c "import ensurepip" >/dev/null 2>&1; then
               VENV_PACKAGE="python\$(python3 -V 2>&1 | awk '{print \$2}' | cut -d. -f1,2)-venv"
               if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
