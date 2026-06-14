@@ -49,6 +49,7 @@ jobs:
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
       DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
       DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/market-signal' }}
+      DEPLOY_DOMAIN: ${{ secrets.DEPLOY_DOMAIN || 'vinaykotian.com' }}
 
     steps:
       - name: Check out code
@@ -128,18 +129,64 @@ jobs:
               --port 8000 \
               > logs/uvicorn.log 2>&1 &
             echo "\$!" > run/uvicorn.pid
+            APP_HEALTHY=0
             set +e
             for attempt in 1 2 3 4 5 6 7 8 9 10; do
               HEALTH_RESPONSE=\$(.venv/bin/python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read().decode())" 2>/dev/null)
               HEALTH_STATUS=\$?
               if [ "\$HEALTH_STATUS" -eq 0 ]; then
                 printf '%s\n' "\$HEALTH_RESPONSE"
-                exit 0
+                APP_HEALTHY=1
+                break
               fi
               sleep 2
             done
             set -e
-            echo "Uvicorn failed health check. Recent app log:"
-            tail -120 logs/uvicorn.log || true
-            exit 1
+            if [ "\$APP_HEALTHY" -ne 1 ]; then
+              echo "Uvicorn failed health check. Recent app log:"
+              tail -120 logs/uvicorn.log || true
+              exit 1
+            fi
+            if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+              if ! command -v nginx >/dev/null 2>&1; then
+                sudo apt-get update
+                DEBIAN_FRONTEND=noninteractive sudo apt-get install -y --no-install-recommends nginx
+              fi
+              {
+                echo 'server {'
+                echo '    listen 80;'
+                echo '    server_name $DEPLOY_DOMAIN www.$DEPLOY_DOMAIN;'
+                echo ''
+                echo '    location / {'
+                echo '        proxy_pass http://127.0.0.1:8000;'
+                echo '        proxy_http_version 1.1;'
+                echo '        proxy_set_header Host \$host;'
+                echo '        proxy_set_header X-Real-IP \$remote_addr;'
+                echo '        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;'
+                echo '        proxy_set_header X-Forwarded-Proto \$scheme;'
+                echo '        proxy_set_header Upgrade \$http_upgrade;'
+                echo '        proxy_set_header Connection "upgrade";'
+                echo '    }'
+                echo '}'
+              } | sudo tee /etc/nginx/sites-available/market-signal >/dev/null
+              sudo ln -sfn /etc/nginx/sites-available/market-signal /etc/nginx/sites-enabled/market-signal
+              sudo rm -f /etc/nginx/sites-enabled/default
+              sudo nginx -t
+              sudo systemctl enable nginx
+              sudo systemctl reload nginx || sudo systemctl restart nginx
+              if [ "$DEPLOY_DOMAIN" != "localhost" ]; then
+                sudo apt-get update
+                DEBIAN_FRONTEND=noninteractive sudo apt-get install -y --no-install-recommends certbot python3-certbot-nginx
+                sudo certbot --nginx \
+                  -d "$DEPLOY_DOMAIN" \
+                  -d "www.$DEPLOY_DOMAIN" \
+                  --non-interactive \
+                  --agree-tos \
+                  --register-unsafely-without-email \
+                  --redirect \
+                  || echo "Certbot could not issue a certificate yet. Confirm DNS points here and ports 80/443 are open, then rerun deploy."
+              fi
+            else
+              echo "Skipping Nginx setup because passwordless sudo is not available."
+            fi
           EOF
