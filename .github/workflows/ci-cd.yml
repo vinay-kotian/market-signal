@@ -128,12 +128,17 @@ jobs:
               --port 8000 \
               > logs/uvicorn.log 2>&1 &
             echo "\$!" > run/uvicorn.pid
+            set +e
             for attempt in 1 2 3 4 5 6 7 8 9 10; do
-              if .venv/bin/python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read().decode())"; then
+              HEALTH_RESPONSE=\$(.venv/bin/python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read().decode())" 2>/dev/null)
+              HEALTH_STATUS=\$?
+              if [ "\$HEALTH_STATUS" -eq 0 ]; then
+                printf '%s\n' "\$HEALTH_RESPONSE"
                 exit 0
               fi
               sleep 2
             done
+            set -e
             echo "Uvicorn failed health check. Recent app log:"
             tail -120 logs/uvicorn.log || true
             exit 1
