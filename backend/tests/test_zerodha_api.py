@@ -50,6 +50,49 @@ def test_zerodha_login_url_uses_kite_client_when_configured(monkeypatch) -> None
     assert response.json()["login_url"] == "https://kite.test/login?api_key=test-key"
 
 
+def test_zerodha_config_can_be_saved_without_exposing_secret() -> None:
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    TestingSessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    Base.metadata.create_all(bind=engine)
+
+    def override_db():
+        db = TestingSessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_db
+    client = TestClient(app)
+
+    save_response = client.put(
+        "/zerodha/config",
+        json={
+            "api_key": "browser-key",
+            "api_secret": "browser-secret",
+            "redirect_url": "https://vinaykotian.com/zerodha/callback",
+        },
+    )
+    config_response = client.get("/zerodha/config")
+    status_response = client.get("/zerodha/status")
+
+    app.dependency_overrides.clear()
+
+    assert save_response.status_code == 200
+    assert save_response.json()["api_secret_configured"] is True
+    config_body = config_response.json()
+    assert config_body["api_key"] == "browser-key"
+    assert config_body["api_secret_configured"] is True
+    assert "browser-secret" not in str(config_body)
+    assert status_response.json()["api_key_configured"] is True
+    assert status_response.json()["api_secret_configured"] is True
+    assert status_response.json()["config_source"] == "database"
+
+
 def test_zerodha_session_is_stored_in_database(monkeypatch) -> None:
     engine = create_engine(
         "sqlite:///:memory:",

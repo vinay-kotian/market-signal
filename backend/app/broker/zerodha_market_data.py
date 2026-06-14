@@ -2,8 +2,8 @@ from datetime import datetime
 from typing import Callable, Dict, List
 
 from backend.app.broker.broker_client import MarketDataClient
-from backend.app.broker.zerodha_config import zerodha_settings
 from backend.app.core.timezone import IST, as_utc
+from backend.app.db.broker_config import effective_zerodha_config
 from backend.app.dto.trading_dto import Tick
 
 
@@ -18,8 +18,9 @@ class ZerodhaMarketDataClient(MarketDataClient):
         self._ticker = None
 
     def subscribe(self, instrument_tokens: List[int]) -> None:
-        access_token = self.access_token or zerodha_settings.kite_access_token
-        if not zerodha_settings.kite_api_key or not access_token:
+        config = effective_zerodha_config()
+        access_token = self.access_token or config.kite_access_token
+        if not config.kite_api_key or not access_token:
             raise ZerodhaNotConfiguredError("Kite API key and access token are required")
 
         try:
@@ -30,7 +31,7 @@ class ZerodhaMarketDataClient(MarketDataClient):
             ) from exc
 
         self._ticker = KiteTicker(
-            zerodha_settings.kite_api_key,
+            config.kite_api_key,
             access_token,
         )
         self._ticker.on_connect = lambda ws, response: ws.subscribe(instrument_tokens)

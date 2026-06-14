@@ -119,6 +119,20 @@ class BrokerSession(Base):
     expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
 
+class BrokerConfig(Base):
+    __tablename__ = "broker_configs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    broker: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    api_key: Mapped[str] = mapped_column(String(500), default="", nullable=False)
+    api_secret: Mapped[str] = mapped_column(String(500), default="", nullable=False)
+    redirect_url: Mapped[str] = mapped_column(String(500), default="", nullable=False)
+    updated_by: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 
