@@ -97,6 +97,16 @@ jobs:
               cp deploy/.env.production.example .env
               echo "Created $DEPLOY_PATH/.env from template. Fill in production values before using Zerodha."
             fi
+            if ! python3 -c "import ensurepip" >/dev/null 2>&1; then
+              VENV_PACKAGE="python$(python3 -c 'import sys; print(f\"{sys.version_info.major}.{sys.version_info.minor}\")')-venv"
+              if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+                sudo apt-get update
+                sudo apt-get install -y "$VENV_PACKAGE" python3-pip
+              else
+                echo "Missing Python venv support. Install it on the server with: sudo apt-get install -y $VENV_PACKAGE python3-pip"
+                exit 1
+              fi
+            fi
             python3 -m venv .venv
             . .venv/bin/activate
             python -m pip install --upgrade pip
