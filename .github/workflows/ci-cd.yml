@@ -97,7 +97,20 @@ jobs:
               cp deploy/.env.production.example .env
               echo "Created $DEPLOY_PATH/.env from template. Fill in production values before using Zerodha."
             fi
-            docker compose -f docker-compose.prod.yml --progress plain up -d --build
-            docker image prune -f
-            docker compose -f docker-compose.prod.yml ps
+            python3 -m venv .venv
+            . .venv/bin/activate
+            python -m pip install --upgrade pip
+            python -m pip install -r requirements.txt
+            mkdir -p data logs run
+            if [ -f run/uvicorn.pid ]; then
+              kill "\$(cat run/uvicorn.pid)" 2>/dev/null || true
+            fi
+            pkill -f "uvicorn backend.app.main:app" 2>/dev/null || true
+            nohup .venv/bin/uvicorn backend.app.main:app \
+              --host 127.0.0.1 \
+              --port 8000 \
+              > logs/uvicorn.log 2>&1 &
+            echo "\$!" > run/uvicorn.pid
+            sleep 3
+            .venv/bin/python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=10).read().decode())"
           EOF

@@ -7,23 +7,18 @@ This project deploys automatically when code is merged to `main` or `master`.
 1. Pull requests to `development`, `main`, or `master` run tests.
 2. Pushes to `main` or `master` run tests.
 3. If tests pass, GitHub Actions syncs the repository to the server over SSH.
-4. The server rebuilds and restarts the app with Docker Compose.
+4. The server installs dependencies into a Python virtualenv and restarts Uvicorn.
 
 The deployment keeps `.env` and SQLite data on the server. They are not overwritten by CI/CD.
+The app runs from `/opt/market-signal/.venv` and listens on `127.0.0.1:8000`.
 
 ## One-Time Server Setup
 
-Install Docker on the server:
+Install Python runtime tools on the server:
 
 ```bash
 sudo apt update
-sudo apt install -y ca-certificates curl git rsync
-sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo tee /etc/apt/keyrings/docker.asc >/dev/null
-sudo chmod a+r /etc/apt/keyrings/docker.asc
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
-sudo apt update
-sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo apt install -y python3 python3-venv python3-pip git rsync nginx certbot python3-certbot-nginx
 ```
 
 Create the deploy directory:
@@ -63,9 +58,32 @@ DEPLOY_PORT=22
 DEPLOY_PATH=/opt/market-signal
 ```
 
+## Process Management
+
+CI/CD restarts the app with:
+
+```bash
+nohup .venv/bin/uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
+```
+
+Runtime files are stored under:
+
+```text
+/opt/market-signal/logs/uvicorn.log
+/opt/market-signal/run/uvicorn.pid
+/opt/market-signal/data/market_signal.db
+```
+
+Check the app on the server:
+
+```bash
+curl http://127.0.0.1:8000/health
+tail -f /opt/market-signal/logs/uvicorn.log
+```
+
 ## Nginx Reverse Proxy
 
-The Docker Compose file exposes FastAPI only on `127.0.0.1:8000`. Put Nginx or Caddy in front of it.
+The app listens only on `127.0.0.1:8000`. Put Nginx or Caddy in front of it.
 
 Example Nginx site:
 
@@ -88,7 +106,6 @@ server {
 Enable HTTPS:
 
 ```bash
-sudo apt install -y nginx certbot python3-certbot-nginx
 sudo certbot --nginx -d your-domain.com
 ```
 
