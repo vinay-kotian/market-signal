@@ -98,7 +98,7 @@ jobs:
               echo "Created $DEPLOY_PATH/.env from template. Fill in production values before using Zerodha."
             fi
             if ! python3 -c "import ensurepip" >/dev/null 2>&1; then
-              VENV_PACKAGE="python\$(python3 -c 'import sys; print(\"{}.{}\".format(sys.version_info.major, sys.version_info.minor))')-venv"
+              VENV_PACKAGE="python\$(python3 -V 2>&1 | awk '{print \$2}' | cut -d. -f1,2)-venv"
               if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
                 sudo apt-get update
                 DEBIAN_FRONTEND=noninteractive sudo apt-get install -y --no-install-recommends "\$VENV_PACKAGE" python3-pip
