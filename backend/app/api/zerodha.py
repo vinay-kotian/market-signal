@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
@@ -6,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.broker.zerodha_market_data import ZerodhaNotConfiguredError
-from backend.app.broker.zerodha_session import ZerodhaSessionClient
+from backend.app.broker.zerodha_session import ZerodhaSessionClient, ZerodhaSessionError
 from backend.app.core.config import settings
 from backend.app.core.timezone import as_utc, display_ist_time, iso_utc
 from backend.app.db.broker_config import (
@@ -108,6 +109,10 @@ def zerodha_callback(request_token: str, db: Session = Depends(get_db)):
         session = ZerodhaSessionClient(config=effective_zerodha_config(db)).generate_session(request_token)
     except ZerodhaNotConfiguredError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+    except ZerodhaSessionError as exc:
+        return RedirectResponse(
+            f"{settings.frontend_url}?zerodha=error&reason={quote(str(exc))}"
+        )
 
     broker_session = save_zerodha_session(
         db=db,
@@ -130,6 +135,8 @@ def zerodha_session(payload: ZerodhaSessionRequest, db: Session = Depends(get_db
         session = ZerodhaSessionClient(config=effective_zerodha_config(db)).generate_session(payload.request_token)
     except ZerodhaNotConfiguredError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+    except ZerodhaSessionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     broker_session = save_zerodha_session(
         db=db,

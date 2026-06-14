@@ -387,6 +387,27 @@
           : "ml-auto text-sm text-base-content/60";
       }
 
+      function handleZerodhaRedirectStatus() {
+        const params = new URLSearchParams(window.location.search);
+        const zerodhaStatus = params.get("zerodha");
+        if (!zerodhaStatus) return;
+        if (zerodhaStatus === "connected") {
+          const syncStatus = params.get("sync");
+          setStatus(
+            syncStatus === "done"
+              ? "Zerodha connected and instruments synced"
+              : "Zerodha connected, but instrument sync failed",
+            syncStatus !== "done"
+          );
+        } else if (zerodhaStatus === "error") {
+          setStatus(
+            `Zerodha connection failed: ${params.get("reason") || "unknown error"}`,
+            true
+          );
+        }
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+
       async function api(path, options = {}) {
         const response = await fetch(`${API_BASE}${path}`, {
           headers: { "Content-Type": "application/json" },
@@ -1416,6 +1437,7 @@
       $("zerodhaStopBtn").addEventListener("click", () => runAction("Stopping stream", "/zerodha/stream/stop"));
 
       renderLevelRows();
+      handleZerodhaRedirectStatus();
       connectPriceSocket();
       refreshDashboard()
         .then(loadLevelSets)

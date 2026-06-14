@@ -216,6 +216,47 @@ def test_zerodha_callback_redirects_to_frontend_after_storing_session(monkeypatc
     assert response.headers["location"] == "http://127.0.0.1:3000?zerodha=connected&sync=done"
 
 
+def test_zerodha_callback_redirects_with_error_when_token_exchange_fails(monkeypatch) -> None:
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    TestingSessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    Base.metadata.create_all(bind=engine)
+
+    class FakeKiteConnect:
+        def __init__(self, api_key: str) -> None:
+            self.api_key = api_key
+
+        def generate_session(self, request_token: str, api_secret: str) -> dict:
+            raise RuntimeError("Invalid checksum")
+
+    def override_db():
+        db = TestingSessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    fake_module = types.SimpleNamespace(KiteConnect=FakeKiteConnect)
+    monkeypatch.setitem(sys.modules, "kiteconnect", fake_module)
+    monkeypatch.setattr(zerodha_config.zerodha_settings, "kite_api_key", "test-key")
+    monkeypatch.setattr(zerodha_config.zerodha_settings, "kite_api_secret", "test-secret")
+    monkeypatch.setattr(zerodha_config.zerodha_settings, "kite_access_token", "")
+    app.dependency_overrides[get_db] = override_db
+
+    client = TestClient(app, follow_redirects=False)
+    response = client.get("/zerodha/callback?request_token=req-token")
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 307
+    assert response.headers["location"] == (
+        "http://127.0.0.1:3000?zerodha=error&reason=Invalid%20checksum"
+    )
+
+
 def test_zerodha_stream_status_endpoint() -> None:
     client = TestClient(app)
 

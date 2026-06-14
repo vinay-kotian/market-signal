@@ -49,13 +49,20 @@ class ZerodhaSessionClient:
     def generate_session(self, request_token: str) -> Dict[str, Any]:
         if not self.config.kite_api_secret:
             raise ZerodhaNotConfiguredError("KITE_API_SECRET is required")
-        return dict(
-            self._client().generate_session(
-                request_token=request_token,
-                api_secret=self.config.kite_api_secret,
+        try:
+            return dict(
+                self._client().generate_session(
+                    request_token=request_token,
+                    api_secret=self.config.kite_api_secret,
+                )
             )
-        )
+        except Exception as exc:
+            raise ZerodhaSessionError(str(exc)) from exc
 
     @staticmethod
     def trading_day() -> date:
         return date.today()
+
+
+class ZerodhaSessionError(RuntimeError):
+    pass
