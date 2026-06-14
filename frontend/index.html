@@ -355,7 +355,14 @@
     <script>
       const API_BASE =
         window.MARKET_SIGNAL_API_BASE ||
-        (window.location.port === "3000" ? "http://127.0.0.1:8000" : window.location.origin);
+        (window.location.port === "3000"
+          ? "http://127.0.0.1:8000"
+          : window.location.hostname === "15.207.26.140"
+            ? "https://vinaykotian.com"
+            : window.location.origin);
+      const PUBLIC_ORIGIN =
+        window.MARKET_SIGNAL_PUBLIC_ORIGIN ||
+        (window.location.port === "3000" ? window.location.origin : API_BASE);
       const WS_BASE = API_BASE.replace(/^http/, "ws");
 
       const $ = (id) => document.getElementById(id);
@@ -1085,7 +1092,8 @@
         const config = await api("/zerodha/config");
         $("zerodhaApiKeyInput").value = config.api_key || "";
         $("zerodhaRedirectUrlInput").value =
-          config.redirect_url || `${window.location.origin}/zerodha/callback`;
+          config.redirect_url?.replace(/^http:\/\/vinaykotian\.com/, "https://vinaykotian.com") ||
+          `${PUBLIC_ORIGIN}/zerodha/callback`;
         $("zerodhaApiSecretInput").value = "";
         $("zerodhaConfigSource").textContent = `Source: ${config.source || "unknown"}`;
         $("zerodhaSecretStatus").textContent = config.api_secret_configured

@@ -154,6 +154,12 @@ jobs:
               fi
               {
                 echo 'server {'
+                echo '    listen 80 default_server;'
+                echo '    server_name _;'
+                echo '    return 301 https://$DEPLOY_DOMAIN\$request_uri;'
+                echo '}'
+                echo ''
+                echo 'server {'
                 echo '    listen 80;'
                 echo '    server_name $DEPLOY_DOMAIN www.$DEPLOY_DOMAIN;'
                 echo ''
