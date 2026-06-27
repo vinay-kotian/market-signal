@@ -50,7 +50,7 @@ def test_zerodha_login_url_uses_kite_client_when_configured(monkeypatch) -> None
     assert response.json()["login_url"] == "https://kite.test/login?api_key=test-key"
 
 
-def test_zerodha_config_can_be_saved_without_exposing_secret() -> None:
+def test_zerodha_config_temporarily_exposes_secret() -> None:
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -86,8 +86,8 @@ def test_zerodha_config_can_be_saved_without_exposing_secret() -> None:
     assert save_response.json()["api_secret_configured"] is True
     config_body = config_response.json()
     assert config_body["api_key"] == "browser-key"
+    assert config_body["api_secret"] == "browser-secret"
     assert config_body["api_secret_configured"] is True
-    assert "browser-secret" not in str(config_body)
     assert status_response.json()["api_key_configured"] is True
     assert status_response.json()["api_secret_configured"] is True
     assert status_response.json()["config_source"] == "database"

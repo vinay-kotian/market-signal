@@ -52,6 +52,7 @@ def zerodha_config(db: Session = Depends(get_db)) -> dict:
         "api_key_configured": bool(effective_config.kite_api_key),
         "api_secret_configured": bool(effective_config.kite_api_secret),
         "api_key": effective_config.kite_api_key,
+        "api_secret": effective_config.kite_api_secret,
         "redirect_url": effective_config.kite_redirect_url,
         "source": effective_config.source,
         "updated_at": stored_config.updated_at.isoformat() if stored_config else None,

@@ -263,7 +263,7 @@
                 </label>
                 <label class="form-control">
                   <span class="label-text">API Secret</span>
-                  <input id="zerodhaApiSecretInput" class="input input-bordered input-sm" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved" />
+                  <input id="zerodhaApiSecretInput" class="input input-bordered input-sm" autocomplete="off" placeholder="KITE_API_SECRET" />
                 </label>
                 <label class="form-control">
                   <span class="label-text">Redirect URL</span>
@@ -1099,7 +1099,7 @@
       async function refreshZerodhaStatus() {
         setStatus("Checking Zerodha status...");
         const status = await api("/zerodha/status");
-        await loadZerodhaConfig();
+        await loadZerodhaConfig(status.db_session_active);
         $("kiteApiKeyStatus").textContent = status.api_key_configured ? "Configured" : "Missing";
         $("kiteApiKeyStatus").className = status.api_key_configured ? "badge badge-success" : "badge badge-error";
         $("kiteSessionStatus").textContent = status.db_session_active ? "Connected" : "Not connected";
@@ -1109,17 +1109,24 @@
         setStatus("Zerodha status refreshed");
       }
 
-      async function loadZerodhaConfig() {
+      async function loadZerodhaConfig(dbSessionActive = false) {
         const config = await api("/zerodha/config");
         $("zerodhaApiKeyInput").value = config.api_key || "";
         $("zerodhaRedirectUrlInput").value =
           config.redirect_url?.replace(/^http:\/\/vinaykotian\.com/, "https://vinaykotian.com") ||
           `${PUBLIC_ORIGIN}/zerodha/callback`;
-        $("zerodhaApiSecretInput").value = "";
+        $("zerodhaApiSecretInput").value = config.api_secret || "";
+        $("zerodhaApiSecretInput").placeholder = dbSessionActive
+          ? "Zerodha Connection"
+          : "KITE_API_SECRET";
         $("zerodhaConfigSource").textContent = `Source: ${config.source || "unknown"}`;
-        $("zerodhaSecretStatus").textContent = config.api_secret_configured
-          ? "Secret: configured"
-          : "Secret: missing";
+        let secretStatusText = "Secret: missing";
+        if (dbSessionActive) {
+          secretStatusText = "Secret: Zerodha Connection";
+        } else if (config.api_secret_configured) {
+          secretStatusText = "Secret: configured";
+        }
+        $("zerodhaSecretStatus").textContent = secretStatusText;
         return config;
       }
 
@@ -1136,10 +1143,15 @@
         }
         try {
           setStatus("Saving Zerodha config...");
-          await api("/zerodha/config", {
+          const result = await api("/zerodha/config", {
             method: "PUT",
             body: JSON.stringify(payload),
           });
+          if (result.api_secret_configured) {
+            setStatus("Zerodha config saved. Opening Zerodha login...");
+            window.location.href = `${API_BASE}/zerodha/login`;
+            return;
+          }
           await refreshZerodhaStatus();
           setStatus("Zerodha config saved");
         } catch (error) {
