@@ -276,6 +276,15 @@
                 <span id="zerodhaSecretStatus">Secret: unknown</span>
               </div>
             </form>
+            <form id="zerodhaManualSessionForm" class="grid gap-3 border-t border-base-300 p-4">
+              <div class="grid gap-3 md:grid-cols-[1fr_auto]">
+                <label class="form-control">
+                  <span class="label-text">Manual Request Token</span>
+                  <input id="zerodhaRequestTokenInput" class="input input-bordered input-sm" autocomplete="off" placeholder="request_token from Zerodha redirect URL" />
+                </label>
+                <button class="btn btn-outline btn-sm self-end" type="submit">Create Manual Session</button>
+              </div>
+            </form>
           </section>
 
           <div class="grid gap-6 xl:grid-cols-2">
@@ -1132,21 +1141,9 @@
 
       async function saveZerodhaConfig(event) {
         event.preventDefault();
-        const payload = {
-          api_key: $("zerodhaApiKeyInput").value.trim(),
-          api_secret: $("zerodhaApiSecretInput").value,
-          redirect_url: $("zerodhaRedirectUrlInput").value.trim(),
-        };
-        if (!payload.api_key || !payload.redirect_url) {
-          setStatus("Zerodha API key and redirect URL are required", true);
-          return;
-        }
         try {
           setStatus("Saving Zerodha config...");
-          const result = await api("/zerodha/config", {
-            method: "PUT",
-            body: JSON.stringify(payload),
-          });
+          const result = await saveZerodhaConfigValues();
           if (result.api_secret_configured) {
             setStatus("Zerodha config saved. Opening Zerodha login...");
             window.location.href = `${API_BASE}/zerodha/login`;
@@ -1154,6 +1151,44 @@
           }
           await refreshZerodhaStatus();
           setStatus("Zerodha config saved");
+        } catch (error) {
+          setStatus(error.message, true);
+        }
+      }
+
+      async function saveZerodhaConfigValues() {
+        const payload = {
+          api_key: $("zerodhaApiKeyInput").value.trim(),
+          api_secret: $("zerodhaApiSecretInput").value,
+          redirect_url: $("zerodhaRedirectUrlInput").value.trim(),
+        };
+        if (!payload.api_key || !payload.redirect_url) {
+          throw new Error("Zerodha API key and redirect URL are required");
+        }
+        return api("/zerodha/config", {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        });
+      }
+
+      async function createManualZerodhaSession(event) {
+        event.preventDefault();
+        const requestToken = $("zerodhaRequestTokenInput").value.trim();
+        if (!requestToken) {
+          setStatus("Zerodha request token is required", true);
+          return;
+        }
+        try {
+          setStatus("Saving Zerodha config...");
+          await saveZerodhaConfigValues();
+          setStatus("Creating Zerodha session...");
+          await api("/zerodha/session", {
+            method: "POST",
+            body: JSON.stringify({ request_token: requestToken }),
+          });
+          $("zerodhaRequestTokenInput").value = "";
+          await refreshZerodhaStatus();
+          setStatus("Zerodha manual session created");
         } catch (error) {
           setStatus(error.message, true);
         }
@@ -1442,6 +1477,7 @@
       $("resetPaperTradesBtn").addEventListener("click", resetPaperTrades);
       $("zerodhaStatusBtn").addEventListener("click", () => refreshZerodhaStatus().catch((error) => setStatus(error.message, true)));
       $("zerodhaConfigForm").addEventListener("submit", saveZerodhaConfig);
+      $("zerodhaManualSessionForm").addEventListener("submit", createManualZerodhaSession);
       $("zerodhaLoginBtn").addEventListener("click", () => {
         window.location.href = `${API_BASE}/zerodha/login`;
       });
