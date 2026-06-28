@@ -23,7 +23,7 @@ from backend.app.db.broker_sessions import (
 from backend.app.db.session import get_db
 from backend.app.dto.trading_dto import Tick
 from backend.app.market.tick_cache import tick_cache
-from backend.app.models.tables import Instrument
+from backend.app.models.tables import AuditLog, Instrument
 from backend.app.schemas.zerodha import ZerodhaConfigRequest, ZerodhaSessionRequest
 from backend.app.services.instrument_sync import sync_zerodha_market_universe
 from backend.app.services.realtime import realtime_hub
@@ -111,6 +111,13 @@ def zerodha_callback(request_token: str, db: Session = Depends(get_db)):
     except ZerodhaNotConfiguredError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     except ZerodhaSessionError as exc:
+        db.add(
+            AuditLog(
+                event_type="ZERODHA_SESSION_FAILED",
+                message=f"Zerodha callback token exchange failed: {str(exc)[:430]}",
+            )
+        )
+        db.commit()
         return RedirectResponse(
             f"{settings.frontend_url}?zerodha=error&reason={quote(str(exc))}"
         )
@@ -126,7 +133,14 @@ def zerodha_callback(request_token: str, db: Session = Depends(get_db)):
     try:
         sync_zerodha_market_universe(db=db)
         return RedirectResponse(f"{settings.frontend_url}?zerodha=connected&sync=done")
-    except Exception:
+    except Exception as exc:
+        db.add(
+            AuditLog(
+                event_type="ZERODHA_INSTRUMENT_SYNC_FAILED",
+                message=f"Zerodha instrument sync failed after callback: {str(exc)[:420]}",
+            )
+        )
+        db.commit()
         return RedirectResponse(f"{settings.frontend_url}?zerodha=connected&sync=failed")
 
 
