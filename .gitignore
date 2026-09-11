@@ -1,0 +1,5 @@
+.venv/
+__pycache__/
+.pytest_cache/
+backend/*.sqlite3
+backend/*.sqlite3-journal
