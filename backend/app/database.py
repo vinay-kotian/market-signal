@@ -21,6 +21,23 @@ def initialize_database(database_path):
     with connect(database_path) as connection:
         connection.execute(
             """
+            CREATE TABLE IF NOT EXISTS signals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                trigger_id INTEGER NOT NULL,
+                level_id INTEGER NOT NULL,
+                instrument TEXT NOT NULL,
+                level REAL NOT NULL,
+                trigger_price REAL NOT NULL,
+                direction TEXT CHECK (direction IN ('FROM_ABOVE', 'FROM_BELOW')),
+                approach_distance REAL,
+                valid INTEGER NOT NULL CHECK (valid IN (0, 1)),
+                rejection_reason TEXT,
+                timestamp TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
             CREATE TABLE IF NOT EXISTS levels (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 instrument TEXT NOT NULL,

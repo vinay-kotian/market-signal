@@ -1,7 +1,7 @@
 # Market Signal
 
-This backend provides a health endpoint, Levels CRUD backed by SQLite, and
-simulated price ticks that detect level touches and crossings.
+Market Signal provides a FastAPI backend and React frontend for SQLite-backed
+levels, simulated price ticks, and approach signal analysis.
 
 ## Run locally
 
@@ -28,6 +28,27 @@ Expected response (HTTP 200):
 ```
 
 Stop the server with Ctrl+C.
+
+In a second terminal, from the repository root (Node.js 22.12+):
+
+```sh
+cd frontend
+npm install
+npm run dev
+```
+
+Open the local URL printed by Vite, normally http://127.0.0.1:5173.
+The frontend sends `/api` requests through Vite to the backend at port 8000.
+For a different backend address, set `API_TARGET` when starting Vite. No CORS
+change is needed for this local proxy. The production frontend build is a static
+bundle; hosting it later requires an equivalent `/api` reverse proxy.
+
+The Dashboard shows the watchlist, configured levels, simulation controls, and
+recent signals. The Levels page supports adding, editing, toggling, and deleting
+levels. Prices reflect successful submissions from this browser session and reset
+on refresh; they are not an authoritative server price feed. Signals refresh after
+each successful tick or level change and when you click Refresh. Ticks published
+by another client require Refresh to see their signals.
 
 ## Levels API
 
@@ -179,6 +200,13 @@ From `backend`, with the virtual environment activated:
 python -m pytest
 ```
 
+Frontend checks, from `frontend`:
+
+```sh
+npm test
+npm run build
+```
+
 Tests use FastAPI's `TestClient` to make in-process requests. Each test uses a
 temporary SQLite database, so tests never modify `backend/levels.sqlite3`.
 Coverage includes health, create, list, read, update, delete, invalid IDs and
@@ -218,5 +246,96 @@ For simulation, follow the normalized event through the provider and monitor;
 learn how per-instrument state enables transition detection, how to avoid duplicate
 results, and how transient event state differs from persistent configuration.
 
-The other agent files, architecture document, strategy rules document, and
-frontend directory are placeholders for future steps.
+## Signal analysis
+
+`GET /signals` reads the latest 100 signal results from SQLite, newest ID first. Each contains
+`id`, `trigger_id`, `level_id`, `instrument`, `level`, `trigger_price`, `direction`,
+`approach_distance`, `valid`, `rejection_reason`, and a UTC `timestamp`.
+
+The processing flow is:
+
+```text
+Simulated tick → LevelMonitor reads recent price history
+              → touch/cross → LEVEL_TRIGGERED → SignalEngine
+              → SignalRepository → SQLite → GET /signals → Dashboard
+```
+
+- `app/events.py` defines the shared trigger event, so the monitor and engine do
+  not depend on each other's event definitions.
+- `app/price_history.py` stores received prices and UTC receive times per instrument.
+  Each deque keeps at most 2,000 samples within the configured time window.
+  Expired samples and inactive instrument histories are pruned on incoming ticks.
+  Repeated prices are recorded, but still do not generate duplicate triggers.
+- `app/signal_engine.py` evaluates each trigger against supplied history; it owns
+  no price history, result buffer, database access, or ID counter.
+- `app/signal_models.py` defines the analysis and persisted result models.
+- `app/signal_repository.py` inserts results and queries recent records from SQLite.
+  SQLite assigns durable IDs. The monitor owns price history and coordinates
+  evaluation and persistence. All results for one transition commit together;
+  if saving fails, no partial signals are retained and the transition can be retried.
+- `app/settings.py` validates startup settings; `app/signals.py` provides the read API.
+
+Direction uses the latest continuous approach approved for this milestone. The
+engine walks backward from before the triggering tick, stopping at a previous
+touch, the opposite side of the level, or the lookback boundary. Prices above the
+level mean `FROM_ABOVE`; prices below mean `FROM_BELOW`. Same-side pullbacks remain
+in the segment. It uses the segment's high/low, not just the final pair of ticks:
+
+```text
+FROM_ABOVE: distance = maximum approach price − level
+FROM_BELOW: distance = level − minimum approach price
+```
+
+The triggering price is excluded from that range, so crossing overshoot does not
+inflate distance. For example, 24900 → 24980 → 25005 at level 25000 yields
+`FROM_BELOW`, distance 100. A later 24990 → 25000 recross uses that new approach,
+not an extreme from before the previous crossing.
+
+With no prior price in the current approach/window, the result is rejected as
+`INSUFFICIENT_PRICE_HISTORY` with null direction and distance. One prior price is
+enough for a short approach; a full 15 minutes of observations is not required.
+An initial exact touch still produces a trigger and a rejected analysis.
+
+Settings are read from environment variables when the backend starts:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `LOOKBACK_MINUTES` | `15` | Positive rolling time window |
+| `MINIMUM_APPROACH_DISTANCE_ENABLED` | `false` | Enable distance rejection |
+| `MINIMUM_APPROACH_DISTANCE_POINTS` | `0` | Nonnegative minimum distance |
+
+For example, start the backend with a 100-point minimum:
+
+```sh
+LOOKBACK_MINUTES=15 MINIMUM_APPROACH_DISTANCE_ENABLED=true MINIMUM_APPROACH_DISTANCE_POINTS=100 python -m uvicorn app.main:app --reload
+```
+
+When enabled, a distance strictly below the minimum is rejected with
+`MINIMUM_DISTANCE_NOT_MET`; equality passes. When disabled, distance is still
+calculated, but it never causes rejection. Missing history is a separate failure.
+Restart the backend to change settings. Tests can pass `SignalSettings` directly
+to `create_app` without modifying the environment.
+
+Signals are stored in the `signals` table in `backend/levels.sqlite3` and survive
+repository reload and application restart. Startup adds the table if missing
+without deleting existing levels or signals. The latest-100 limit applies only
+to reads; older records remain stored. Level edits/deletion do not erase signal
+snapshots. The additional `level_id` and `trigger_id` fields preserve the existing
+API; trigger IDs refer to in-memory events and are only unique within a process
+lifetime, while signal IDs remain unique across restarts.
+
+Previous prices and rolling history remain in memory and reset on restart. The
+sample cap can shorten available history during a dense tick stream; analysis
+uses retained samples. Existing persisted signals remain visible while new ticks
+build fresh history. Use one backend process for this milestone.
+
+Persistence tests verify complete field round-trips (including rejected results
+with unknown direction/distance), repository reload, application restart, durable
+IDs, retained records beyond the read limit, and rollback/retry after a failed
+multi-level save.
+
+The monitor answers "was a level touched or crossed?" while the engine answers
+"what was the approach, and does it meet the configured distance requirement?"
+Keeping these separate lets analysis evolve without changing trigger detection.
+Learn the difference between events and their interpretation, bounded time-based
+state, per-level analysis, and an explicit rejection versus missing information.

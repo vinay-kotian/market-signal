@@ -1,28 +1,27 @@
 import asyncio
 from collections import deque
 from datetime import datetime, timezone
-from typing import Literal, Optional
 
-from pydantic import BaseModel
-
+from app.events import LevelTriggered
 from app.level_repository import LevelRepository
 from app.market_data import PriceTick
+from app.signal_engine import SignalEngine
+from app.price_history import PriceHistory
+from app.signal_repository import SignalRepository
 
 
-class LevelTriggered(BaseModel):
-    id: int
-    event_type: Literal["LEVEL_TRIGGERED"] = "LEVEL_TRIGGERED"
-    level_id: int
-    instrument: str
-    level_price: float
-    previous_price: Optional[float]
-    current_price: float
-    triggered_at: datetime
+def utc_now():
+    return datetime.now(timezone.utc)
 
 
 class LevelMonitor:
-    def __init__(self, repository: LevelRepository):
+    def __init__(self, repository: LevelRepository, signal_engine=None, clock=utc_now,
+                 signal_repository=None):
         self._repository = repository
+        self.signal_engine = signal_engine or SignalEngine()
+        self._signal_repository = signal_repository or SignalRepository(repository.database_path)
+        self._history = PriceHistory(self.signal_engine.settings.lookback_minutes)
+        self._clock = clock
         self._previous_prices: dict[str, float] = {}
         self._events: deque[LevelTriggered] = deque(maxlen=100)
         self._next_event_id = 1
@@ -33,10 +32,15 @@ class LevelMonitor:
         async with self._lock:
             previous = self._previous_prices.get(tick.instrument)
             current = tick.price
+            timestamp = self._clock()
             if previous == current:
+                self._history.record(tick.instrument, current, timestamp)
                 return
 
             levels = self._repository.list_enabled(tick.instrument)
+            history = self._history.recent(tick.instrument, timestamp)
+            triggers = []
+            signals = []
             for level in levels:
                 touched = current == level.price
                 crossed = previous is not None and (
@@ -45,19 +49,23 @@ class LevelMonitor:
                 )
                 # One event even when both the touch and crossing conditions match.
                 if touched or crossed:
-                    self._events.append(
-                        LevelTriggered(
-                            id=self._next_event_id,
-                            level_id=level.id,
-                            instrument=tick.instrument,
-                            level_price=level.price,
-                            previous_price=previous,
-                            current_price=current,
-                            triggered_at=datetime.now(timezone.utc),
-                        )
+                    trigger = LevelTriggered(
+                        id=self._next_event_id + len(triggers),
+                        level_id=level.id,
+                        instrument=tick.instrument,
+                        level_price=level.price,
+                        previous_price=previous,
+                        current_price=current,
+                        triggered_at=timestamp,
                     )
-                    self._next_event_id += 1
+                    signals.append(self.signal_engine.analyze(trigger, history))
+                    triggers.append(trigger)
 
+            # A failed write leaves the transition retryable, without partial results.
+            self._signal_repository.save_many(signals)
+            self._events.extend(triggers)
+            self._next_event_id += len(triggers)
+            self._history.record(tick.instrument, current, timestamp)
             self._previous_prices[tick.instrument] = current
 
     def recent_events(self) -> list[LevelTriggered]:
