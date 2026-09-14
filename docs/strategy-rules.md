@@ -8,7 +8,7 @@ Do not change these rules without explicit approval.
 
 The strategy is a reversal-at-level options buying strategy.
 
-For now, only implement signal generation.
+For now, implement signal generation and simulated option selection.
 
 Do not place trades yet.
 
@@ -60,7 +60,27 @@ Future trading behaviour:
 
 Buy ITM PE.
 
-Do not implement CE/PE selection yet.
+For valid signals, select CE for FROM_ABOVE and PE for FROM_BELOW.
+Contract selection does not place an order.
+
+## Simulated Option Selection
+
+Use a local synthetic option universe for NIFTY and BANKNIFTY. The simulated
+strike steps are 50 and 100 points respectively. Round trigger price to the
+nearest strike step for ATM; exact halfway values round upward.
+
+`itm_depth` defaults to 1 and must be a positive integer. CE strike is ATM minus
+depth times strike step; PE strike is ATM plus depth times strike step.
+
+`expiry_strategy` is NEAREST: select the earliest expiry on or after the signal's
+UTC date. Synthetic expiry dates are valid for their entire date; exchange
+session cutoffs are outside this simulated milestone.
+
+Resolve the exact expiry, strike, and type against the supplied instrument
+universe. If missing, store a failed selection without substituting another
+strike or expiry. Rejected signals produce no selection. Persist successful and
+failed selection results for newly generated valid signals; do not replay old
+signals automatically.
 
 ## Lookback
 
@@ -238,7 +258,6 @@ Each trade should be expandable or clickable to show its full event/action histo
 
 These are not part of the current milestone:
 
-* ITM option selection
 * quantity
 * order placement
 * stop loss

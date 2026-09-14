@@ -1,3 +1,5 @@
+from contextlib import nullcontext
+
 from app.database import connect
 from app.signal_models import SignalAnalysis, SignalResult
 
@@ -9,12 +11,13 @@ class SignalRepository:
     def save(self, signal: SignalAnalysis) -> SignalResult:
         return self.save_many([signal])[0]
 
-    def save_many(self, signals: list[SignalAnalysis]) -> list[SignalResult]:
+    def save_many(self, signals: list[SignalAnalysis], connection=None) -> list[SignalResult]:
         """Commit all results from one price transition together."""
         if not signals:
             return []
         saved = []
-        with connect(self.database_path) as connection:
+        context = connect(self.database_path) if connection is None else nullcontext(connection)
+        with context as connection:
             for signal in signals:
                 cursor = connection.execute(
                     """

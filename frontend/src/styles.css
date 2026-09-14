@@ -39,3 +39,4 @@ html,body{margin:0;background:#f7f9f7}
 #ms-design .ms-actions{display:flex;align-items:center;gap:12px}
 #ms-design .ms-checkbox{width:auto;accent-color:#285f45}
 #ms-design button:disabled{opacity:.55;cursor:wait}
+#ms-design .ms-contract{display:block;max-width:220px;white-space:normal;overflow-wrap:anywhere}

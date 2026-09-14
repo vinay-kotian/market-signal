@@ -1,7 +1,7 @@
 # Market Signal
 
 Market Signal provides a FastAPI backend and React frontend for SQLite-backed
-levels, simulated price ticks, and approach signal analysis.
+levels, simulated price ticks, approach signal analysis, and simulated option selection.
 
 ## Run locally
 
@@ -44,7 +44,7 @@ change is needed for this local proxy. The production frontend build is a static
 bundle; hosting it later requires an equivalent `/api` reverse proxy.
 
 The Dashboard shows the watchlist, configured levels, simulation controls, and
-recent signals. The Levels page supports adding, editing, toggling, and deleting
+recent signals and option selections. The Levels page supports adding, editing, toggling, and deleting
 levels. Prices reflect successful submissions from this browser session and reset
 on refresh; they are not an authoritative server price feed. Signals refresh after
 each successful tick or level change and when you click Refresh. Ticks published
@@ -339,3 +339,85 @@ The monitor answers "was a level touched or crossed?" while the engine answers
 Keeping these separate lets analysis evolve without changing trigger detection.
 Learn the difference between events and their interpretation, bounded time-based
 state, per-level analysis, and an explicit rejection versus missing information.
+
+## Option selection
+
+Each newly generated valid signal is passed to `OptionSelector`. Rejected signals
+produce no selection. Existing signals are not replayed at startup.
+
+- `app/option_instruments.py`: the broker-independent source protocol and seeded
+  simulated contracts. The source provides both strike steps and complete symbols.
+- `app/option_selector.py`: evaluates the desired type, expiry, ATM, and ITM strike,
+  then looks up an exact contract. It does not write to storage or place orders.
+- `app/option_models.py` and `app/option_repository.py`: result models and SQLite
+  persistence. One result is allowed per durable signal ID.
+- `app/option_routes.py`: `GET /option-selections`, returning the most recent 100
+  stored results by descending ID. Older records remain in SQLite.
+
+ATM rounds the signal's **trigger price**, not its configured level, to the
+nearest strike step using decimal half-up rounding. At a simulated NIFTY step
+of 50, 25024.99 rounds to 25000, while 25025 rounds to 25050. Depth 1 means one
+step from ATM; depth 2 means two steps:
+
+```text
+FROM_ABOVE → CE → ITM strike = ATM − depth × step
+FROM_BELOW → PE → ITM strike = ATM + depth × step
+```
+
+At NIFTY trigger price 25005, ATM is 25000: depth 1 selects 24950 CE or 25050 PE;
+depth 2 selects 24900 CE or 25100 PE. These are synthetic examples.
+
+Startup seeds 21 strikes per instrument, both CE and PE, for two synthetic
+expiries 7 and 14 days after the startup UTC date:
+
+| Instrument | Simulated step | Seeded strike range |
+| --- | --- | --- |
+| NIFTY | 50 | 24500–25500 |
+| BANKNIFTY | 100 | 50000–52000 |
+
+Symbols look like `SIM-NIFTY-2026-09-21-24950-CE`. They are local test symbols,
+not exchange contracts. Expiries are synthetic dates, not an exchange calendar.
+The source is fixed for the process lifetime; restarting regenerates the seed
+relative to that startup date, while historical selection records remain intact.
+
+Start the backend with settings as needed:
+
+```sh
+ITM_DEPTH=2 EXPIRY_STRATEGY=NEAREST python -m uvicorn app.main:app --reload
+```
+
+Defaults are depth 1 and NEAREST. Only positive integer depths and the NEAREST
+strategy are supported. Expiries earlier than the signal's UTC date are excluded;
+an expiry on that date remains eligible throughout the date for this simulation.
+The nearest expiry is chosen before looking for the exact strike/type. No fallback
+occurs if that contract is absent.
+
+Successful results have `status: SELECTED` and an `option_symbol`. Failed attempts
+have `status: FAILED`, a null symbol, and one of `UNSUPPORTED_INSTRUMENT`,
+`NO_UNEXPIRED_CONTRACT`, or `MISSING_OPTION_CONTRACT`. A failed selection does not
+change the signal's validity. Results also store the signal ID, instrument,
+trigger price, direction, option type, configured depth, expiry, ATM/ITM strikes,
+and timestamp. Unknown expiry or strikes are null.
+
+Signal and option selection inserts share one SQLite transaction for each price
+transition. A database failure rolls back both, leaving the transition retryable.
+The `option_selections` table is added during startup without deleting existing
+data. A unique signal ID prevents storing two selections for the same signal.
+Saving the same signal again returns the original stored result without raising
+an error or changing it, even after a reload or settings change. This applies to
+both successful and failed selections. Distinct signals may select the same
+contract independently.
+
+On the Dashboard, recent option selections refresh alongside signals after ticks,
+level changes, or manual Refresh. The table shows contract, expiry, ATM/ITM strike,
+and success/failure, with loading, empty, and error states.
+
+Later, an adapter can translate a broker's instrument dump into the same source
+contract: instrument, expiry, strike, type, symbol, and strike-step metadata.
+Real expiry/session policy will need a separate explicit implementation. The
+selector and signal rules need no Zerodha imports. No broker APIs are used here.
+
+Learn to separate a signal (why a level matters), a contract selection (which
+instrument matches the rule), and a future order (an action not implemented yet).
+Also learn deterministic rounding, exact instrument lookup, explicit selection
+failures, and atomic persistence across related results.

@@ -8,6 +8,11 @@ from app.market_data import PriceTick
 from app.signal_engine import SignalEngine
 from app.price_history import PriceHistory
 from app.signal_repository import SignalRepository
+from app.database import connect
+from app.option_instruments import SimulatedOptionInstrumentSource
+from app.option_repository import OptionSelectionRepository
+from app.option_selector import OptionSelector
+from app.settings import OptionSettings
 
 
 def utc_now():
@@ -16,12 +21,18 @@ def utc_now():
 
 class LevelMonitor:
     def __init__(self, repository: LevelRepository, signal_engine=None, clock=utc_now,
-                 signal_repository=None):
+                 signal_repository=None, option_selector=None, option_settings=None,
+                 option_repository=None):
         self._repository = repository
         self.signal_engine = signal_engine or SignalEngine()
         self._signal_repository = signal_repository or SignalRepository(repository.database_path)
         self._history = PriceHistory(self.signal_engine.settings.lookback_minutes)
         self._clock = clock
+        self._option_selector = option_selector or OptionSelector(
+            SimulatedOptionInstrumentSource(utc_now().date())
+        )
+        self._option_settings = option_settings or OptionSettings()
+        self._option_repository = option_repository or OptionSelectionRepository(repository.database_path)
         self._previous_prices: dict[str, float] = {}
         self._events: deque[LevelTriggered] = deque(maxlen=100)
         self._next_event_id = 1
@@ -62,7 +73,17 @@ class LevelMonitor:
                     triggers.append(trigger)
 
             # A failed write leaves the transition retryable, without partial results.
-            self._signal_repository.save_many(signals)
+            if signals:
+                with connect(self._repository.database_path) as connection:
+                    saved = self._signal_repository.save_many(signals, connection=connection)
+                    for signal in saved:
+                        if signal.valid:
+                            selection = self._option_selector.select(
+                                signal.instrument, signal.trigger_price, signal.direction,
+                                self._option_settings.itm_depth, signal.timestamp.date(),
+                            )
+                            self._option_repository.save(signal.id, selection, signal.timestamp,
+                                                         connection=connection)
             self._events.extend(triggers)
             self._next_event_id += len(triggers)
             self._history.record(tick.instrument, current, timestamp)

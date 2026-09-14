@@ -21,6 +21,26 @@ def initialize_database(database_path):
     with connect(database_path) as connection:
         connection.execute(
             """
+            CREATE TABLE IF NOT EXISTS option_selections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                signal_id INTEGER NOT NULL UNIQUE,
+                instrument TEXT NOT NULL,
+                trigger_price REAL NOT NULL,
+                direction TEXT NOT NULL,
+                option_type TEXT NOT NULL CHECK (option_type IN ('CE', 'PE')),
+                itm_depth INTEGER NOT NULL,
+                expiry TEXT,
+                atm_strike INTEGER,
+                itm_strike INTEGER,
+                option_symbol TEXT,
+                status TEXT NOT NULL CHECK (status IN ('SELECTED', 'FAILED')),
+                failure_reason TEXT,
+                timestamp TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
             CREATE TABLE IF NOT EXISTS signals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 trigger_id INTEGER NOT NULL,

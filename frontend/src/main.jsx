@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { request } from './api';
 import { formatPrice, levelStatus } from './format';
 import SignalsTable from './SignalsTable';
+import OptionSelectionsTable from './OptionSelectionsTable';
 import LevelForm from './LevelForm';
 import './styles.css';
 
@@ -11,6 +12,7 @@ function App() {
   const [levels, setLevels] = useState(null);
   const [events, setEvents] = useState(null);
   const [signals, setSignals] = useState(null);
+  const [selections, setSelections] = useState(null);
   const [errors, setErrors] = useState({});
   const [selected, setSelected] = useState('');
   const [search, setSearch] = useState('');
@@ -24,6 +26,7 @@ function App() {
   async function refresh() {
     await Promise.all([
       ['/levels', setLevels, 'levels'], ['/simulation/events', setEvents, 'events'], ['/signals', setSignals, 'signals'],
+      ['/option-selections', setSelections, 'selections'],
     ].map(async ([path, setter, key]) => {
       try {
         setter(await request(path));
@@ -100,6 +103,7 @@ function App() {
             <div className="ms-message" role="status">{message}</div>
           </form>
           <SignalsTable signals={signals} error={errors.signals} onRetry={() => mutate(async () => {})} />
+          <OptionSelectionsTable selections={selections} error={errors.selections} onRetry={() => mutate(async () => {})} />
         </>}
       </main>
     </div>
