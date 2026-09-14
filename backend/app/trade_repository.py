@@ -2,6 +2,8 @@ from contextlib import nullcontext
 
 from app.database import connect
 from app.trade_models import Trade, TradeEntry, TradeEntryResult
+from app.trade_events import TradeEventRepository
+from decimal import Decimal
 
 
 class TradeRepository:
@@ -25,7 +27,40 @@ class TradeRepository:
                 f"INSERT INTO trades ({columns}) VALUES ({placeholders}) "
                 "ON CONFLICT(option_selection_id) DO NOTHING", tuple(values.values()),
             )
-            return self.get_by_selection(entry.option_selection_id, connection)
+            trade = self.get_by_selection(entry.option_selection_id, connection)
+            TradeEventRepository(self.database_path).record(
+                trade.trade_id, 'POSITION_OPENED', trade.entry_price, trade.entry_time, connection,
+            )
+            return trade
+
+    def open_for_symbol(self, symbol, connection):
+        return [Trade(**dict(row)) for row in connection.execute(
+            "SELECT * FROM trades WHERE option_symbol = ? AND status = 'OPEN' AND trade_mode = 'PAPER'",
+            (symbol,),
+        ).fetchall()]
+
+    def has_symbol(self, symbol):
+        with connect(self.database_path) as connection:
+            return connection.execute('SELECT 1 FROM trades WHERE option_symbol = ? LIMIT 1', (symbol,)).fetchone() is not None
+
+    def update_protection(self, trade, highest, stop, activated, connection):
+        connection.execute("""UPDATE trades SET highest_price = ?, current_stop_loss = ?,
+            breakeven_activated = ? WHERE trade_id = ? AND status = 'OPEN' AND trade_mode = 'PAPER'""",
+            (highest, stop, activated, trade.trade_id))
+
+    def close_at_stop(self, trade, price, timestamp, connection):
+        entry, exit_price = Decimal(str(trade.entry_price)), Decimal(str(price))
+        pnl = float((exit_price - entry) * trade.quantity)
+        percentage = float((exit_price - entry) / entry * 100)
+        cursor = connection.execute("""UPDATE trades SET status = 'CLOSED', exit_price = ?,
+            exit_time = ?, exit_reason = 'STOP_LOSS', realised_pnl = ?, realised_pnl_percentage = ?
+            WHERE trade_id = ? AND trade_mode = 'PAPER' AND status = 'OPEN'""",
+            (price, timestamp.isoformat(), pnl, percentage, trade.trade_id))
+        if cursor.rowcount:
+            events = TradeEventRepository(self.database_path)
+            for event_type in ['STOP_LOSS_HIT', 'POSITION_CLOSED']:
+                events.record(trade.trade_id, event_type, price, timestamp, connection)
+        return cursor.rowcount > 0
 
     def record_result(self, result: TradeEntryResult, connection):
         connection.execute(

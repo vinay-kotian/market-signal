@@ -28,6 +28,11 @@ class OptionSettings(BaseModel):
 class TradeSettings(BaseModel):
     trade_mode: Literal["PAPER", "LIVE"] = "PAPER"
     number_of_lots: int = Field(default=1, ge=1)
+    stop_loss_percentage: float = Field(default=10, gt=0, lt=100, allow_inf_nan=False)
+    trailing_stop_percentage: float = Field(default=10, gt=0, lt=100, allow_inf_nan=False)
+    breakeven_protection_enabled: bool = True
+    breakeven_activation_percent: float = Field(default=10, ge=0, allow_inf_nan=False)
+    breakeven_lock_percent: float = Field(default=0, ge=0, allow_inf_nan=False)
 
     @classmethod
     def from_environment(cls):

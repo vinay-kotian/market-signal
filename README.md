@@ -1,7 +1,7 @@
 # Market Signal
 
 Market Signal provides a FastAPI backend and React frontend for SQLite-backed
-levels, simulated price ticks, approach signal analysis, simulated option selection, and paper trade entry.
+levels, simulated price ticks, approach signal analysis, simulated option selection, paper trade entry, and initial/trailing stop monitoring with breakeven protection.
 
 ## Run locally
 
@@ -462,8 +462,8 @@ option and 200.00 for each synthetic BANKNIFTY option. These are arbitrary test
 quotes, not market-derived prices or a pricing model. The source keeps the last
 supplied quote by option symbol; `set_price(symbol, price)` can update it in code.
 Underlying ticks do not update option premiums. Tests can inject an empty/custom
-`SimulatedOptionPrices` through `create_app(option_prices=...)`. There is no option
-quote editing endpoint or live feed in this milestone.
+`SimulatedOptionPrices` through `create_app(option_prices=...)`. Option-symbol ticks sent to `/simulation/tick` update the current simulated quote
+and monitor open positions. There is no live feed.
 
 Missing, zero, negative, or non-finite quotes produce a persisted
 `OPTION_PRICE_UNAVAILABLE` entry result and no trade. Missing contract metadata
@@ -492,7 +492,116 @@ execution failures persist their reason alongside the valid signal/selection.
 Records survive restarts; rolling underlying history and option quotes do not.
 
 Persisting entries now provides stable trade identities and entry snapshots for
-future monitoring. Stop-loss, trailing-stop, exit, P&L, and broker execution logic
-are deliberately deferred. Learn the boundary between deciding what to trade and
+future monitoring. Other exit types and broker execution logic remain deferred. Learn the boundary between deciding what to trade and
 simulating an entry, quantity sizing from contract metadata, durable idempotency,
 and the difference between a failed entry attempt and an open trade.
+
+## Position monitoring and initial stop loss
+
+Set `STOP_LOSS_PERCENTAGE` before starting the backend; the default is 10 and
+valid values are strictly between 0 and 100. Each new PAPER trade stores the
+percentage and `initial_stop_loss = entry_price * (1 - percentage / 100)`.
+A 100.00 entry with 10% stop stores 90.00. Changing configuration never changes
+an existing trade's stop. Calculations use decimal arithmetic before conversion
+for SQLite REAL storage; no exchange tick-size rounding is applied.
+
+`PaperExecutor` creates positions; `PositionMonitor` responds to subsequent option
+prices. Known seeded option symbols and any symbol referenced by a persisted
+trade are routed to the position monitor rather than the underlying level monitor.
+This also works for old trade symbols that are absent from the current seed.
+Other instrument names continue through level detection.
+
+Use the exact `option_symbol` returned by `GET /trades` (the example symbol here
+is illustrative; startup dates determine your seeded symbols):
+
+```sh
+curl -X POST http://127.0.0.1:8000/simulation/tick \
+  -H 'Content-Type: application/json' \
+  -d '{"instrument":"SIM-NIFTY-2026-09-22-25050-PE","price":90}'
+```
+
+Option ticks update the current simulated quote and monitor all matching OPEN
+PAPER trades, without the latest-100 display limit. `price <= initial_stop_loss`
+closes at the received price. A gap to 85 closes at 85, not 90. Zero is accepted;
+negative option prices return 422. Underlying ticks never close option positions.
+
+The close saves `exit_price`, UTC `exit_time`, `exit_reason=STOP_LOSS`,
+`realised_pnl=(exit-entry)*quantity`, `realised_pnl_percentage=(exit-entry)/entry*100`,
+and `status=CLOSED`. An entry at 100, exit at 85, quantity 10 yields −150 and −15%.
+The percentage uses the entry premium, not the underlying level or account balance.
+Results exclude fees and additional slippage assumptions.
+
+`app/trade_events.py` defines `TradeEventRepository`. POSITION_OPENED is saved
+with entry; STOP_LOSS_HIT and POSITION_CLOSED are saved with the close. Inspect
+chronological events at `GET /trades/{trade_id}/events`. The Trades page shows
+open and closed trades, initial stops, exit prices/reasons, and realised P&L.
+Use Refresh after sending ticks from another client.
+
+The position monitor uses a SQLite write transaction and only updates trades
+still marked OPEN. The trade row and both exit events commit or roll back together.
+A unique index on `(trade_id, event_type)` for lifecycle/activation events prevents duplicates; trailing updates have a separate unique `(trade_id, current_stop)` index. Repeated
+stop ticks, later lower ticks, app restarts, or a repeated execution request cannot
+close or reopen the same position again. Entry-result records describe the entry
+attempt; use `/trades` for current position status.
+
+`app/trade_schema.py` migrates the previous OPEN-only trade schema transactionally,
+preserving IDs, entry records, and the option-selection uniqueness constraint.
+It backfills initial stops from the configured percentage at first migration.
+Historical POSITION_OPENED events reconstructed from entries have
+`reconstructed=true`; newly emitted events have false. Restarting later neither
+recalculates stops nor duplicates events. Existing trades, stops, exits, and events
+are SQLite-backed; monitoring does not depend on an in-memory position cache.
+
+## Trailing stop and breakeven protection
+
+New trades snapshot these environment settings at entry:
+
+| Setting | Default |
+| --- | --- |
+| `TRAILING_STOP_PERCENTAGE` | `10` |
+| `BREAKEVEN_PROTECTION_ENABLED` | `true` |
+| `BREAKEVEN_ACTIVATION_PERCENT` | `10` |
+| `BREAKEVEN_LOCK_PERCENT` | `0` |
+
+Trailing percentage must be strictly between 0 and 100; activation/lock percentages
+must be finite and nonnegative. Initial stop settings still apply. Changing settings
+only affects new trades; existing positions retain their saved configuration.
+
+Every open trade stores `highest_price`, `current_stop_loss`, and
+`breakeven_activated`. The high starts at entry and never falls. On each option tick:
+
+```text
+highest = max(saved highest, current price)
+trailing = highest × (1 − trailing percentage / 100)
+activation threshold = entry × (1 + activation percentage / 100)
+protected stop = entry × (1 + lock percentage / 100), once activated
+current stop = max(initial stop, previous current stop, trailing, protected stop if active)
+```
+
+Breakeven activates only when enabled and the high reaches the threshold. Activation
+remains recorded even after prices fall. With entry 100 and defaults, prices 105,
+110, and 120 move the stop to 94.5, 100, and 108. A fall to 115 leaves it at 108;
+a tick at 108 closes. Lock 1% protects 101 instead of 100 after activation.
+The monitor updates protection first, then compares the tick to the effective stop.
+All exits retain `STOP_LOSS` as their reason and use the received price for P&L.
+
+`TRAILING_STOP_UPDATED` records the tick price plus previous/new effective stops,
+only when trailing is strictly stronger than all other candidates. Breakeven-only
+increases do not emit a trailing update; ties are credited to protection.
+`BREAKEVEN_PROTECTION_ACTIVATED` occurs exactly once per trade, including activation
+when trailing already supplies a higher stop. Read these at `/trades/{trade_id}/events`.
+
+The monitor reads persisted state under the existing SQLite write transaction.
+Repeated ticks neither raise the high/stop nor reactivate protection. Stop-change,
+activation, and exit writes commit together, or all roll back on failure. Unique
+partial indexes prevent repeated activation/lifecycle events and repeated trailing
+updates to the same stop. Closed trades are excluded from monitoring.
+
+`app/trailing_schema.py` upgrades older databases transactionally. Existing entries
+start with entry as their high and initial stop as their effective stop; previously
+unrecorded highs are unavailable. Existing trade/event IDs, stops, and exits are
+preserved. Migration does not generate trailing/activation events. Subsequent
+restarts preserve all recorded highs, stops, flags, and per-trade settings.
+
+The Trades page displays the high and effective/initial stops next to entry price,
+and shows breakeven status as Waiting, Active, or Disabled.

@@ -8,7 +8,8 @@ Do not change these rules without explicit approval.
 
 The strategy is a reversal-at-level options buying strategy.
 
-For now, implement signal generation, simulated option selection, and paper trade entry.
+For now, implement signal generation, simulated option selection, paper trade entry,
+and position monitoring with initial/trailing stops and breakeven protection.
 
 Only simulated PAPER entries are implemented. Never place live orders.
 
@@ -195,9 +196,62 @@ once a quote becomes available; there is no automatic retry or startup replay.
 `trade_mode` supports PAPER and LIVE as configuration values, but LIVE execution
 returns `LIVE_MODE_NOT_SUPPORTED` without creating any trade.
 
-The fields and actions below involving stops, exits, and P&L remain deferred until
-their respective milestones. This step persists entry snapshots and the latest
-entry outcome per selection.
+Initial stop-loss exits and realised P&L are now implemented for PAPER positions.
+Other exits and aggregate reports remain deferred.
+
+### Initial Stop Loss
+
+`stop_loss_percentage` defaults to 10 and must be greater than 0 and less than 100.
+At entry, persist the configured percentage and
+`initial_stop_loss = entry_price * (1 - stop_loss_percentage / 100)`.
+Existing stops do not change when configuration changes.
+
+An option-symbol tick closes matching OPEN PAPER positions when price is at or
+below the stored stop. Exit price is the received price, including gaps below the
+stop. Zero is a valid exit price; negative option prices are rejected.
+
+Persist status CLOSED, exit reason STOP_LOSS, exit price/time, and:
+
+* `realised_pnl = (exit_price - entry_price) * quantity`
+* `realised_pnl_percentage = (exit_price - entry_price) / entry_price * 100`
+
+These are gross simulated results without fees or slippage modelling. Persist
+POSITION_OPENED, STOP_LOSS_HIT, and POSITION_CLOSED events. Update trade state and
+events atomically. Closed positions cannot close again or be reopened by retrying
+their original option selection.
+
+Legacy entries without stops are migrated once using the configured percentage
+at startup. Their entry records and IDs remain intact. Their reconstructed
+POSITION_OPENED events are marked as reconstructed.
+
+### Trailing Stop and Breakeven Protection
+
+Defaults: trailing_stop_percentage = 10, breakeven_protection_enabled = true,
+breakeven_activation_percent = 10, breakeven_lock_percent = 0. Persist these
+settings per trade. New settings do not change an existing trade's protection.
+
+Initialize highest_price to entry_price, current_stop_loss to initial_stop_loss,
+and breakeven_activated to false. On each option tick for an OPEN PAPER trade:
+
+* highest_price = max(existing highest_price, current price)
+* trailing_stop = highest_price * (1 - trailing_stop_percentage / 100)
+* If enabled and highest_price >= entry_price * (1 + activation percent / 100),
+  activate protection permanently for this trade.
+* Once active, breakeven_stop = entry_price * (1 + lock percent / 100).
+* current_stop_loss = max(initial stop, previous current stop, trailing stop,
+  breakeven stop if active).
+
+Persist protection changes and then close if current price <= current_stop_loss.
+The stop can never decrease. Exit reason remains STOP_LOSS for all stop exits.
+Record TRAILING_STOP_UPDATED only if trailing strictly exceeds the initial,
+previous, and breakeven stop candidates. A tie with breakeven is credited to
+breakeven protection. Record BREAKEVEN_PROTECTION_ACTIVATED once when the threshold
+is first reached, even if a stronger trailing stop already applies.
+
+Migrate older positions once with highest_price = entry_price and current_stop_loss
+= initial_stop_loss; historical highs cannot be reconstructed from missing ticks.
+Keep existing trade/event IDs and exits. No synthetic activation or trailing events
+are emitted by migration.
 
 When paper trading is introduced, every simulated trade must be stored in the database.
 
@@ -215,7 +269,6 @@ Persist at minimum:
 * entry time
 * highest price reached
 * initial stop loss
-* trailing stop loss
 * exit price
 * exit time
 * exit reason
@@ -282,7 +335,6 @@ These are not part of the current milestone:
 
 * quantity
 * order placement
-* stop loss
 * trailing stop loss
 * paper trading reports
 * live trading

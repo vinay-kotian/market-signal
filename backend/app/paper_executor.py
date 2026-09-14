@@ -7,6 +7,7 @@ from app.option_prices import OptionPriceSource
 from app.settings import TradeSettings
 from app.trade_models import TradeEntry, TradeEntryResult
 from app.trade_repository import TradeRepository
+from app.trade_schema import stop_price
 
 
 class PaperExecutor:
@@ -27,7 +28,7 @@ class PaperExecutor:
             existing = self.repository.get_by_selection(selection.id, connection)
             if existing:
                 return TradeEntryResult(option_selection_id=selection.id, trade_id=existing.trade_id,
-                                        status="OPEN", failure_reason=None, timestamp=existing.entry_time)
+                                        status=existing.status, failure_reason=None, timestamp=existing.entry_time)
 
             def fail(reason):
                 return self.repository.record_result(TradeEntryResult(
@@ -56,6 +57,14 @@ class PaperExecutor:
                 lot_size=contract.lot_size, number_of_lots=self.settings.number_of_lots,
                 quantity=contract.lot_size * self.settings.number_of_lots,
                 entry_price=price, entry_time=timestamp,
+                stop_loss_percentage=self.settings.stop_loss_percentage,
+                initial_stop_loss=stop_price(price, self.settings.stop_loss_percentage),
+                highest_price=price,
+                current_stop_loss=stop_price(price, self.settings.stop_loss_percentage),
+                trailing_stop_percentage=self.settings.trailing_stop_percentage,
+                breakeven_protection_enabled=self.settings.breakeven_protection_enabled,
+                breakeven_activation_percent=self.settings.breakeven_activation_percent,
+                breakeven_lock_percent=self.settings.breakeven_lock_percent,
             ), connection)
             return self.repository.record_result(TradeEntryResult(
                 option_selection_id=selection.id, trade_id=trade.trade_id, status="OPEN",

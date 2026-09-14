@@ -23,13 +23,18 @@ from app.option_prices import SimulatedOptionPrices
 from app.paper_executor import PaperExecutor
 from app.trade_repository import TradeRepository
 from app.trade_routes import router as trade_router
+from app.position_monitor import PositionMonitor
+from app.simulation_flow import SimulationFlow
+from app.trade_events import TradeEventRepository
 
 
 def create_app(database_path=DEFAULT_DATABASE_PATH, signal_settings=None,
                option_settings=None, option_source=None, trade_settings=None, option_prices=None):
     @asynccontextmanager
     async def lifespan(app):
-        initialize_database(app.state.database_path)
+        execution_settings = trade_settings or TradeSettings.from_environment()
+        initialize_database(app.state.database_path, execution_settings.stop_loss_percentage,
+                            execution_settings.model_dump())
         engine = SignalEngine(signal_settings or SignalSettings.from_environment())
         signal_repository = SignalRepository(app.state.database_path)
         option_repository = OptionSelectionRepository(app.state.database_path)
@@ -40,7 +45,7 @@ def create_app(database_path=DEFAULT_DATABASE_PATH, signal_settings=None,
         prices = option_prices if option_prices is not None else SimulatedOptionPrices.seeded(instruments)
         trade_repository = TradeRepository(app.state.database_path)
         executor = PaperExecutor(trade_repository, instruments, prices,
-                                 trade_settings or TradeSettings.from_environment())
+                                 execution_settings)
         monitor = LevelMonitor(LevelRepository(app.state.database_path), engine,
                                signal_repository=signal_repository, option_selector=selector,
                                option_settings=option_settings or OptionSettings.from_environment(),
@@ -52,7 +57,11 @@ def create_app(database_path=DEFAULT_DATABASE_PATH, signal_settings=None,
         app.state.signal_repository = signal_repository
         app.state.signal_engine = engine
         app.state.level_monitor = monitor
-        app.state.market_data_provider = SimulatedMarketDataProvider(monitor.on_tick)
+        positions = PositionMonitor(trade_repository)
+        flow = SimulationFlow(monitor, positions, prices, instruments)
+        app.state.position_monitor = positions
+        app.state.trade_events = TradeEventRepository(app.state.database_path)
+        app.state.market_data_provider = SimulatedMarketDataProvider(flow.on_tick)
         yield
 
     app = FastAPI(lifespan=lifespan)

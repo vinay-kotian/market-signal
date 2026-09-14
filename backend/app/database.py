@@ -1,4 +1,7 @@
 import sqlite3
+
+from app.trade_schema import initialize_trades
+from app.trailing_schema import initialize_trailing
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -17,24 +20,11 @@ def connect(database_path):
         connection.close()
 
 
-def initialize_database(database_path):
+def initialize_database(database_path, stop_loss_percentage=10, trade_settings=None):
     with connect(database_path) as connection:
-        connection.execute(
-            """CREATE TABLE IF NOT EXISTS trades (
-                trade_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                signal_id INTEGER NOT NULL,
-                option_selection_id INTEGER NOT NULL UNIQUE,
-                instrument TEXT NOT NULL, trigger_level REAL NOT NULL,
-                direction TEXT NOT NULL, option_symbol TEXT NOT NULL,
-                option_type TEXT NOT NULL, strike INTEGER NOT NULL, expiry TEXT NOT NULL,
-                lot_size INTEGER NOT NULL CHECK(lot_size > 0),
-                number_of_lots INTEGER NOT NULL CHECK(number_of_lots > 0),
-                quantity INTEGER NOT NULL CHECK(quantity > 0),
-                entry_price REAL NOT NULL CHECK(entry_price > 0), entry_time TEXT NOT NULL,
-                trade_mode TEXT NOT NULL CHECK(trade_mode = 'PAPER'),
-                status TEXT NOT NULL CHECK(status = 'OPEN')
-            )"""
-        )
+        connection.execute('BEGIN IMMEDIATE')
+        initialize_trades(connection, stop_loss_percentage)
+        initialize_trailing(connection, trade_settings or {})
         connection.execute(
             """CREATE TABLE IF NOT EXISTS trade_entry_results (
                 option_selection_id INTEGER PRIMARY KEY,
