@@ -1,7 +1,7 @@
 # Market Signal
 
 Market Signal provides a FastAPI backend and React frontend for SQLite-backed
-levels, simulated price ticks, approach signal analysis, and simulated option selection.
+levels, simulated price ticks, approach signal analysis, simulated option selection, and paper trade entry.
 
 ## Run locally
 
@@ -44,7 +44,8 @@ change is needed for this local proxy. The production frontend build is a static
 bundle; hosting it later requires an equivalent `/api` reverse proxy.
 
 The Dashboard shows the watchlist, configured levels, simulation controls, and
-recent signals and option selections. The Levels page supports adding, editing, toggling, and deleting
+recent signals and option selections. The Trades page shows persisted paper entries
+and entry failures. The Levels page supports adding, editing, toggling, and deleting
 levels. Prices reflect successful submissions from this browser session and reset
 on refresh; they are not an authoritative server price feed. Signals refresh after
 each successful tick or level change and when you click Refresh. Ticks published
@@ -421,3 +422,77 @@ Learn to separate a signal (why a level matters), a contract selection (which
 instrument matches the rule), and a future order (an action not implemented yet).
 Also learn deterministic rounding, exact instrument lookup, explicit selection
 failures, and atomic persistence across related results.
+
+## Paper trade entry
+
+New valid signals now flow through selection into paper execution:
+
+```text
+Level trigger → SignalEngine → OptionSelector → persisted selection
+             → PaperExecutor → simulated option quote → TradeRepository → SQLite
+```
+
+`app/paper_executor.py` handles execution only. It checks that selection succeeded,
+resolves the selected contract's lot size, reads the current quote from
+`app/option_prices.py`, and persists an OPEN PAPER trade. It does not calculate
+signal direction or select another contract. The engine and selector remain
+independent of execution and broker code.
+
+`app/trade_models.py` defines entry, stored trade, and entry-result models.
+`app/trade_repository.py` owns SQLite access. Startup creates `trades` and
+`trade_entry_results` in the existing database without deleting previous data.
+
+Configure the backend before starting it:
+
+```sh
+TRADE_MODE=PAPER NUMBER_OF_LOTS=2 python -m uvicorn app.main:app --reload
+```
+
+Defaults: PAPER mode, one lot. `NUMBER_OF_LOTS` must be a positive integer.
+LIVE is a recognized mode but always returns `LIVE_MODE_NOT_SUPPORTED` and cannot
+create a trade; the SQLite schema also allows only PAPER trades.
+
+Quantity is `contract.lot_size × number_of_lots`. The synthetic NIFTY contracts
+have lot size 10 and BANKNIFTY contracts have lot size 20. These are explicit test
+values, not current exchange lot sizes. Both the lot size and lot count are saved
+with quantity so the calculation remains inspectable after configuration changes.
+
+The default quote source starts with a 100.00 premium for each synthetic NIFTY
+option and 200.00 for each synthetic BANKNIFTY option. These are arbitrary test
+quotes, not market-derived prices or a pricing model. The source keeps the last
+supplied quote by option symbol; `set_price(symbol, price)` can update it in code.
+Underlying ticks do not update option premiums. Tests can inject an empty/custom
+`SimulatedOptionPrices` through `create_app(option_prices=...)`. There is no option
+quote editing endpoint or live feed in this milestone.
+
+Missing, zero, negative, or non-finite quotes produce a persisted
+`OPTION_PRICE_UNAVAILABLE` entry result and no trade. Missing contract metadata
+or invalid lot sizes produce explicit failures too. Failed selections and rejected
+signals are skipped by execution.
+
+`GET /trades` returns the latest 100 stored trades, newest trade ID first. Each has
+`trade_id`, `signal_id`, `option_selection_id`, `instrument`, `trigger_level`,
+`direction`, `option_symbol`, `option_type`, `strike`, `expiry`, `lot_size`,
+`number_of_lots`, `quantity`, `entry_price`, `entry_time`, `trade_mode`, and `status`.
+Older trades remain stored. `GET /trade-entry-results` exposes the latest 100 entry
+outcomes, including failure reasons. The React Trades page shows entries across
+all instruments and any failures in these recent outcomes.
+
+`option_selection_id` is a UNIQUE key in the trades table. Reprocessing an already
+entered selection returns the original trade before looking up quotes or current
+lot settings. A failed attempt may be retried through the execution service; if it
+later succeeds, its latest entry outcome changes to OPEN. This is a latest-outcome
+record, not a full retry history. There is no background retry or automatic replay
+of selections on startup. Old successful selections do not create trades merely
+because the application restarts.
+
+During tick processing, signal, selection, trade, and entry outcome writes share
+one transaction. Database failures roll back the transition, while expected
+execution failures persist their reason alongside the valid signal/selection.
+Records survive restarts; rolling underlying history and option quotes do not.
+
+Persisting entries now provides stable trade identities and entry snapshots for
+future monitoring. Stop-loss, trailing-stop, exit, P&L, and broker execution logic
+are deliberately deferred. Learn the boundary between deciding what to trade and
+simulating an entry, quantity sizing from contract metadata, durable idempotency,
+and the difference between a failed entry attempt and an open trade.

@@ -23,3 +23,13 @@ class OptionSettings(BaseModel):
     def from_environment(cls):
         return cls(**{name: os.environ[name.upper()] for name in cls.model_fields
                       if name.upper() in os.environ})
+
+
+class TradeSettings(BaseModel):
+    trade_mode: Literal["PAPER", "LIVE"] = "PAPER"
+    number_of_lots: int = Field(default=1, ge=1)
+
+    @classmethod
+    def from_environment(cls):
+        return cls(**{name: os.environ[name.upper()] for name in cls.model_fields
+                      if name.upper() in os.environ})

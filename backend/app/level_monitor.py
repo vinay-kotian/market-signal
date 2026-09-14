@@ -22,7 +22,7 @@ def utc_now():
 class LevelMonitor:
     def __init__(self, repository: LevelRepository, signal_engine=None, clock=utc_now,
                  signal_repository=None, option_selector=None, option_settings=None,
-                 option_repository=None):
+                 option_repository=None, paper_executor=None):
         self._repository = repository
         self.signal_engine = signal_engine or SignalEngine()
         self._signal_repository = signal_repository or SignalRepository(repository.database_path)
@@ -33,6 +33,7 @@ class LevelMonitor:
         )
         self._option_settings = option_settings or OptionSettings()
         self._option_repository = option_repository or OptionSelectionRepository(repository.database_path)
+        self._paper_executor = paper_executor
         self._previous_prices: dict[str, float] = {}
         self._events: deque[LevelTriggered] = deque(maxlen=100)
         self._next_event_id = 1
@@ -82,8 +83,12 @@ class LevelMonitor:
                                 signal.instrument, signal.trigger_price, signal.direction,
                                 self._option_settings.itm_depth, signal.timestamp.date(),
                             )
-                            self._option_repository.save(signal.id, selection, signal.timestamp,
-                                                         connection=connection)
+                            stored_selection = self._option_repository.save(
+                                signal.id, selection, signal.timestamp, connection=connection,
+                            )
+                            if self._paper_executor is not None:
+                                self._paper_executor.execute(signal, stored_selection, timestamp,
+                                                             connection=connection)
             self._events.extend(triggers)
             self._next_event_id += len(triggers)
             self._history.record(tick.instrument, current, timestamp)

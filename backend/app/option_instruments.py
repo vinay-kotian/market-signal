@@ -10,6 +10,7 @@ class OptionContract:
     strike: int
     option_type: str
     symbol: str
+    lot_size: Optional[int] = None
 
 
 class OptionInstrumentSource(Protocol):
@@ -33,6 +34,7 @@ class SimulatedOptionInstrumentSource:
                         self._contracts.append(OptionContract(
                             instrument, expiry, strike, option_type,
                             f"SIM-{instrument}-{expiry.isoformat()}-{strike}-{option_type}",
+                            10 if instrument == "NIFTY" else 20,
                         ))
 
     def strike_step(self, instrument: str) -> Optional[int]:

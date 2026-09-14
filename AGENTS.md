@@ -23,6 +23,6 @@ Milestone 1:
 FastAPI + React + SQLite + Levels + Simulated Market Data.
 
 No Zerodha integration yet.
-No option buying yet.
+Paper option entries only; no live orders.
 No stop loss yet.
 No backtesting yet.

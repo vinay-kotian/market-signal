@@ -3,7 +3,7 @@ import { formatPrice } from './format';
 
 export default function OptionSelectionsTable({ selections, error, onRetry }) {
   return <section className="ms-signals" aria-label="Recent option selections">
-    <div className="ms-sectionhead"><span>Recent option selections</span><span className="ms-sub">Simulated contracts · no orders</span></div>
+    <div className="ms-sectionhead"><span>Recent option selections</span><span className="ms-sub">Simulated contracts · paper only</span></div>
     {error && <div className="ms-error" role="alert">Selections unavailable. {error} <button className="ms-link" onClick={onRetry}>Retry</button></div>}
     {selections === null && !error ? <p className="ms-sub">Loading option selections…</p> :
       <div className="ms-tablewrap"><table>

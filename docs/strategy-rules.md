@@ -8,9 +8,9 @@ Do not change these rules without explicit approval.
 
 The strategy is a reversal-at-level options buying strategy.
 
-For now, implement signal generation and simulated option selection.
+For now, implement signal generation, simulated option selection, and paper trade entry.
 
-Do not place trades yet.
+Only simulated PAPER entries are implemented. Never place live orders.
 
 ## Level Trigger
 
@@ -176,6 +176,29 @@ Each can generate its own signal.
 
 ## Paper Trading Records
 
+### Current Entry Milestone
+
+Successful option selections may create an OPEN PAPER trade. Execution is separate
+from signal evaluation and contract selection. Quantity is the selected contract's
+lot size multiplied by configured `number_of_lots` (default 1).
+
+For this simulated universe only, NIFTY lot size is 10 and BANKNIFTY lot size is
+20. These are test fixtures, not exchange specifications. Default synthetic option
+quotes are 100 and 200 respectively; underlying ticks never serve as option quotes.
+
+When no positive finite option quote is available, persist an entry failure
+`OPTION_PRICE_UNAVAILABLE` and do not create a trade. A selection may create only
+one trade, enforced by its unique selection ID in SQLite. Reprocessing returns
+the original trade. Failed entries may be retried through the execution service
+once a quote becomes available; there is no automatic retry or startup replay.
+
+`trade_mode` supports PAPER and LIVE as configuration values, but LIVE execution
+returns `LIVE_MODE_NOT_SUPPORTED` without creating any trade.
+
+The fields and actions below involving stops, exits, and P&L remain deferred until
+their respective milestones. This step persists entry snapshots and the latest
+entry outcome per selection.
+
 When paper trading is introduced, every simulated trade must be stored in the database.
 
 Persist at minimum:
@@ -188,7 +211,6 @@ Persist at minimum:
 * option type
 * strike
 * expiry
-* quantity
 * entry price
 * entry time
 * highest price reached
@@ -262,7 +284,6 @@ These are not part of the current milestone:
 * order placement
 * stop loss
 * trailing stop loss
-* paper trading
 * paper trading reports
 * live trading
 * mandatory market-close exit
