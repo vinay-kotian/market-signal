@@ -8,10 +8,13 @@ import LevelForm from './LevelForm';
 import TradesPage from './TradesPage';
 import PaperReportPage from './PaperReportPage';
 import BacktestPage from './BacktestPage';
+import ConnectionPage from './ConnectionPage';
+import { initialPage } from './connectionState';
 import './styles.css';
 
 function App() {
-  const [page, setPage] = useState('dashboard');
+  const [page, setPage] = useState(() => initialPage(window.location.pathname));
+  const [connection, setConnection] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [levels, setLevels] = useState(null);
   const [events, setEvents] = useState(null);
@@ -32,7 +35,7 @@ function App() {
   async function refresh() {
     setRefreshKey(value => value + 1);
     await Promise.all([
-      ['/levels', setLevels, 'levels'], ['/simulation/events', setEvents, 'events'], ['/signals', setSignals, 'signals'],
+      ['/connection', setConnection, 'connection'], ['/levels', setLevels, 'levels'], ['/simulation/events', setEvents, 'events'], ['/signals', setSignals, 'signals'],
       ['/option-selections', setSelections, 'selections'],
       ['/trades', setTrades, 'trades'], ['/trade-entry-results', setEntryResults, 'entryResults'],
     ].map(async ([path, setter, key]) => {
@@ -46,6 +49,11 @@ function App() {
     }));
   }
   useEffect(() => { refresh(); }, []);
+  useEffect(() => {
+    if (connection?.market_data_mode !== 'ZERODHA') return;
+    const timer = setInterval(refresh, 5000);
+    return () => clearInterval(timer);
+  }, [connection?.market_data_mode]);
   const instruments = [...new Set((levels ?? []).map(level => level.instrument))];
   useEffect(() => {
     if (!instruments.includes(selected)) setSelected(instruments[0] ?? '');
@@ -57,32 +65,40 @@ function App() {
     catch (error) { setErrors(previous => ({ ...previous, action: error.message })); }
     finally { setBusy(false); }
   }
-  function navigate(next) { setPage(next); setEditor(null); setDeleting(null); }
+  useEffect(() => {
+    const onPopState = () => setPage(initialPage(window.location.pathname));
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+  function navigate(next) { window.history.pushState({}, '', '/' + next); setPage(next); setEditor(null); setDeleting(null); }
   const rows = (levels ?? []).filter(level => level.instrument === selected);
-  const current = prices[selected]?.price;
+  const live = connection?.market_data_mode === 'ZERODHA';
+  const shownPrices = live ? Object.fromEntries(Object.entries(connection.prices ?? {}).map(([symbol, price]) => [symbol, { price }])) : prices;
+  const current = shownPrices[selected]?.price;
 
   return <div id="ms-design">
-    <header><span className="ms-logo" aria-hidden="true">π</span><span className="ms-brand">Market Signal</span><span className="ms-env">PAPER · SIMULATED DATA</span></header>
+    <header><span className="ms-logo" aria-hidden="true">π</span><span className="ms-brand">Market Signal</span><span className="ms-env">PAPER · {connection?.market_data_mode ?? 'LOADING'} DATA</span></header>
     <div className="ms-shell">
       <aside aria-label="Instrument watchlist">
         <div className="ms-sidehead"><span className="ms-label">Watchlist</span><span className="ms-sub">{instruments.length} instruments</span></div>
         <div className="ms-search"><input type="search" aria-label="Search instruments" placeholder="Search instruments" value={search} onChange={event => setSearch(event.target.value)} /></div>
         <div className="ms-watchlist">{instruments.filter(symbol => symbol.toLowerCase().includes(search.toLowerCase())).map(symbol => <button className="ms-watch" aria-pressed={symbol === selected} key={symbol} disabled={busy} onClick={() => { setSelected(symbol); setEditor(null); }}>
           <span>{symbol}<small>{levels.filter(level => level.instrument === symbol).length} levels</small></span>
-          <span className="ms-quote">{formatPrice(prices[symbol]?.price)}<small className={prices[symbol]?.change >= 0 ? 'ms-up' : 'ms-down'}>{prices[symbol]?.change == null ? 'No previous tick' : `${prices[symbol].change >= 0 ? '↗ +' : '↘ '}${formatPrice(prices[symbol].change)}`}</small></span>
+          <span className="ms-quote">{formatPrice(shownPrices[symbol]?.price)}<small className={shownPrices[symbol]?.change >= 0 ? 'ms-up' : 'ms-down'}>{shownPrices[symbol]?.change == null ? 'No previous tick' : `${shownPrices[symbol].change >= 0 ? '↗ +' : '↘ '}${formatPrice(shownPrices[symbol].change)}`}</small></span>
         </button>)}</div>
-        <div className="ms-sidefoot">Prices sent from this browser session<br />Movement since previous submitted tick</div>
+        <div className="ms-sidefoot">{live ? 'Live Zerodha prices' : 'Prices sent from this browser session'}<br />{live ? 'Updated every 5 seconds' : 'Movement since previous submitted tick'}</div>
       </aside>
       <main>
-        <nav aria-label="Pages">{['dashboard', 'levels', 'trades', 'report', 'backtest'].map(name => <button className="ms-tab" key={name} aria-pressed={page === name} disabled={busy} onClick={() => navigate(name)}>{name[0].toUpperCase() + name.slice(1)}</button>)}</nav>
+        <nav aria-label="Pages">{['dashboard', 'levels', 'trades', 'report', 'backtest', 'connection'].map(name => <button className="ms-tab" key={name} aria-pressed={page === name} disabled={busy} onClick={() => navigate(name)}>{name[0].toUpperCase() + name.slice(1)}</button>)}</nav>
         <div className="ms-heading"><h2>{page[0].toUpperCase() + page.slice(1)}</h2><div className="ms-actions"><button className="ms-link" disabled={busy} onClick={() => mutate(async () => {})}>Refresh</button>{(page === 'dashboard' || page === 'levels') && <button className="ms-button" disabled={busy} onClick={() => page === 'dashboard' ? navigate('levels') : setEditor({})}>{page === 'dashboard' ? 'Manage levels ↗' : '+ Add level'}</button>}</div></div>
+        {page === 'connection' && <ConnectionPage connection={connection} error={errors.connection} onRefresh={refresh} />}
         {page === 'backtest' && <BacktestPage />}
         {page === 'report' && <PaperReportPage refreshKey={refreshKey} />}
         {page === 'trades' && <TradesPage trades={trades} results={entryResults} error={errors.trades} resultsError={errors.entryResults} onRetry={() => mutate(async () => {})} />}
         {(page === 'dashboard' || page === 'levels') && <>
         {(errors.levels || errors.events || errors.action) && <div className="ms-error" role="alert">{errors.action || errors.levels || `Trigger status unavailable: ${errors.events}`} <button className="ms-link" disabled={busy} onClick={() => mutate(async () => {})}>Retry refresh</button></div>}
-        {page === 'dashboard' && <div className="ms-pricebar"><div className="ms-instrument">{selected || 'No instrument selected'}</div><div><div className="ms-current">{formatPrice(current)}</div><div className="ms-sub">Last price submitted from this session</div></div></div>}
-        {editor && <LevelForm key={editor.id ?? 'new'} level={editor.id ? editor : null} instrument={selected} busy={busy} onCancel={() => setEditor(null)} onSave={data => mutate(async () => {
+        {page === 'dashboard' && <div className="ms-pricebar"><div className="ms-instrument">{selected || 'No instrument selected'}</div><div><div className="ms-current">{formatPrice(current)}</div><div className="ms-sub">{live ? 'Latest received Zerodha price' : 'Last price submitted from this session'}</div></div></div>}
+        {editor && <LevelForm key={editor.id ?? 'new'} level={editor.id ? editor : null} instrument={selected} instrumentOptions={connection?.available_instruments ?? []} live={live} busy={busy} onCancel={() => setEditor(null)} onSave={data => mutate(async () => {
           await request(editor.id ? `/levels/${editor.id}` : '/levels', { method: editor.id ? 'PUT' : 'POST', body: JSON.stringify(data) });
           setSelected(data.instrument); setEditor(null);
         })} />}
@@ -101,7 +117,7 @@ function App() {
           </tbody>
         </table></div>}
         {page === 'dashboard' && <>
-          <form className="ms-simulation" onSubmit={event => {
+          {!live && connection?.market_data_mode === 'SIMULATED' && <form className="ms-simulation" onSubmit={event => {
             event.preventDefault(); const symbol = selected, price = Number(tickPrice);
             if (!symbol || !Number.isFinite(price)) return;
             mutate(async () => {
@@ -113,7 +129,7 @@ function App() {
             <div className="ms-sectionhead">Send a simulated price</div>
             <div className="ms-fields"><label>Instrument<select value={selected} disabled={busy || !instruments.length} onChange={event => setSelected(event.target.value)}>{!instruments.length && <option value="">Add a level first</option>}{instruments.map(symbol => <option key={symbol}>{symbol}</option>)}</select></label><label>Simulated price<input required type="number" step="any" value={tickPrice} onChange={event => setTickPrice(event.target.value)} /></label><button className="ms-button ms-primary" disabled={busy || !selected}>{busy ? 'Processing…' : 'Send Tick →'}</button></div>
             <div className="ms-message" role="status">{message}</div>
-          </form>
+          </form>}
           <SignalsTable signals={signals} error={errors.signals} onRetry={() => mutate(async () => {})} />
           <OptionSelectionsTable selections={selections} error={errors.selections} onRetry={() => mutate(async () => {})} />
         </>}

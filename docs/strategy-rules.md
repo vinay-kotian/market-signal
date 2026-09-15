@@ -363,3 +363,30 @@ Use the same reporting definitions as paper trading.
 If the supplied historical dataset ends before a trade reaches an exit condition or mandatory exit time, the trade may remain OPEN.
 
 Do not fabricate a closing price after the historical dataset ends.
+
+
+## Zerodha Market Data V1
+
+`market_data_mode` selects SIMULATED (default) or ZERODHA. This changes the
+instrument source and incoming prices, never signal, selection, or risk rules.
+The running Zerodha application must use PAPER execution. No broker order API
+is exposed or called. Isolated BACKTEST replay remains separate.
+
+For a valid selection, fetch a read-only option LTP before the SQLite entry
+transaction. If the quote is unavailable, preserve OPTION_PRICE_UNAVAILABLE.
+Evaluate entry-time eligibility again at execution time after fetching a quote.
+
+Stream enabled monitored indices and option contracts for OPEN PAPER trades.
+Refresh required tokens after ticks and during idle periods; rebuild the full
+subscription set after reconnect. Reject manual simulation ticks in ZERODHA
+mode so the two price sources cannot feed the same running strategy.
+
+
+## Zerodha Login UX
+
+Connect Zerodha starts backend login and returns through a browser-bound callback.
+The backend exchanges the request token and persists the access-token session in
+an owner-readable local credential file, outside trading tables. React receives
+only authentication status, never the access token or API secret. Authentication
+and streaming status are separate. Login does not alter PAPER execution or any
+strategy/risk rule.

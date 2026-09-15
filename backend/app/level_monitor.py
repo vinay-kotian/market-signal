@@ -73,21 +73,28 @@ class LevelMonitor:
                     signals.append(self.signal_engine.analyze(trigger, history))
                     triggers.append(trigger)
 
+            selections = {}
+            for index, signal in enumerate(signals):
+                if signal.valid:
+                    selection = self._option_selector.select(
+                        signal.instrument, signal.trigger_price, signal.direction,
+                        self._option_settings.itm_depth, signal.timestamp.date())
+                    selections[index] = selection
+                    if self._paper_executor is not None:
+                        await self._paper_executor.prepare(selection)
+
             # A failed write leaves the transition retryable, without partial results.
             if signals:
                 with connect(self._repository.database_path) as connection:
                     saved = self._signal_repository.save_many(signals, connection=connection)
-                    for signal in saved:
+                    for index, signal in enumerate(saved):
                         if signal.valid:
-                            selection = self._option_selector.select(
-                                signal.instrument, signal.trigger_price, signal.direction,
-                                self._option_settings.itm_depth, signal.timestamp.date(),
-                            )
+                            selection = selections[index]
                             stored_selection = self._option_repository.save(
                                 signal.id, selection, signal.timestamp, connection=connection,
                             )
                             if self._paper_executor is not None:
-                                self._paper_executor.execute(signal, stored_selection, timestamp,
+                                self._paper_executor.execute(signal, stored_selection, self._clock(),
                                                              connection=connection)
             self._events.extend(triggers)
             self._next_event_id += len(triggers)

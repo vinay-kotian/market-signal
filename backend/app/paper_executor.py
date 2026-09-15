@@ -20,6 +20,12 @@ class PaperExecutor:
         self.settings = settings or TradeSettings()
         self.time_rules = TradingTimeRules(self.settings)
 
+    async def prepare(self, selection):
+        # Fetch external quotes before opening the SQLite write transaction.
+        prepare = getattr(self.prices, 'prepare', None)
+        if selection.status == 'SELECTED' and prepare is not None:
+            await prepare(selection.option_symbol)
+
     def execute(self, signal, selection, timestamp, connection=None):
         if not signal.valid or selection.status != "SELECTED":
             return None

@@ -5,8 +5,12 @@ class SimulationFlow:
     def __init__(self, levels, positions, prices, instruments, market_close=None):
         self.levels, self.positions, self.prices = levels, positions, prices
         self.market_close = market_close
+        self.instruments = instruments
+        self.refresh_instruments()
+
+    def refresh_instruments(self):
         self.option_symbols = {c.symbol for symbol in ['NIFTY', 'BANKNIFTY']
-                               for c in instruments.contracts(symbol)}
+                               for c in self.instruments.contracts(symbol)}
 
     async def on_tick(self, tick):
         if tick.instrument in self.option_symbols or self.positions.trades.has_symbol(tick.instrument):

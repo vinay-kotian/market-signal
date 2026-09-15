@@ -741,3 +741,134 @@ Settings use the same defaults and validation as paper trading, with
 `trade_mode` fixed to `BACKTEST`. This is deterministic replay of supplied
 observations, not a model of historical spreads, liquidity, fees, or fills.
 There are no charts, sweeps, live orders, or broker historical-data calls.
+
+
+## Zerodha Integration V1 — market data, PAPER execution
+
+Install backend requirements, then configure environment variables in the shell
+that starts FastAPI (no credentials belong in source files or the frontend):
+
+```sh
+export MARKET_DATA_MODE=ZERODHA
+export TRADE_MODE=PAPER
+# Set ZERODHA_API_KEY and ZERODHA_API_SECRET securely in your environment.
+# Optionally set ZERODHA_ACCESS_TOKEN for an existing current session.
+cd backend
+.venv/bin/pip install -r requirements.txt
+.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+Default MARKET_DATA_MODE is SIMULATED. Restart the backend to change modes.
+Use a single app process for one broker session. The default development app
+is local-only; these connection-management endpoints are not a public hosted
+authentication system. Environment files are ignored by Git and are not loaded
+automatically. The connector exposes no broker order methods.
+
+Configure the registered callback and frontend return URL:
+
+```sh
+export ZERODHA_REDIRECT_URL=http://127.0.0.1:8000/zerodha/callback
+export FRONTEND_URL=http://127.0.0.1:5173
+```
+
+Register that exact callback URL in the Kite developer console for your API key.
+Kite chooses the callback from its registered app configuration; the environment
+variable does not update the developer console. Keep the path `/zerodha/callback`.
+The frontend URL is the app's base URL, without `/connection`.
+
+Open **Connection** in React:
+
+1. Click **Connect Zerodha**. The backend validates its API key and redirects
+   your browser to Kite. Complete password/OTP login on Zerodha yourself.
+2. Kite returns the request token to the backend callback. The backend validates
+   the browser-bound login attempt, exchanges the token using its API secret,
+   and saves the session. No manual token copy/paste is needed.
+3. You return automatically to frontend `/connection`, showing **CONNECTED**.
+   Click **Sync instruments** to start the price feed. Authentication status is
+   separate from the WebSocket's connection state, which is also displayed.
+4. Add enabled NIFTY/BANKNIFTY levels. The watchlist displays received prices;
+   dashboard data refreshes every five seconds. Simulation input is hidden and
+   its API is blocked while ZERODHA mode is active.
+
+Connection authentication states are NOT_CONNECTED, AUTH_REQUIRED, CONNECTED,
+and ERROR. Callback failures return to Connection with ERROR and a retry button.
+Use the same browser for the entire login; attempts expire after ten minutes.
+The backend starts login on the configured callback hostname so localhost versus
+127.0.0.1 does not lose the HttpOnly login cookie.
+
+`KiteConnector` handles the login URL, SHA-256 token exchange, instrument master,
+and selected-contract LTP only. API key/secret are read on the backend; React
+receives only the backend login URL. Kite's redirect necessarily includes its
+public API key, but never the API secret or access token.
+
+A successful exchange writes `<database-stem>.zerodha-session.json` beside the
+backend database, atomically with owner-only permissions (0600). This local
+single-user file contains the access token, API-key fingerprint, and expiry;
+it is **not encrypted**, is ignored by Git, and is never served by the app.
+Treat it as a credential. Restarts restore the session for the matching API key;
+expired sessions are discarded and rejected HTTP sessions delete the saved
+credential. An environment access token takes precedence over the saved file.
+A restored or environment session attempts instrument sync on startup.
+
+Access tokens remain redacted in memory and absent from API responses.
+Callback query strings are stripped from Uvicorn access logs, and callback
+redirects use no-store/no-referrer headers. HTTP errors are sanitized and
+streaming failures log states without credential-bearing URLs or exceptions.
+External reverse proxies must also avoid recording callback query strings.
+The backend remains local-only; this is not a multi-user authentication system.
+
+`ZerodhaInstrumentService` filters the master to NSE NIFTY 50 / NIFTY BANK and
+NFO NIFTY/BANKNIFTY CE/PE contracts. Normalized metadata (tokens, exchange,
+symbol, underlying, segment, type, strike, expiry, lots and tick size) is stored
+in SQLite keyed by exchange and symbol, with a last-successful-sync timestamp.
+Invalid syncs leave the previous master intact. Sync again each trading day;
+V1 does not add a scheduling framework. Token mappings are replaced and the
+socket restarted after sync, since derivative tokens can be reused.
+
+OptionSelector receives ordinary OptionContract records, with strike spacing
+inferred from the normalized strikes. It contains no Kite objects or calls.
+Before paper entry, an async read-only LTP request fetches the selected option's
+premium outside the write transaction. No synthetic price seed is used in this
+mode; a missing/invalid quote produces the existing entry failure. This avoids
+subscribing to the entire option chain merely to discover an entry price.
+
+The asyncio ZerodhaMarketDataProvider subscribes in LTP mode to enabled index
+levels and contracts for OPEN PAPER positions. It converts binary NSE/NFO paise
+quotes into PriceTick, then uses the same SimulationFlow, LevelMonitor,
+SignalEngine, OptionSelector, PaperExecutor and PositionMonitor. Text updates,
+heartbeats, malformed frames, unknown/unsubscribed tokens, and invalid prices
+are not treated as strategy ticks. PriceTick uses receipt time as before.
+
+Subscription differences are sent after ticks and at one-second idle checks.
+New positions gain an option subscription; closed positions and disabled levels
+lose it when no longer required. Reconnect uses delays from one to thirty
+seconds and sends the entire current subscription set on a fresh socket.
+Disconnect gaps are not filled in V1; the strategy resumes with the next received
+price. Existing mandatory-exit rules still use the latest stored observation.
+Choose source changes with positions in mind: synthetic symbols have no Zerodha
+token, and a removed/expired contract cannot receive live updates from a new
+master. All entries remain PAPER and the app refuses ZERODHA + LIVE/BACKTEST.
+
+Connection API:
+
+- GET /connection — mode, PAPER execution, session availability, socket/sync
+  states, last successful sync, and latest received prices; no secrets.
+- GET /zerodha/login — validate configuration, bind a login attempt, and redirect to Kite.
+- GET /zerodha/callback — exchange and persist the session, then redirect to frontend /connection.
+- GET /zerodha/login-url — compatibility endpoint returning the backend login URL.
+- POST /zerodha/session — optional development-only manual request_token fallback;
+  persists the resulting session without returning the access token.
+- POST /zerodha/instruments/sync — refresh filtered master and reconnect.
+
+Protocol references: [Kite authentication](https://kite.trade/docs/connect/v3/user/),
+[instruments and quotes](https://kite.trade/docs/connect/v3/market-quotes/),
+[WebSocket framing and subscriptions](https://kite.trade/docs/connect/v3/websocket/).
+Tests use fake connectors/sockets and HTTP mocks; automated tests never log in
+or connect to Zerodha. Backtests continue to use their isolated synthetic inputs.
+
+
+If login returns ERROR, the Connection page now reports a fixed diagnostic code
+and next step, without broker tokens or raw exception details. In particular,
+API_SECRET_MISSING means ZERODHA_API_SECRET was not exported in the terminal
+that started Uvicorn. Stop the full Uvicorn reloader, set both credentials from
+the same Kite app, and restart; Python auto-reload does not reread shell exports.
