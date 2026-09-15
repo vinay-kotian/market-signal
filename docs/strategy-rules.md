@@ -171,3 +171,195 @@ Trading start: 09:15
 New trade cutoff: 15:15
 Mandatory exit: 15:25
 Timezone: Asia/Kolkata
+
+
+## Paper Trading Reporting
+
+Paper trading performance must be calculated only from persisted PAPER trades.
+
+OPEN trades should appear in trade history but must not contribute to realised performance metrics.
+
+A CLOSED trade is classified as:
+
+* WIN when realised P&L > 0
+* LOSS when realised P&L < 0
+* BREAKEVEN when realised P&L = 0
+
+Breakeven trades should not be counted as wins or losses.
+
+## Paper Trading Metrics
+
+The paper trading report should calculate:
+
+* total trades
+* winning trades
+* losing trades
+* breakeven trades
+* win rate
+* gross profit
+* gross loss
+* net P&L
+* average profit
+* average loss
+* maximum profit
+* maximum loss
+* profit factor
+
+Win rate should be calculated using only completed winning and losing trades.
+
+Example:
+
+Wins = 6
+Losses = 4
+Breakeven = 2
+
+Win rate:
+
+`6 / (6 + 4) = 60%`
+
+Breakeven trades do not affect win rate.
+
+Profit factor:
+
+`gross_profit / gross_loss`
+
+If there are no losing trades, profit factor should be treated as unavailable rather than forcing an artificial value.
+
+## Trade History
+
+Paper trade history should show both OPEN and CLOSED trades.
+
+Each trade should include:
+
+* instrument
+* trigger level
+* option
+* quantity
+* entry price
+* entry time
+* current status
+* stop loss
+* highest price
+* exit price
+* exit time
+* exit reason
+* realised P&L
+* realised P&L percentage
+
+Trade history should support:
+
+* newest-first ordering
+* pagination
+* instrument filtering
+* status filtering
+
+## Trade Event Timeline
+
+Each trade should provide a chronological event history using only events that were actually persisted.
+
+Possible events include:
+
+* POSITION_OPENED
+* TRAILING_STOP_UPDATED
+* BREAKEVEN_PROTECTION_ACTIVATED
+* STOP_LOSS_HIT
+* MARKET_CLOSING_EXIT_TRIGGERED
+* POSITION_CLOSED
+
+Do not fabricate historical events that were not stored at the time they occurred.
+
+The event timeline should make it possible to understand how a trade moved from entry to exit.
+
+## Reporting Separation
+
+Reporting logic must remain separate from:
+
+* signal generation
+* option selection
+* execution
+* position monitoring
+
+The reporting layer should interpret persisted trading data but must not modify trading behaviour.
+
+## Backtesting
+
+Backtesting must reuse the same strategy logic used by paper trading.
+
+Backtesting should change only:
+
+* market data source
+* clock/time source
+* execution mode
+* storage isolation
+
+Do not create separate trading rules specifically for backtesting.
+
+## Historical Replay
+
+Historical price records must be replayed in timestamp order.
+
+The backtest must not use future prices when evaluating:
+
+* level triggers
+* direction
+* approach distance
+* option entry
+* stop loss
+* trailing stop
+* breakeven protection
+* mandatory exit
+
+## Backtest Mode
+
+Backtest trades must use:
+
+`trade_mode = BACKTEST`
+
+BACKTEST trades must not contribute to PAPER trading reports.
+
+Each backtest run must be isolated from:
+
+* PAPER trades
+* other backtest runs
+* current simulated market state
+* current dashboard prices
+
+## Backtest Inputs
+
+A backtest may configure:
+
+* instrument
+* levels
+* lookback minutes
+* minimum approach distance settings
+* ITM depth
+* number of lots
+* stop loss percentage
+* trailing stop percentage
+* breakeven settings
+* trading start time
+* new trade cutoff time
+* mandatory exit time
+
+## Backtest Results
+
+Backtest results should include:
+
+* total trades
+* wins
+* losses
+* breakeven trades
+* win rate
+* gross profit
+* gross loss
+* net P&L
+* profit factor
+* individual trade history
+
+Use the same reporting definitions as paper trading.
+
+## Open Trades
+
+If the supplied historical dataset ends before a trade reaches an exit condition or mandatory exit time, the trade may remain OPEN.
+
+Do not fabricate a closing price after the historical dataset ends.

@@ -7,8 +7,11 @@ from decimal import Decimal
 
 
 class TradeRepository:
-    def __init__(self, database_path):
+    def __init__(self, database_path, mode="PAPER"):
+        if mode not in ("PAPER", "BACKTEST"):
+            raise ValueError("Only simulated execution modes are supported")
         self.database_path = database_path
+        self.mode = mode
 
     def get_by_selection(self, selection_id, connection):
         row = connection.execute(
@@ -17,6 +20,8 @@ class TradeRepository:
         return Trade(**dict(row)) if row else None
 
     def save(self, entry: TradeEntry, connection=None) -> Trade:
+        if entry.trade_mode != self.mode:
+            raise ValueError("Trade mode does not match repository")
         context = connect(self.database_path) if connection is None else nullcontext(connection)
         with context as connection:
             values = entry.model_dump(mode="json")
@@ -35,8 +40,8 @@ class TradeRepository:
 
     def open_for_symbol(self, symbol, connection):
         return [Trade(**dict(row)) for row in connection.execute(
-            "SELECT * FROM trades WHERE option_symbol = ? AND status = 'OPEN' AND trade_mode = 'PAPER'",
-            (symbol,),
+            "SELECT * FROM trades WHERE option_symbol = ? AND status = 'OPEN' AND trade_mode = ?",
+            (symbol, self.mode),
         ).fetchall()]
 
     def has_symbol(self, symbol):
@@ -45,15 +50,15 @@ class TradeRepository:
 
     def update_protection(self, trade, highest, stop, activated, connection):
         connection.execute("""UPDATE trades SET highest_price = ?, current_stop_loss = ?,
-            breakeven_activated = ? WHERE trade_id = ? AND status = 'OPEN' AND trade_mode = 'PAPER'""",
-            (highest, stop, activated, trade.trade_id))
+            breakeven_activated = ? WHERE trade_id = ? AND status = 'OPEN' AND trade_mode = ?""",
+            (highest, stop, activated, trade.trade_id, self.mode))
 
     def close_at_stop(self, trade, price, timestamp, connection):
         return self.close(trade, price, timestamp, 'STOP_LOSS', connection)
 
     def all_open(self, connection):
         return [Trade(**dict(row)) for row in connection.execute(
-            "SELECT * FROM trades WHERE status = 'OPEN' AND trade_mode = 'PAPER' ORDER BY trade_id"
+            "SELECT * FROM trades WHERE status = 'OPEN' AND trade_mode = ? ORDER BY trade_id", (self.mode,)
         ).fetchall()]
 
     def record_option_price(self, symbol, price, timestamp, connection):
@@ -77,8 +82,8 @@ class TradeRepository:
         percentage = float((exit_price - entry) / entry * 100)
         cursor = connection.execute("""UPDATE trades SET status = 'CLOSED', exit_price = ?,
             exit_time = ?, exit_reason = ?, realised_pnl = ?, realised_pnl_percentage = ?
-            WHERE trade_id = ? AND trade_mode = 'PAPER' AND status = 'OPEN'""",
-            (price, timestamp.isoformat(), reason, pnl, percentage, trade.trade_id))
+            WHERE trade_id = ? AND trade_mode = ? AND status = 'OPEN'""",
+            (price, timestamp.isoformat(), reason, pnl, percentage, trade.trade_id, self.mode))
         if cursor.rowcount:
             events = TradeEventRepository(self.database_path)
             trigger = 'STOP_LOSS_HIT' if reason == 'STOP_LOSS' else 'MARKET_CLOSING_EXIT_TRIGGERED'
@@ -103,8 +108,51 @@ class TradeRepository:
     def recent(self, limit=100):
         with connect(self.database_path) as connection:
             return [Trade(**dict(row)) for row in connection.execute(
-                "SELECT * FROM trades ORDER BY trade_id DESC LIMIT ?", (limit,)
+                "SELECT * FROM trades WHERE trade_mode = ? ORDER BY trade_id DESC LIMIT ?", (self.mode, limit,)
             ).fetchall()]
+
+    def results(self):
+        with connect(self.database_path) as connection:
+            return connection.execute(
+                "SELECT status, realised_pnl FROM trades WHERE trade_mode = ?", (self.mode,)
+            ).fetchall()
+
+    def paper_results(self):
+        with connect(self.database_path) as connection:
+            return connection.execute(
+                "SELECT status, realised_pnl FROM trades WHERE trade_mode = 'PAPER'"
+            ).fetchall()
+
+    def history(self, page=1, page_size=20, status=None, instrument=None):
+        clauses, values = ["trade_mode = 'PAPER'"], []
+        if status is not None:
+            clauses.append('status = ?')
+            values.append(status)
+        if instrument is not None:
+            clauses.append('instrument = ?')
+            values.append(instrument.strip().upper())
+        where = ' AND '.join(clauses)
+        with connect(self.database_path) as connection:
+            connection.execute('BEGIN')
+            total = connection.execute(f'SELECT COUNT(*) FROM trades WHERE {where}', values).fetchone()[0]
+            rows = connection.execute(
+                f'SELECT * FROM trades WHERE {where} '
+                'ORDER BY julianday(entry_time) DESC, trade_id DESC LIMIT ? OFFSET ?',
+                (*values, page_size, (page - 1) * page_size),
+            ).fetchall()
+            return dict(items=[Trade(**dict(row)) for row in rows], total=total,
+                        page=page, page_size=page_size)
+
+    def detail(self, trade_id):
+        with connect(self.database_path) as connection:
+            connection.execute('BEGIN')
+            row = connection.execute(
+                "SELECT * FROM trades WHERE trade_id = ? AND trade_mode = ?", (trade_id, self.mode)
+            ).fetchone()
+            if row is None:
+                return None
+            return dict(trade=Trade(**dict(row)), events=TradeEventRepository(
+                self.database_path).for_trade(trade_id, connection))
 
     def recent_results(self, limit=100):
         with connect(self.database_path) as connection:

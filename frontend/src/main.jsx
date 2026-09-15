@@ -6,10 +6,13 @@ import SignalsTable from './SignalsTable';
 import OptionSelectionsTable from './OptionSelectionsTable';
 import LevelForm from './LevelForm';
 import TradesPage from './TradesPage';
+import PaperReportPage from './PaperReportPage';
+import BacktestPage from './BacktestPage';
 import './styles.css';
 
 function App() {
   const [page, setPage] = useState('dashboard');
+  const [refreshKey, setRefreshKey] = useState(0);
   const [levels, setLevels] = useState(null);
   const [events, setEvents] = useState(null);
   const [signals, setSignals] = useState(null);
@@ -27,6 +30,7 @@ function App() {
   const [deleting, setDeleting] = useState(null);
 
   async function refresh() {
+    setRefreshKey(value => value + 1);
     await Promise.all([
       ['/levels', setLevels, 'levels'], ['/simulation/events', setEvents, 'events'], ['/signals', setSignals, 'signals'],
       ['/option-selections', setSelections, 'selections'],
@@ -70,10 +74,12 @@ function App() {
         <div className="ms-sidefoot">Prices sent from this browser session<br />Movement since previous submitted tick</div>
       </aside>
       <main>
-        <nav aria-label="Pages">{['dashboard', 'levels', 'trades'].map(name => <button className="ms-tab" key={name} aria-pressed={page === name} disabled={busy} onClick={() => navigate(name)}>{name[0].toUpperCase() + name.slice(1)}</button>)}</nav>
-        <div className="ms-heading"><h2>{page[0].toUpperCase() + page.slice(1)}</h2><div className="ms-actions"><button className="ms-link" disabled={busy} onClick={() => mutate(async () => {})}>Refresh</button>{page !== 'trades' && <button className="ms-button" disabled={busy} onClick={() => page === 'dashboard' ? navigate('levels') : setEditor({})}>{page === 'dashboard' ? 'Manage levels ↗' : '+ Add level'}</button>}</div></div>
+        <nav aria-label="Pages">{['dashboard', 'levels', 'trades', 'report', 'backtest'].map(name => <button className="ms-tab" key={name} aria-pressed={page === name} disabled={busy} onClick={() => navigate(name)}>{name[0].toUpperCase() + name.slice(1)}</button>)}</nav>
+        <div className="ms-heading"><h2>{page[0].toUpperCase() + page.slice(1)}</h2><div className="ms-actions"><button className="ms-link" disabled={busy} onClick={() => mutate(async () => {})}>Refresh</button>{(page === 'dashboard' || page === 'levels') && <button className="ms-button" disabled={busy} onClick={() => page === 'dashboard' ? navigate('levels') : setEditor({})}>{page === 'dashboard' ? 'Manage levels ↗' : '+ Add level'}</button>}</div></div>
+        {page === 'backtest' && <BacktestPage />}
+        {page === 'report' && <PaperReportPage refreshKey={refreshKey} />}
         {page === 'trades' && <TradesPage trades={trades} results={entryResults} error={errors.trades} resultsError={errors.entryResults} onRetry={() => mutate(async () => {})} />}
-        {page !== 'trades' && <>
+        {(page === 'dashboard' || page === 'levels') && <>
         {(errors.levels || errors.events || errors.action) && <div className="ms-error" role="alert">{errors.action || errors.levels || `Trigger status unavailable: ${errors.events}`} <button className="ms-link" disabled={busy} onClick={() => mutate(async () => {})}>Retry refresh</button></div>}
         {page === 'dashboard' && <div className="ms-pricebar"><div className="ms-instrument">{selected || 'No instrument selected'}</div><div><div className="ms-current">{formatPrice(current)}</div><div className="ms-sub">Last price submitted from this session</div></div></div>}
         {editor && <LevelForm key={editor.id ?? 'new'} level={editor.id ? editor : null} instrument={selected} busy={busy} onCancel={() => setEditor(null)} onSave={data => mutate(async () => {

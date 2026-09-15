@@ -1,0 +1,42 @@
+[
+  {
+    "timestamp": "2026-09-14T09:59:00+05:30",
+    "instrument": "SIM-NIFTY-2026-09-21-25050-PE",
+    "price": 100
+  },
+  {
+    "timestamp": "2026-09-14T10:00:00+05:30",
+    "instrument": "NIFTY",
+    "price": 24900
+  },
+  {
+    "timestamp": "2026-09-14T10:01:00+05:30",
+    "instrument": "NIFTY",
+    "price": 25000
+  },
+  {
+    "timestamp": "2026-09-14T10:02:00+05:30",
+    "instrument": "SIM-NIFTY-2026-09-21-25050-PE",
+    "price": 105
+  },
+  {
+    "timestamp": "2026-09-14T10:03:00+05:30",
+    "instrument": "SIM-NIFTY-2026-09-21-25050-PE",
+    "price": 110
+  },
+  {
+    "timestamp": "2026-09-14T10:04:00+05:30",
+    "instrument": "SIM-NIFTY-2026-09-21-25050-PE",
+    "price": 120
+  },
+  {
+    "timestamp": "2026-09-14T10:05:00+05:30",
+    "instrument": "SIM-NIFTY-2026-09-21-25050-PE",
+    "price": 108
+  },
+  {
+    "timestamp": "2026-09-14T15:26:00+05:30",
+    "instrument": "NIFTY",
+    "price": 25005
+  }
+]

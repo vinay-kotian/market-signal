@@ -643,3 +643,101 @@ cd ../frontend
 npm test
 npm run build
 ```
+
+## Paper trading report and history
+
+Open the **Report** tab for all-time PAPER performance, filtered trade history,
+and a trade's persisted event timeline. Use Refresh to reload results; history
+filters apply only to the history table, not the all-time report.
+
+- `GET /reports/paper-trading`: total/open/closed trades, wins, losses,
+  breakeven count, win rate, gross profit/loss, net P&L, average and maximum
+  profit/loss, and profit factor. Calculations live in `app/paper_report.py`.
+- `GET /trades/history?page=1&page_size=20&status=CLOSED&instrument=NIFTY`:
+  PAPER history with `items`, `total`, `page`, and `page_size`. Status and
+  instrument are optional; instrument matches exactly after trim/uppercase.
+  Page size is 1–100. Newest entry time first, with descending trade ID as a
+  tie-breaker. The existing `GET /trades` list remains compatible.
+- `GET /trades/{trade_id}`: `{trade, events}` read in one SQLite snapshot;
+  returns 404 for a missing paper trade. Events are ordered by timestamp then
+  ID, including every persisted event rather than a recent-events limit.
+
+Only CLOSED trades contribute realised performance. Positive P&L is a win,
+negative P&L is a loss, and zero is breakeven. Win rate is winners / (winners + losers)
+× 100, or zero when there are neither. Breakeven trades are excluded. Total trades includes OPEN positions,
+which remain visible in history with unknown exit/P&L displayed as a dash.
+
+Gross/average/maximum loss are positive loss magnitudes. Net P&L is gross profit
+minus gross loss. Averages use winning or losing trades respectively. Profit
+factor is gross profit / gross loss; when gross loss is zero it is JSON `null`
+and displayed as N/A (including profitable reports with no losses).
+
+The timeline displays recorded trade events and marks legacy reconstructed
+events. Level triggers, signal acceptance, and option selection are not stored
+as trade events and are not fabricated for this view; signal and selection IDs
+are shown for reference. Reporting introduces no changes to execution rules.
+
+
+## Backtesting V1
+
+Open **Backtest** in React. Select NIFTY and level 25000 to run the bundled
+**NIFTY demo · 14 Sep 2026**, or upload a local JSON array. Expand settings to
+configure lookback/distance, ITM depth, lots, stops, breakeven protection,
+trading times, and an optional timestamp range. Input timestamps must include
+an offset; trading-window times use Asia/Kolkata.
+
+```http
+POST /backtests/run
+Content-Type: application/json
+
+{"instrument":"NIFTY","levels":[25000],"fixture":"nifty-demo"}
+```
+
+Alternatively provide `dataset` instead of `fixture`:
+
+```json
+{
+  "instrument": "NIFTY",
+  "levels": [25000],
+  "dataset": [
+    {"timestamp":"2026-09-14T09:59:00+05:30","instrument":"SIM-NIFTY-2026-09-21-25050-PE","price":100},
+    {"timestamp":"2026-09-14T10:00:00+05:30","instrument":"NIFTY","price":24900},
+    {"timestamp":"2026-09-14T10:01:00+05:30","instrument":"NIFTY","price":25000},
+    {"timestamp":"2026-09-14T10:02:00+05:30","instrument":"SIM-NIFTY-2026-09-21-25050-PE","price":90}
+  ]
+}
+```
+
+The POST runs replay and returns its UUID, status, performance metrics, trades,
+signals, option selections, entry results, and trade events. Read the saved
+result later with `GET /backtests/{id}`. Runs use separate
+`backend/backtests/{id}/results.sqlite3` files, including the input/settings and
+result snapshot. There is no shared PAPER price cache, history, trade state,
+or background wall-clock scheduler inside replay. Results survive app restart;
+interrupted RUNNING runs are not automatically resumed in V1.
+
+`HistoricalMarketDataProvider` sorts ticks by timestamp (stable source order
+for ties), and `BacktestRunner` injects historical time into the existing
+services. It advances through mandatory-exit deadlines before later ticks, so
+future option quotes cannot affect earlier exits. A quote at exactly a deadline
+is processed after that deadline's timer event. An explicit `end_time` can
+advance past the final tick to exercise the normal mandatory exit. Otherwise,
+OPEN positions stay OPEN if the dataset ends early, and are excluded from
+realised performance. Range filtering is inclusive and does not preload
+quotes or strategy history from before `start_time`.
+
+V1 supports 1–10,000 records and up to 100 level inputs for one underlying
+(NIFTY or BANKNIFTY). Duplicate level inputs are collapsed. Local data is JSON;
+CSV ingestion is not included. The option universe is synthetic, seeded from
+the first included tick's Asia/Kolkata date, with expiries +7/+14 days and the
+existing fixed strike ranges and test lot sizes. These are not real exchange
+contracts. Include matching synthetic option symbols and quotes in the data;
+underlying-only data can create signals/selections but cannot create trades.
+No premiums are derived from the underlying. Expired/unavailable contracts
+retain the shared selector's failure behavior; V1 does not roll the universe
+forward or integrate an exchange calendar.
+
+Settings use the same defaults and validation as paper trading, with
+`trade_mode` fixed to `BACKTEST`. This is deterministic replay of supplied
+observations, not a model of historical spreads, liquidity, fees, or fills.
+There are no charts, sweeps, live orders, or broker historical-data calls.

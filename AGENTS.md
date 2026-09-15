@@ -25,4 +25,4 @@ FastAPI + React + SQLite + Levels + Simulated Market Data.
 No Zerodha integration yet.
 Paper option entries only; no live orders.
 Initial and trailing stops with breakeven protection for PAPER trades only.
-No backtesting yet.
+Backtesting V1 reuses the strategy with isolated BACKTEST state and local fixtures.

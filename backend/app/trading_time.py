@@ -30,11 +30,12 @@ class TradingTimeRules:
             return 'NEW_TRADE_CUTOFF_REACHED'
         return None
 
+    def exit_deadline(self, trade):
+        return datetime.combine(self.local(trade.entry_time).date(),
+                                self.settings.mandatory_exit_time, self.timezone)
+
     def exit_due(self, trade, timestamp):
-        now = self.local(timestamp)
-        entry_date = self.local(trade.entry_time).date()
-        return (entry_date < now.date() or
-                (entry_date == now.date() and now.time() >= self.settings.mandatory_exit_time))
+        return self.local(timestamp) >= self.exit_deadline(trade)
 
 
 class MarketCloseService:

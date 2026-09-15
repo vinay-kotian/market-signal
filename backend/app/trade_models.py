@@ -28,7 +28,7 @@ class TradeEntry(BaseModel):
     breakeven_activation_percent: float
     breakeven_lock_percent: float
     breakeven_activated: bool = False
-    trade_mode: Literal["PAPER"] = "PAPER"
+    trade_mode: Literal["PAPER", "BACKTEST"] = "PAPER"
     status: Literal["OPEN"] = "OPEN"
 
 

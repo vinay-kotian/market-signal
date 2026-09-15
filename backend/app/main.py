@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
 from contextlib import suppress
 import asyncio
+from pathlib import Path
+from app.backtests import BacktestRunner, router as backtest_router
 
 from fastapi import FastAPI
 
@@ -35,6 +37,7 @@ def create_app(database_path=DEFAULT_DATABASE_PATH, signal_settings=None,
                clock=None):
     @asynccontextmanager
     async def lifespan(app):
+        app.state.backtest_runner = BacktestRunner(Path(app.state.database_path).parent / "backtests")
         current_time = clock or utc_now
         execution_settings = trade_settings or TradeSettings.from_environment()
         initialize_database(app.state.database_path, execution_settings.stop_loss_percentage,
@@ -89,6 +92,7 @@ def create_app(database_path=DEFAULT_DATABASE_PATH, signal_settings=None,
     app.include_router(signals_router)
     app.include_router(option_router)
     app.include_router(trade_router)
+    app.include_router(backtest_router)
 
     @app.get("/health")
     async def health():

@@ -40,3 +40,25 @@ html,body{margin:0;background:#f7f9f7}
 #ms-design .ms-checkbox{width:auto;accent-color:#285f45}
 #ms-design button:disabled{opacity:.55;cursor:wait}
 #ms-design .ms-contract{display:block;max-width:220px;white-space:normal;overflow-wrap:anywhere}
+
+#ms-design .ms-report-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:24px;margin:28px 0;padding:24px 0;border-block:1px solid #dce4dd}
+#ms-design .ms-report-summary dt{font-size:12px;color:#68756b}
+#ms-design .ms-report-summary dd{font-size:24px;margin:10px 0 0;font-weight:600;overflow-wrap:anywhere}
+#ms-design .ms-report-metrics{display:flex;flex-wrap:wrap;gap:16px 28px;margin-bottom:24px}
+#ms-design .ms-report-metrics div{display:flex;gap:10px;font-size:12px}
+#ms-design .ms-report-metrics dd{margin:0;font-weight:600}
+#ms-design .ms-report-filters{display:flex;align-items:end;flex-wrap:wrap;gap:16px;margin-bottom:24px}
+#ms-design .ms-report-pagination{display:flex;align-items:center;gap:20px;margin:24px 0;font-size:12px}
+#ms-design .ms-history-row{cursor:pointer}
+#ms-design .ms-history-row:hover,#ms-design .ms-history-row[aria-selected=true]{background:#eef3ec}
+#ms-design .ms-report-timeline{margin-top:32px;padding-top:24px;border-top:1px solid #dce4dd}
+#ms-design .ms-report-timeline li{padding:0 0 24px 10px;font-size:12px;line-height:1.8}
+@media(max-width:650px){#ms-design .ms-report-summary{grid-template-columns:repeat(2,minmax(0,1fr))}#ms-design nav{gap:18px;flex-wrap:wrap}}
+
+#ms-design .ms-backtest-fields{border:0;padding:0;margin:24px 0;min-width:0}
+#ms-design .ms-backtest-settings{margin:24px 0;line-height:1.7}
+#ms-design .ms-backtest-settings summary{cursor:pointer;font-size:13px;font-weight:600}
+#ms-design .ms-backtest-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin:24px 0}
+#ms-design .ms-backtest-grid label{text-transform:capitalize}
+#ms-design nav{flex-wrap:wrap}
+@media(max-width:650px){#ms-design .ms-backtest-grid{grid-template-columns:1fr}}

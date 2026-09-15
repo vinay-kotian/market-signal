@@ -38,8 +38,10 @@ class PaperExecutor:
                     failure_reason=reason, timestamp=timestamp,
                 ), connection)
 
-            if self.settings.trade_mode != "PAPER":
+            if self.settings.trade_mode not in ("PAPER", "BACKTEST"):
                 return fail("LIVE_MODE_NOT_SUPPORTED")
+            if self.settings.trade_mode != self.repository.mode:
+                return fail("TRADE_MODE_MISMATCH")
             time_rejection = self.time_rules.entry_rejection(timestamp)
             if time_rejection:
                 return fail(time_rejection)
@@ -56,6 +58,7 @@ class PaperExecutor:
                 return fail("OPTION_PRICE_UNAVAILABLE")
             self.repository.record_option_price(contract.symbol, price, timestamp, connection)
             trade = self.repository.save(TradeEntry(
+                trade_mode=self.settings.trade_mode,
                 signal_id=signal.id, option_selection_id=selection.id,
                 instrument=selection.instrument, trigger_level=signal.level,
                 direction=selection.direction, option_symbol=contract.symbol,

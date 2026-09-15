@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from datetime import datetime
 from typing import Literal, Optional
 
@@ -30,8 +31,9 @@ class TradeEventRepository:
             VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING""",
             (trade_id, event_type, price, timestamp.isoformat(), previous_stop, current_stop))
 
-    def for_trade(self, trade_id):
-        with connect(self.database_path) as connection:
+    def for_trade(self, trade_id, connection=None):
+        context = connect(self.database_path) if connection is None else nullcontext(connection)
+        with context as connection:
             return [TradeEvent(**dict(row)) for row in connection.execute(
-                'SELECT * FROM trade_events WHERE trade_id = ? ORDER BY id', (trade_id,)
+                'SELECT * FROM trade_events WHERE trade_id = ? ORDER BY julianday(timestamp), id', (trade_id,)
             ).fetchall()]

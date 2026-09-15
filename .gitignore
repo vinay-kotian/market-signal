@@ -5,3 +5,5 @@ backend/*.sqlite3
 backend/*.sqlite3-journal
 frontend/node_modules/
 frontend/dist/
+
+backend/backtests/

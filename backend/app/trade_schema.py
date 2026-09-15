@@ -10,7 +10,7 @@ TRADE_SCHEMA = """CREATE TABLE IF NOT EXISTS trades (
     number_of_lots INTEGER NOT NULL CHECK(number_of_lots > 0),
     quantity INTEGER NOT NULL CHECK(quantity > 0),
     entry_price REAL NOT NULL CHECK(entry_price > 0), entry_time TEXT NOT NULL,
-    trade_mode TEXT NOT NULL CHECK(trade_mode = 'PAPER'),
+    trade_mode TEXT NOT NULL CHECK(trade_mode IN ('PAPER', 'BACKTEST')),
     status TEXT NOT NULL CHECK(status IN ('OPEN', 'CLOSED')),
     stop_loss_percentage REAL NOT NULL,
     initial_stop_loss REAL NOT NULL,
