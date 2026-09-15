@@ -10,7 +10,8 @@ class TradeEvent(BaseModel):
     id: int
     trade_id: int
     event_type: Literal['POSITION_OPENED', 'STOP_LOSS_HIT', 'POSITION_CLOSED',
-                        'TRAILING_STOP_UPDATED', 'BREAKEVEN_PROTECTION_ACTIVATED']
+                        'TRAILING_STOP_UPDATED', 'BREAKEVEN_PROTECTION_ACTIVATED',
+                        'MARKET_CLOSING_EXIT_TRIGGERED']
     price: float
     timestamp: datetime
     reconstructed: bool

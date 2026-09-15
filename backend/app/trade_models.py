@@ -37,7 +37,7 @@ class Trade(TradeEntry):
     status: Literal['OPEN', 'CLOSED'] = 'OPEN'
     exit_price: Optional[float] = None
     exit_time: Optional[datetime] = None
-    exit_reason: Optional[Literal['STOP_LOSS']] = None
+    exit_reason: Optional[Literal['STOP_LOSS', 'MARKET_CLOSING_EXIT']] = None
     realised_pnl: Optional[float] = None
     realised_pnl_percentage: Optional[float] = None
 

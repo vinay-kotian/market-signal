@@ -65,7 +65,7 @@ def test_idempotent_execution_survives_restart(tmp_path):
     app = create_app(path, trade_settings=TradeSettings(number_of_lots=5), option_prices=SimulatedOptionPrices())
     with TestClient(app) as client:
         # Same selection returns its original trade even with no quote and changed quantity settings.
-        result = app.state.paper_executor.execute(signal, selection, datetime.now(timezone.utc))
+        result = app.state.paper_executor.execute(signal, selection, signal.timestamp)
         assert result.trade_id == original['trade_id']
         assert client.get('/trades').json() == [original]
 
@@ -118,7 +118,7 @@ def test_quote_can_be_updated_and_failed_entry_retried(tmp_path):
         signal = SignalResult(**client.get('/signals').json()[0])
         selection = StoredOptionSelection(**client.get('/option-selections').json()[0])
         prices.set_price(selection.option_symbol, 123.45)
-        result = app.state.paper_executor.execute(signal, selection, datetime.now(timezone.utc))
+        result = app.state.paper_executor.execute(signal, selection, signal.timestamp)
         assert result.status == 'OPEN'
         assert client.get('/trades').json()[0]['entry_price'] == 123.45
         assert client.get('/trade-entry-results').json()[0]['failure_reason'] is None

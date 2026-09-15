@@ -49,16 +49,40 @@ class TradeRepository:
             (highest, stop, activated, trade.trade_id))
 
     def close_at_stop(self, trade, price, timestamp, connection):
+        return self.close(trade, price, timestamp, 'STOP_LOSS', connection)
+
+    def all_open(self, connection):
+        return [Trade(**dict(row)) for row in connection.execute(
+            "SELECT * FROM trades WHERE status = 'OPEN' AND trade_mode = 'PAPER' ORDER BY trade_id"
+        ).fetchall()]
+
+    def record_option_price(self, symbol, price, timestamp, connection):
+        connection.execute("""INSERT INTO simulated_option_quotes(symbol, price, timestamp)
+            VALUES (?, ?, ?) ON CONFLICT(symbol) DO UPDATE SET price = excluded.price,
+            timestamp = excluded.timestamp""", (symbol, price, timestamp.isoformat()))
+
+    def last_option_price(self, symbol, connection):
+        row = connection.execute('SELECT price FROM simulated_option_quotes WHERE symbol = ?', (symbol,)).fetchone()
+        return row['price'] if row else None
+
+    def saved_option_prices(self):
+        with connect(self.database_path) as connection:
+            return {row['symbol']: row['price'] for row in connection.execute('SELECT symbol, price FROM simulated_option_quotes')}
+
+    def close(self, trade, price, timestamp, reason, connection):
+        if reason not in ('STOP_LOSS', 'MARKET_CLOSING_EXIT'):
+            raise ValueError('Unknown exit reason')
         entry, exit_price = Decimal(str(trade.entry_price)), Decimal(str(price))
         pnl = float((exit_price - entry) * trade.quantity)
         percentage = float((exit_price - entry) / entry * 100)
         cursor = connection.execute("""UPDATE trades SET status = 'CLOSED', exit_price = ?,
-            exit_time = ?, exit_reason = 'STOP_LOSS', realised_pnl = ?, realised_pnl_percentage = ?
+            exit_time = ?, exit_reason = ?, realised_pnl = ?, realised_pnl_percentage = ?
             WHERE trade_id = ? AND trade_mode = 'PAPER' AND status = 'OPEN'""",
-            (price, timestamp.isoformat(), pnl, percentage, trade.trade_id))
+            (price, timestamp.isoformat(), reason, pnl, percentage, trade.trade_id))
         if cursor.rowcount:
             events = TradeEventRepository(self.database_path)
-            for event_type in ['STOP_LOSS_HIT', 'POSITION_CLOSED']:
+            trigger = 'STOP_LOSS_HIT' if reason == 'STOP_LOSS' else 'MARKET_CLOSING_EXIT_TRIGGERED'
+            for event_type in [trigger, 'POSITION_CLOSED']:
                 events.record(trade.trade_id, event_type, price, timestamp, connection)
         return cursor.rowcount > 0
 

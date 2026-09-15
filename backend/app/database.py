@@ -25,6 +25,14 @@ def initialize_database(database_path, stop_loss_percentage=10, trade_settings=N
         connection.execute('BEGIN IMMEDIATE')
         initialize_trades(connection, stop_loss_percentage)
         initialize_trailing(connection, trade_settings or {})
+        connection.execute("""CREATE TABLE IF NOT EXISTS simulated_option_quotes (
+            symbol TEXT PRIMARY KEY, price REAL NOT NULL CHECK(price >= 0), timestamp TEXT NOT NULL
+        )""")
+        # Seed legacy positions with their latest known observation; never replace a saved quote.
+        connection.execute("""INSERT INTO simulated_option_quotes(symbol, price, timestamp)
+            SELECT option_symbol, COALESCE(exit_price, entry_price), COALESCE(exit_time, entry_time)
+            FROM trades WHERE 1 ORDER BY COALESCE(exit_time, entry_time) DESC, trade_id DESC
+            ON CONFLICT(symbol) DO NOTHING""")
         connection.execute(
             """CREATE TABLE IF NOT EXISTS trade_entry_results (
                 option_selection_id INTEGER PRIMARY KEY,

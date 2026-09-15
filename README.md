@@ -605,3 +605,41 @@ restarts preserve all recorded highs, stops, flags, and per-trade settings.
 
 The Trades page displays the high and effective/initial stops next to entry price,
 and shows breakeven status as Waiting, Active, or Disabled.
+
+## Daily paper-trading window
+
+Set these environment variables before starting the backend (Asia/Kolkata):
+
+```sh
+export TRADING_START_TIME=09:15
+export NEW_TRADE_CUTOFF_TIME=15:15
+export MANDATORY_EXIT_TIME=15:25
+```
+
+These are the defaults. Start and cutoff are inclusive; settings must satisfy
+start <= cutoff < mandatory exit. Outside the entry window, signals and option
+selections can still be evaluated, but no new paper trade is created. Entry
+failures are visible on the Trades page. Existing positions remain monitored.
+
+`app/trading_time.py` owns the clock rules and an asyncio mandatory-exit task.
+It checks at startup and every second, with an additional check after ticks.
+The app must be running for timely exits; an overdue position is closed on
+restart, including positions left open on an earlier date. Exit time records
+the actual processing time. No scheduler library, holiday calendar, or live
+broker integration is used.
+
+Latest simulated option quotes are saved in SQLite's `simulated_option_quotes`
+table and restored at startup. Mandatory exits use that quote (the observed
+entry price is the fallback for legacy trades). The exit and both trade events
+are one transaction. Failed periodic checks are logged and retried. The Trades
+page displays **Market closing exit** with its normal realised P&L.
+
+Run verification:
+
+```sh
+cd backend
+.venv/bin/python -m pytest -q
+cd ../frontend
+npm test
+npm run build
+```

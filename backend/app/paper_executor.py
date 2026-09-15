@@ -8,6 +8,7 @@ from app.settings import TradeSettings
 from app.trade_models import TradeEntry, TradeEntryResult
 from app.trade_repository import TradeRepository
 from app.trade_schema import stop_price
+from app.trading_time import TradingTimeRules
 
 
 class PaperExecutor:
@@ -17,6 +18,7 @@ class PaperExecutor:
         self.instruments = instruments
         self.prices = prices
         self.settings = settings or TradeSettings()
+        self.time_rules = TradingTimeRules(self.settings)
 
     def execute(self, signal, selection, timestamp, connection=None):
         if not signal.valid or selection.status != "SELECTED":
@@ -38,6 +40,9 @@ class PaperExecutor:
 
             if self.settings.trade_mode != "PAPER":
                 return fail("LIVE_MODE_NOT_SUPPORTED")
+            time_rejection = self.time_rules.entry_rejection(timestamp)
+            if time_rejection:
+                return fail(time_rejection)
             contract = next((c for c in self.instruments.contracts(selection.instrument)
                              if c.symbol == selection.option_symbol and c.expiry == selection.expiry
                              and c.strike == selection.itm_strike and c.option_type == selection.option_type), None)
@@ -49,6 +54,7 @@ class PaperExecutor:
             price = self.prices.current_price(contract.symbol)
             if price is None or not isfinite(price) or price <= 0:
                 return fail("OPTION_PRICE_UNAVAILABLE")
+            self.repository.record_option_price(contract.symbol, price, timestamp, connection)
             trade = self.repository.save(TradeEntry(
                 signal_id=signal.id, option_selection_id=selection.id,
                 instrument=selection.instrument, trigger_level=signal.level,

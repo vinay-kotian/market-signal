@@ -123,9 +123,9 @@ Persist:
 * realised P&L percentage
 * CLOSED status
 
-Possible exit reason for this milestone:
+Possible exit reasons for this milestone:
 
-`STOP_LOSS`
+`STOP_LOSS` or `MARKET_CLOSING_EXIT`
 
 ## Trade Events
 
@@ -142,3 +142,32 @@ Persist important risk-management events:
 `TRAILING_STOP_UPDATED` should only be recorded when the effective stop actually increases.
 
 Duplicate ticks must not create duplicate exit or risk-management events.
+
+## Trading Times and Mandatory Exit
+
+All configured times are daily Asia/Kolkata wall-clock times:
+
+- `trading_start_time`: 09:15 by default.
+- `new_trade_cutoff_time`: 15:15 by default.
+- `mandatory_exit_time`: 15:25 by default.
+
+New PAPER entries are allowed at or after start and at or before cutoff.
+Outside that window, entry results record `BEFORE_TRADING_START` or
+`NEW_TRADE_CUTOFF_REACHED`. Existing positions still receive stop monitoring.
+
+At or after mandatory exit, close all OPEN PAPER positions at the latest
+persisted simulated option quote. The observed entry quote is the fallback
+for legacy positions. Persist normal exit fields and P&L, with exit reason
+`MARKET_CLOSING_EXIT`, plus `MARKET_CLOSING_EXIT_TRIGGERED` and `POSITION_CLOSED`.
+At the deadline, market-close exit takes precedence over stop evaluation.
+
+Check on startup, every second while running, and after simulated ticks.
+Positions from earlier dates are overdue and close on recovery even before
+that day's trading start. No holiday or market-calendar rules apply.
+Closed trades are never closed again; trade state and exit events commit together.
+
+
+Trading start: 09:15
+New trade cutoff: 15:15
+Mandatory exit: 15:25
+Timezone: Asia/Kolkata

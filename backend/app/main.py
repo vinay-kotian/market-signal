@@ -1,5 +1,6 @@
-from datetime import datetime, timezone
 from contextlib import asynccontextmanager
+from contextlib import suppress
+import asyncio
 
 from fastapi import FastAPI
 
@@ -26,12 +27,15 @@ from app.trade_routes import router as trade_router
 from app.position_monitor import PositionMonitor
 from app.simulation_flow import SimulationFlow
 from app.trade_events import TradeEventRepository
+from app.trading_time import TradingTimeRules, MarketCloseService, utc_now
 
 
 def create_app(database_path=DEFAULT_DATABASE_PATH, signal_settings=None,
-               option_settings=None, option_source=None, trade_settings=None, option_prices=None):
+               option_settings=None, option_source=None, trade_settings=None, option_prices=None,
+               clock=None):
     @asynccontextmanager
     async def lifespan(app):
+        current_time = clock or utc_now
         execution_settings = trade_settings or TradeSettings.from_environment()
         initialize_database(app.state.database_path, execution_settings.stop_loss_percentage,
                             execution_settings.model_dump())
@@ -39,17 +43,21 @@ def create_app(database_path=DEFAULT_DATABASE_PATH, signal_settings=None,
         signal_repository = SignalRepository(app.state.database_path)
         option_repository = OptionSelectionRepository(app.state.database_path)
         instruments = option_source or SimulatedOptionInstrumentSource(
-            datetime.now(timezone.utc).date()
+            current_time().date()
         )
         selector = OptionSelector(instruments)
         prices = option_prices if option_prices is not None else SimulatedOptionPrices.seeded(instruments)
         trade_repository = TradeRepository(app.state.database_path)
+        if option_prices is None:
+            for symbol, price in trade_repository.saved_option_prices().items():
+                prices.set_price(symbol, price)
         executor = PaperExecutor(trade_repository, instruments, prices,
                                  execution_settings)
         monitor = LevelMonitor(LevelRepository(app.state.database_path), engine,
                                signal_repository=signal_repository, option_selector=selector,
                                option_settings=option_settings or OptionSettings.from_environment(),
-                               option_repository=option_repository, paper_executor=executor)
+                               option_repository=option_repository, paper_executor=executor,
+                               clock=current_time)
         app.state.trade_repository = trade_repository
         app.state.paper_executor = executor
         app.state.option_prices = prices
@@ -57,12 +65,22 @@ def create_app(database_path=DEFAULT_DATABASE_PATH, signal_settings=None,
         app.state.signal_repository = signal_repository
         app.state.signal_engine = engine
         app.state.level_monitor = monitor
-        positions = PositionMonitor(trade_repository)
-        flow = SimulationFlow(monitor, positions, prices, instruments)
+        rules = TradingTimeRules(execution_settings)
+        positions = PositionMonitor(trade_repository, clock=current_time, time_rules=rules)
+        market_close = MarketCloseService(trade_repository, prices, rules, current_time)
+        flow = SimulationFlow(monitor, positions, prices, instruments, market_close)
+        app.state.market_close = market_close
         app.state.position_monitor = positions
         app.state.trade_events = TradeEventRepository(app.state.database_path)
         app.state.market_data_provider = SimulatedMarketDataProvider(flow.on_tick)
-        yield
+        await market_close.check()
+        close_task = asyncio.create_task(market_close.run())
+        try:
+            yield
+        finally:
+            close_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await close_task
 
     app = FastAPI(lifespan=lifespan)
     app.state.database_path = database_path

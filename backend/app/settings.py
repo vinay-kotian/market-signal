@@ -1,7 +1,8 @@
 import os
+from datetime import time
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class SignalSettings(BaseModel):
@@ -33,6 +34,18 @@ class TradeSettings(BaseModel):
     breakeven_protection_enabled: bool = True
     breakeven_activation_percent: float = Field(default=10, ge=0, allow_inf_nan=False)
     breakeven_lock_percent: float = Field(default=0, ge=0, allow_inf_nan=False)
+    trading_start_time: time = time(9, 15)
+    new_trade_cutoff_time: time = time(15, 15)
+    mandatory_exit_time: time = time(15, 25)
+
+    @model_validator(mode='after')
+    def validate_times(self):
+        times = (self.trading_start_time, self.new_trade_cutoff_time, self.mandatory_exit_time)
+        if any(value.tzinfo is not None for value in times):
+            raise ValueError('Trading times must be local Asia/Kolkata times without offsets')
+        if not times[0] <= times[1] < times[2]:
+            raise ValueError('Require trading_start_time <= new_trade_cutoff_time < mandatory_exit_time')
+        return self
 
     @classmethod
     def from_environment(cls):

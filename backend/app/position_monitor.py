@@ -7,9 +7,10 @@ from app.trade_events import TradeEventRepository
 
 
 class PositionMonitor:
-    def __init__(self, trades, clock=None):
+    def __init__(self, trades, clock=None, time_rules=None):
         self.trades = trades
         self.clock = clock or (lambda: datetime.now(timezone.utc))
+        self.time_rules = time_rules
 
     async def on_tick(self, tick):
         if not isfinite(tick.price) or tick.price < 0:
@@ -18,7 +19,11 @@ class PositionMonitor:
         with connect(self.trades.database_path) as connection:
             # Serialize competing writers, then re-read only OPEN positions.
             connection.execute('BEGIN IMMEDIATE')
+            self.trades.record_option_price(tick.instrument, tick.price, timestamp, connection)
             for trade in self.trades.open_for_symbol(tick.instrument, connection):
+                if self.time_rules and self.time_rules.exit_due(trade, timestamp):
+                    self.trades.close(trade, tick.price, timestamp, 'MARKET_CLOSING_EXIT', connection)
+                    continue
                 entry = Decimal(str(trade.entry_price))
                 highest = max(Decimal(str(trade.highest_price)), entry, Decimal(str(tick.price)))
                 previous = Decimal(str(trade.current_stop_loss))
