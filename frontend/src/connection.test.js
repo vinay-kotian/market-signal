@@ -14,7 +14,7 @@ test('callback path opens Connection; auth errors are not connected', () => {
 });
 
 test('Connection renders one-click login and enables sync only after authentication', async () => {
-  const server = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' });
+  const server = await createServer({ optimizeDeps: { noDiscovery: true }, server: { middlewareMode: true, hmr: false }, appType: 'custom' });
   try {
     const { default: ConnectionPage } = await server.ssrLoadModule('/src/ConnectionPage.jsx');
     const base = { market_data_mode: 'ZERODHA', login_url: 'http://127.0.0.1:8000/zerodha/login', connection_status: 'SYNC_REQUIRED' };
@@ -31,7 +31,7 @@ test('Connection renders one-click login and enables sync only after authenticat
 
 
 test('new live level automatically selects the first synced instrument', async () => {
-  const server = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' });
+  const server = await createServer({ optimizeDeps: { noDiscovery: true }, server: { middlewareMode: true, hmr: false }, appType: 'custom' });
   try {
     const { default: LevelForm } = await server.ssrLoadModule('/src/LevelForm.jsx');
     const html = renderToStaticMarkup(React.createElement(LevelForm, {

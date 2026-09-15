@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from contextlib import suppress
 import asyncio
+import os
 from pathlib import Path
 from app.backtests import BacktestRunner, router as backtest_router
 
@@ -37,7 +38,7 @@ from app.trade_events import TradeEventRepository
 from app.trading_time import TradingTimeRules, MarketCloseService, utc_now
 
 
-def create_app(database_path=DEFAULT_DATABASE_PATH, signal_settings=None,
+def create_app(database_path=None, signal_settings=None,
                option_settings=None, option_source=None, trade_settings=None, option_prices=None,
                clock=None, market_settings=None, kite_connector=None, socket_factory=None):
     @asynccontextmanager
@@ -128,7 +129,8 @@ def create_app(database_path=DEFAULT_DATABASE_PATH, signal_settings=None,
                 await close_task
 
     app = FastAPI(lifespan=lifespan)
-    app.state.database_path = database_path
+    app.state.database_path = Path(database_path if database_path is not None else
+                                   os.getenv('DATABASE_PATH', str(DEFAULT_DATABASE_PATH)))
     app.include_router(router)
     app.include_router(simulation_router)
     app.include_router(signals_router)

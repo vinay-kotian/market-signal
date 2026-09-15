@@ -872,3 +872,8 @@ and next step, without broker tokens or raw exception details. In particular,
 API_SECRET_MISSING means ZERODHA_API_SECRET was not exported in the terminal
 that started Uvicorn. Stop the full Uvicorn reloader, set both credentials from
 the same Kite app, and restart; Python auto-reload does not reread shell exports.
+
+
+## AWS Lightsail deployment
+
+See [deploy/README.md](deploy/README.md) for Ubuntu, Nginx, systemd, external SQLite storage, HTTPS, and deployment on push to main. No Docker is required.

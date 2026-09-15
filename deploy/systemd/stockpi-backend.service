@@ -1,0 +1,20 @@
+[Unit]
+Description=Stockpi FastAPI backend (PAPER execution)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/stockpi/app/backend
+EnvironmentFile=/opt/stockpi/env/stockpi.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/stockpi/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips=127.0.0.1 --root-path /api
+Restart=always
+RestartSec=5
+UMask=0077
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

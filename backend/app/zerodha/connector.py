@@ -28,7 +28,10 @@ class MarketSettings(BaseModel):
 
     def backend_login_url(self):
         parsed = urlsplit(self.redirect_url)
-        return urlunsplit((parsed.scheme, parsed.netloc, '/zerodha/login', '', ''))
+        return urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rsplit('/', 1)[0] + '/login', '', ''))
+
+    def login_cookie_path(self):
+        return urlsplit(self.redirect_url).path.rsplit('/', 1)[0] or '/'
 
     @classmethod
     def from_environment(cls):

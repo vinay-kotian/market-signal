@@ -113,7 +113,7 @@ async def login(request: Request):
     response = RedirectResponse(state.kite.login_url(nonce), status_code=303)
     response.set_cookie('zerodha_login_state', nonce, httponly=True, samesite='lax',
                         secure=urlsplit(state.market_settings.redirect_url).scheme == 'https',
-                        max_age=600, path='/zerodha')
+                        max_age=600, path=state.market_settings.login_cookie_path())
     response.headers['Cache-Control'] = 'no-store'
     response.headers['Referrer-Policy'] = 'no-referrer'
     return response
@@ -153,7 +153,7 @@ async def callback(request: Request):
             state.zerodha_auth_error_detail = describe(error)
             logging.getLogger(__name__).warning('Zerodha login failed: %s', state.zerodha_auth_error_detail['code'])
         response = RedirectResponse(state.market_settings.frontend_url + '/connection', status_code=303)
-        response.delete_cookie('zerodha_login_state', path='/zerodha')
+        response.delete_cookie('zerodha_login_state', path=state.market_settings.login_cookie_path())
         response.headers['Cache-Control'] = 'no-store'
         response.headers['Referrer-Policy'] = 'no-referrer'
         return response

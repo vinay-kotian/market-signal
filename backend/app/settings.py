@@ -49,5 +49,13 @@ class TradeSettings(BaseModel):
 
     @classmethod
     def from_environment(cls):
-        return cls(**{name: os.environ[name.upper()] for name in cls.model_fields
-                      if name.upper() in os.environ})
+        values = {name: os.environ[name.upper()] for name in cls.model_fields
+                  if name.upper() in os.environ}
+        execution_mode = os.getenv('EXECUTION_MODE')
+        if execution_mode is not None:
+            if execution_mode != 'PAPER':
+                raise ValueError('EXECUTION_MODE must be PAPER')
+            if values.get('trade_mode', 'PAPER') != execution_mode:
+                raise ValueError('EXECUTION_MODE conflicts with TRADE_MODE')
+            values['trade_mode'] = execution_mode
+        return cls(**values)
