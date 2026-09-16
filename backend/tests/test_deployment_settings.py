@@ -33,11 +33,11 @@ def test_execution_mode_environment(monkeypatch):
 
 def test_production_login_preserves_api_prefix_and_cookie(tmp_path):
     app, store, _ = application(tmp_path)
-    with TestClient(app, base_url='https://stockpi.vdkotian.com', root_path='/api') as client:
+    with TestClient(app, base_url='https://stockpi.vkotian.com', root_path='/api') as client:
         config = app.state.market_settings
-        config.redirect_url = 'https://stockpi.vdkotian.com/api/zerodha/callback'
-        config.frontend_url = 'https://stockpi.vdkotian.com'
-        assert config.backend_login_url() == 'https://stockpi.vdkotian.com/api/zerodha/login'
+        config.redirect_url = 'https://stockpi.vkotian.com/api/zerodha/callback'
+        config.frontend_url = 'https://stockpi.vkotian.com'
+        assert config.backend_login_url() == 'https://stockpi.vkotian.com/api/zerodha/login'
         # Simulate the external paths with ASGI root_path, as Uvicorn does behind Nginx.
         response = client.get('/api/zerodha/login', follow_redirects=False)
         assert response.status_code == 303
@@ -48,6 +48,6 @@ def test_production_login_preserves_api_prefix_and_cookie(tmp_path):
         nonce = parse_qs(params['redirect_params'][0])['state'][0]
         response = client.get('/api/zerodha/callback', params={'state': nonce, 'request_token': 'mock'}, follow_redirects=False)
         assert response.status_code == 303
-        assert response.headers['location'] == 'https://stockpi.vdkotian.com/connection'
+        assert response.headers['location'] == 'https://stockpi.vkotian.com/connection'
         assert client.get('/api/connection').json()['auth_status'] == 'CONNECTED'
         assert store.load() == 'private-access-token'

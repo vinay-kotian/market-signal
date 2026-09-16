@@ -1,6 +1,6 @@
 # Stockpi on Ubuntu Lightsail (no Docker)
 
-This prepares one Ubuntu 24.04 server for `https://stockpi.vdkotian.com`.
+This prepares one Ubuntu 24.04 server for `https://stockpi.vkotian.com`.
 No AWS SDK, container runtime, or live broker execution is involved.
 
 ## Layout
@@ -83,8 +83,8 @@ Required production values:
 ```dotenv
 DATABASE_PATH=/opt/stockpi/data/stockpi.db
 EXECUTION_MODE=PAPER
-ZERODHA_REDIRECT_URL=https://stockpi.vdkotian.com/api/zerodha/callback
-FRONTEND_URL=https://stockpi.vdkotian.com
+ZERODHA_REDIRECT_URL=https://stockpi.vkotian.com/api/zerodha/callback
+FRONTEND_URL=https://stockpi.vkotian.com
 ```
 
 This is a systemd EnvironmentFile: use `KEY=value`, not `export KEY=value`.
@@ -130,17 +130,17 @@ Do not run the deployment script as root.
 ```bash
 bash /opt/stockpi/app/deploy/scripts/deploy.sh
 curl --fail http://127.0.0.1:8000/health
-curl --fail -H 'Host: stockpi.vdkotian.com' http://127.0.0.1/api/health
+curl --fail -H 'Host: stockpi.vkotian.com' http://127.0.0.1/api/health
 ```
 
-Create a DNS A record for `stockpi.vdkotian.com` pointing to the Lightsail static
+Create a DNS A record for `stockpi.vkotian.com` pointing to the Lightsail static
 IP. Only publish an AAAA record if IPv6 is configured and reachable. Once DNS
 and HTTP work, install HTTPS:
 
 ```bash
-sudo certbot --nginx -d stockpi.vdkotian.com
+sudo certbot --nginx -d stockpi.vkotian.com
 sudo certbot renew --dry-run
-curl --fail https://stockpi.vdkotian.com/api/health
+curl --fail https://stockpi.vkotian.com/api/health
 ```
 
 Certbot updates the installed Nginx config with certificates and HTTPS redirect.
