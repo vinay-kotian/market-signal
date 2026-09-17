@@ -292,3 +292,30 @@ References: [Nginx proxy_pass](https://nginx.org/en/docs/http/ngx_http_proxy_mod
 [Uvicorn deployment](https://www.uvicorn.org/deployment/),
 [Certbot](https://certbot.eff.org/instructions?ws=nginx&os=pip),
 [GitHub Actions secrets](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets).
+
+## Browser WebSocket upgrade (existing HTTPS installations)
+
+The application now serves `/ws/market`. The repository Nginx config includes
+its upgrade proxy; the deployment script intentionally does not overwrite your
+installed Certbot configuration. On an existing server, edit:
+
+```bash
+sudo nano /etc/nginx/sites-available/stockpi
+```
+
+Copy only the `location /ws/ { ... }` block from
+`/opt/stockpi/app/deploy/nginx/stockpi.conf` into the HTTPS server block for
+`stockpi.vkotian.com`. Preserve Certbot's certificate paths, HTTPS redirects,
+React fallback and `/api/` proxy. The /ws proxy must retain its full path
+(`proxy_pass http://127.0.0.1:8000;`, without a trailing slash).
+
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Keep one backend worker. The same Nginx site access restrictions must cover
+`/ws/` as well as `/api/`. Chrome's Network → WS should show a 101 response for
+`wss://stockpi.vkotian.com/ws/market`. A 200 HTML response means the location
+block is missing; 502 means the backend cannot be reached. See
+[the live data audit](../docs/live-data-flow.md) for event/reconnect verification.

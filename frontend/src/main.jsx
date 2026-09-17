@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { request } from './api';
+import { createLiveFeed, marketSocketUrl, applyLiveEvent } from './liveFeed';
 import { formatPrice, levelStatus } from './format';
 import SignalsTable from './SignalsTable';
 import OptionSelectionsTable from './OptionSelectionsTable';
@@ -14,46 +15,55 @@ import './styles.css';
 
 function App() {
   const [page, setPage] = useState(() => initialPage(window.location.pathname));
-  const [connection, setConnection] = useState(null);
+  const [liveState, setLiveState] = useState({ connection: null, levels: null, events: null,
+    signals: null, selections: null, trades: null, entryResults: null, prices: {} });
+  const { connection, levels, events, signals, selections, trades, entryResults, prices } = liveState;
   const [refreshKey, setRefreshKey] = useState(0);
-  const [levels, setLevels] = useState(null);
-  const [events, setEvents] = useState(null);
-  const [signals, setSignals] = useState(null);
-  const [selections, setSelections] = useState(null);
-  const [trades, setTrades] = useState(null);
-  const [entryResults, setEntryResults] = useState(null);
+  const [feedStatus, setFeedStatus] = useState('DISCONNECTED');
+  const [lastUiEvent, setLastUiEvent] = useState(null);
+  const feed = useRef(null);
   const [errors, setErrors] = useState({});
   const [selected, setSelected] = useState('');
   const [search, setSearch] = useState('');
-  const [prices, setPrices] = useState({});
   const [tickPrice, setTickPrice] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [editor, setEditor] = useState(null);
   const [deleting, setDeleting] = useState(null);
 
-  async function refresh() {
-    setRefreshKey(value => value + 1);
+  async function loadSnapshot() {
+    const snapshot = {};
+    const failures = {};
     await Promise.all([
-      ['/connection', setConnection, 'connection'], ['/levels', setLevels, 'levels'], ['/simulation/events', setEvents, 'events'], ['/signals', setSignals, 'signals'],
-      ['/option-selections', setSelections, 'selections'],
-      ['/trades', setTrades, 'trades'], ['/trade-entry-results', setEntryResults, 'entryResults'],
-    ].map(async ([path, setter, key]) => {
-      try {
-        setter(await request(path));
-        setErrors(previous => ({ ...previous, [key]: null }));
-      } catch (error) {
-        setter(null);
-        setErrors(previous => ({ ...previous, [key]: error.message }));
-      }
+      ['/connection', 'connection'], ['/levels', 'levels'], ['/simulation/events', 'events'],
+      ['/signals', 'signals'], ['/option-selections', 'selections'],
+      ['/trades', 'trades'], ['/trade-entry-results', 'entryResults'],
+    ].map(async ([path, key]) => {
+      try { snapshot[key] = await request(path); failures[key] = null; }
+      catch (error) { snapshot[key] = null; failures[key] = error.message; }
     }));
+    snapshot.prices = Object.fromEntries(Object.entries(snapshot.connection?.prices ?? {})
+      .map(([symbol, price]) => [symbol, { price, change: snapshot.connection?.price_changes?.[symbol] ?? null }]));
+    return { snapshot, failures };
   }
-  useEffect(() => { refresh(); }, []);
+  async function refresh() { await feed.current?.refresh(); }
   useEffect(() => {
-    if (connection?.market_data_mode !== 'ZERODHA') return;
-    const timer = setInterval(refresh, 5000);
-    return () => clearInterval(timer);
-  }, [connection?.market_data_mode]);
+    const client = createLiveFeed({ url: marketSocketUrl(window.location), loadSnapshot,
+      onSnapshot({ snapshot, failures }) {
+        setLiveState(snapshot); setErrors(previous => ({ ...previous, ...failures }));
+        setRefreshKey(value => value + 1);
+      },
+      onEvent(event) {
+        setLiveState(previous => applyLiveEvent(previous, event));
+        setLastUiEvent(event.timestamp);
+      },
+      onStatus: setFeedStatus,
+    });
+    feed.current = client;
+    // REST still makes the page usable if the socket endpoint is unavailable.
+    client.refresh(); client.start();
+    return () => { client.stop(); feed.current = null; };
+  }, []);
   const instruments = [...new Set((levels ?? []).map(level => level.instrument))];
   useEffect(() => {
     if (!instruments.includes(selected)) setSelected(instruments[0] ?? '');
@@ -73,7 +83,7 @@ function App() {
   function navigate(next) { window.history.pushState({}, '', '/' + next); setPage(next); setEditor(null); setDeleting(null); }
   const rows = (levels ?? []).filter(level => level.instrument === selected);
   const live = connection?.market_data_mode === 'ZERODHA';
-  const shownPrices = live ? Object.fromEntries(Object.entries(connection.prices ?? {}).map(([symbol, price]) => [symbol, { price }])) : prices;
+  const shownPrices = prices;
   const current = shownPrices[selected]?.price;
 
   return <div id="ms-design">
@@ -84,20 +94,20 @@ function App() {
         <div className="ms-search"><input type="search" aria-label="Search instruments" placeholder="Search instruments" value={search} onChange={event => setSearch(event.target.value)} /></div>
         <div className="ms-watchlist">{instruments.filter(symbol => symbol.toLowerCase().includes(search.toLowerCase())).map(symbol => <button className="ms-watch" aria-pressed={symbol === selected} key={symbol} disabled={busy} onClick={() => { setSelected(symbol); setEditor(null); }}>
           <span>{symbol}<small>{levels.filter(level => level.instrument === symbol).length} levels</small></span>
-          <span className="ms-quote">{formatPrice(shownPrices[symbol]?.price)}<small className={shownPrices[symbol]?.change >= 0 ? 'ms-up' : 'ms-down'}>{shownPrices[symbol]?.change == null ? 'No previous tick' : `${shownPrices[symbol].change >= 0 ? '↗ +' : '↘ '}${formatPrice(shownPrices[symbol].change)}`}</small></span>
+          <span className="ms-quote">{formatPrice(shownPrices[symbol]?.price)}<small className={shownPrices[symbol]?.change >= 0 ? 'ms-up' : 'ms-down'}>{shownPrices[symbol]?.change == null ? 'Waiting for next tick' : `${shownPrices[symbol].change >= 0 ? '↗ +' : '↘ '}${formatPrice(shownPrices[symbol].change)}`}</small></span>
         </button>)}</div>
-        <div className="ms-sidefoot">{live ? 'Live Zerodha prices' : 'Prices sent from this browser session'}<br />{live ? 'Updated every 5 seconds' : 'Movement since previous submitted tick'}</div>
+        <div className="ms-sidefoot">{live ? 'Live Zerodha prices' : 'Simulated prices received by the backend'}<br />{live ? 'Movement since previous received tick' : 'Movement since previous submitted tick'}</div>
       </aside>
       <main>
         <nav aria-label="Pages">{['dashboard', 'levels', 'trades', 'report', 'backtest', 'connection'].map(name => <button className="ms-tab" key={name} aria-pressed={page === name} disabled={busy} onClick={() => navigate(name)}>{name[0].toUpperCase() + name.slice(1)}</button>)}</nav>
         <div className="ms-heading"><h2>{page[0].toUpperCase() + page.slice(1)}</h2><div className="ms-actions"><button className="ms-link" disabled={busy} onClick={() => mutate(async () => {})}>Refresh</button>{(page === 'dashboard' || page === 'levels') && <button className="ms-button" disabled={busy} onClick={() => page === 'dashboard' ? navigate('levels') : setEditor({})}>{page === 'dashboard' ? 'Manage levels ↗' : '+ Add level'}</button>}</div></div>
-        {page === 'connection' && <ConnectionPage connection={connection} error={errors.connection} onRefresh={refresh} />}
+        {page === 'connection' && <ConnectionPage feedStatus={feedStatus} lastUiEvent={lastUiEvent} connection={connection} error={errors.connection} onRefresh={refresh} />}
         {page === 'backtest' && <BacktestPage />}
         {page === 'report' && <PaperReportPage refreshKey={refreshKey} />}
         {page === 'trades' && <TradesPage trades={trades} results={entryResults} error={errors.trades} resultsError={errors.entryResults} onRetry={() => mutate(async () => {})} />}
         {(page === 'dashboard' || page === 'levels') && <>
         {(errors.levels || errors.events || errors.action) && <div className="ms-error" role="alert">{errors.action || errors.levels || `Trigger status unavailable: ${errors.events}`} <button className="ms-link" disabled={busy} onClick={() => mutate(async () => {})}>Retry refresh</button></div>}
-        {page === 'dashboard' && <div className="ms-pricebar"><div className="ms-instrument">{selected || 'No instrument selected'}</div><div><div className="ms-current">{formatPrice(current)}</div><div className="ms-sub">{live ? 'Latest received Zerodha price' : 'Last price submitted from this session'}</div></div></div>}
+        {page === 'dashboard' && <div className="ms-pricebar"><div className="ms-instrument">{selected || 'No instrument selected'}</div><div><div className="ms-current">{formatPrice(current)}</div><div className="ms-sub">{live ? 'Latest received Zerodha price' : 'Latest simulated price'}</div></div></div>}
         {editor && <LevelForm key={editor.id ?? 'new'} level={editor.id ? editor : null} instrument={selected} instrumentOptions={connection?.available_instruments ?? []} live={live} busy={busy} onCancel={() => setEditor(null)} onSave={data => mutate(async () => {
           await request(editor.id ? `/levels/${editor.id}` : '/levels', { method: editor.id ? 'PUT' : 'POST', body: JSON.stringify(data) });
           setSelected(data.instrument); setEditor(null);
@@ -122,7 +132,7 @@ function App() {
             if (!symbol || !Number.isFinite(price)) return;
             mutate(async () => {
               await request('/simulation/tick', { method: 'POST', body: JSON.stringify({ instrument: symbol, price }) });
-              setPrices(previous => ({ ...previous, [symbol]: { price, change: previous[symbol] ? price - previous[symbol].price : null } }));
+
               setMessage('Tick processed.');
             });
           }}>

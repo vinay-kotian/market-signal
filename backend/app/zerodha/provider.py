@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import struct
+from datetime import datetime, timezone
 from math import isfinite
 
 from app.database import connect
@@ -28,7 +29,7 @@ class ZerodhaOptionPrices(SimulatedOptionPrices):
 
 
 class ZerodhaMarketDataProvider:
-    def __init__(self, consumer, instruments, connector, levels, trades, socket_factory=None):
+    def __init__(self, consumer, instruments, connector, levels, trades, socket_factory=None, on_status=None):
         self.consumer, self.instruments, self.connector = consumer, instruments, connector
         self.levels, self.trades = levels, trades
         if socket_factory is None:
@@ -38,6 +39,10 @@ class ZerodhaMarketDataProvider:
         self.socket = None
         self.subscribed = set()
         self.latest = {}
+        self.ticks_received = 0
+        self.last_tick_at = None
+        self.reconnect_count = 0
+        self.on_status = on_status
 
     async def publish(self, tick: PriceTick):
         await self.consumer(tick)
@@ -60,6 +65,10 @@ class ZerodhaMarketDataProvider:
             await self.socket.send(json.dumps({'a': 'subscribe', 'v': sorted(added)}))
             await self.socket.send(json.dumps({'a': 'mode', 'v': ['ltp', sorted(added)]}))
         self.subscribed = required
+        if added or removed:
+            logging.getLogger("uvicorn.error").info("Zerodha subscriptions: count=%s", len(required))
+            if self.on_status:
+                self.on_status()
 
     def normalize_tick(self, token, price):
         if isinstance(token, bool) or not isinstance(token, int):
@@ -92,13 +101,19 @@ class ZerodhaMarketDataProvider:
         for token, price in packets:
             tick = self.normalize_tick(token, price)
             if tick is not None and token in self.subscribed:
+                self.ticks_received += 1
+                self.last_tick_at = datetime.now(timezone.utc).isoformat()
+                if self.ticks_received == 1 or self.ticks_received % 1000 == 0:
+                    logging.getLogger("uvicorn.error").info("Zerodha ticks received=%s latest=%s", self.ticks_received, self.last_tick_at)
                 await self.publish(tick)
         await self.refresh_subscriptions()
 
     def set_status(self, status):
         if self.status != status:
-            logging.getLogger(__name__).info('Zerodha market connection: %s', status)
-        self.status = status
+            logging.getLogger('uvicorn.error').info('Zerodha market connection: %s; reconnects=%s', status, self.reconnect_count)
+            self.status = status
+            if self.on_status:
+                self.on_status()
 
     async def run(self):
         delay = 1
@@ -131,8 +146,10 @@ class ZerodhaMarketDataProvider:
             except Exception as error:
                 if getattr(getattr(error, 'response', None), 'status_code', None) in (401, 403):
                     self.connector.expire()
+                self.reconnect_count += 1
                 self.set_status('RECONNECTING')  # Never log credential-bearing URLs or exceptions.
             finally:
                 self.socket, self.subscribed = None, set()
+                self.set_status('DISCONNECTED')
             await asyncio.sleep(delay)
             delay = min(delay * 2, 30)

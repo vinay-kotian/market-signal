@@ -41,9 +41,11 @@ class TradingTimeRules:
 class MarketCloseService:
     def __init__(self, trades, prices, rules, clock=utc_now):
         self.trades, self.prices, self.rules, self.clock = trades, prices, rules, clock
+        self.on_change = None
 
     async def check(self):
         timestamp = self.clock()
+        changed = False
         with connect(self.trades.database_path) as connection:
             connection.execute('BEGIN IMMEDIATE')
             for trade in self.trades.all_open(connection):
@@ -57,7 +59,9 @@ class MarketCloseService:
                 if price is None:
                     # Every existing position has at least its observed entry quote.
                     price = trade.entry_price
-                self.trades.close(trade, price, timestamp, 'MARKET_CLOSING_EXIT', connection)
+                changed = self.trades.close(trade, price, timestamp, 'MARKET_CLOSING_EXIT', connection) or changed
+        if changed and self.on_change:
+            self.on_change()
 
     async def run(self):
         while True:

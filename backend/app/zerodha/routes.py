@@ -24,7 +24,10 @@ def require_zerodha(request):
 
 @router.get('/connection')
 def connection_status(request: Request):
-    state = request.app.state
+    return connection_snapshot(request.app.state)
+
+
+def connection_snapshot(state):
     provider = state.market_data_provider
     instruments = state.zerodha_instruments
     auth_status = ('NOT_CONNECTED' if state.kite is None else
@@ -44,7 +47,11 @@ def connection_status(request: Request):
                 authenticated=bool(state.kite and state.kite.authenticated),
                 instrument_sync_status=instruments.status if instruments else 'NOT_APPLICABLE',
                 last_successful_sync=instruments.last_sync if instruments else None,
-                prices=getattr(provider, 'latest', {}))
+                prices=dict(state.live_prices), price_changes=dict(state.live_price_changes),
+                subscribed_instrument_count=len(getattr(provider, 'subscribed', set())),
+                ticks_received=getattr(provider, 'ticks_received', 0),
+                last_tick_at=getattr(provider, 'last_tick_at', None),
+                reconnect_count=getattr(provider, 'reconnect_count', 0))
 
 
 @router.get('/zerodha/login-url')
@@ -77,6 +84,7 @@ async def create_session(body: TokenInput, request: Request):
             raise HTTPException(status_code=400, detail='Login exchange failed; check configuration and obtain a fresh request token')
         state.zerodha_auth_error = False
         await restart(state)
+    state.live_publisher.connection()
     return {'status': 'AUTHENTICATED'}
 
 
@@ -88,8 +96,10 @@ async def sync_instruments(request: Request):
             await state.zerodha_instruments.sync()
             state.simulation_flow.refresh_instruments()
         except Exception:
+            state.live_publisher.connection()
             raise HTTPException(status_code=502, detail='Instrument sync failed; check session and retry')
         await restart(state)
+    state.live_publisher.connection()
     return {'status': 'SYNCED', 'last_successful_sync': state.zerodha_instruments.last_sync}
 
 
@@ -152,6 +162,7 @@ async def callback(request: Request):
             state.zerodha_auth_error = True
             state.zerodha_auth_error_detail = describe(error)
             logging.getLogger(__name__).warning('Zerodha login failed: %s', state.zerodha_auth_error_detail['code'])
+        state.live_publisher.connection()
         response = RedirectResponse(state.market_settings.frontend_url + '/connection', status_code=303)
         response.delete_cookie('zerodha_login_state', path=state.market_settings.login_cookie_path())
         response.headers['Cache-Control'] = 'no-store'

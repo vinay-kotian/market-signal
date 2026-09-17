@@ -15,8 +15,10 @@ def get_repository(request: Request) -> LevelRepository:
 
 
 @router.post("", response_model=Level, status_code=status.HTTP_201_CREATED)
-def create_level(data: LevelInput, repository: LevelRepository = Depends(get_repository)):
-    return repository.create(data)
+async def create_level(data: LevelInput, request: Request, repository: LevelRepository = Depends(get_repository)):
+    level = repository.create(data)
+    request.app.state.websocket_hub.publish('LEVEL_UPDATED', dict(level=level))
+    return level
 
 
 @router.get("", response_model=List[Level])
@@ -33,19 +35,21 @@ def get_level(id: LevelId, repository: LevelRepository = Depends(get_repository)
 
 
 @router.put("/{id}", response_model=Level)
-def update_level(
-    id: LevelId, data: LevelInput, repository: LevelRepository = Depends(get_repository)
+async def update_level(
+    id: LevelId, data: LevelInput, request: Request, repository: LevelRepository = Depends(get_repository)
 ):
     level = repository.update(id, data)
     if level is None:
         raise HTTPException(status_code=404, detail="Level not found")
+    request.app.state.websocket_hub.publish('LEVEL_UPDATED', dict(level=level))
     return level
 
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_level(id: LevelId, repository: LevelRepository = Depends(get_repository)):
+async def delete_level(id: LevelId, request: Request, repository: LevelRepository = Depends(get_repository)):
     if not repository.delete(id):
         raise HTTPException(status_code=404, detail="Level not found")
+    request.app.state.websocket_hub.publish('LEVEL_DELETED', dict(id=id))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

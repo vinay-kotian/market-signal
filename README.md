@@ -787,7 +787,7 @@ Open **Connection** in React:
    Click **Sync instruments** to start the price feed. Authentication status is
    separate from the WebSocket's connection state, which is also displayed.
 4. Add enabled NIFTY/BANKNIFTY levels. The watchlist displays received prices;
-   dashboard data refreshes every five seconds. Simulation input is hidden and
+   dashboard data updates through one shared browser WebSocket. Simulation input is hidden and
    its API is blocked while ZERODHA mode is active.
 
 Connection authentication states are NOT_CONNECTED, AUTH_REQUIRED, CONNECTED,
@@ -895,3 +895,11 @@ state events with the underlying price, timestamp and entry trade ID where appli
 Each level ID is independent. Restarting, editing, or toggling enabled does not
 reset its state. Legacy levels migrate as ACTIVE without changing existing saved
 states. The dashboard and Levels page display state separately from enabled status.
+
+
+### Live browser feed
+
+See [live data flow and audit](docs/live-data-flow.md) for the Zerodha socket
+path, remaining entry-time REST quote, browser reconnect behavior, metrics,
+and Chrome/server validation. Existing HTTPS servers must install the new
+`/ws/` Nginx location without overwriting Certbot configuration.

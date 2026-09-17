@@ -107,6 +107,7 @@ def test_normalized_ticks_and_shared_pipeline(live):
     asyncio.run(provider.handle_message(frame(10002, 100)))
     assert client.get('/trades').json()[0]['exit_reason'] == 'STOP_LOSS'
     assert provider.required_tokens() == {256265}
+    broker.ltp.assert_awaited_once()  # Ongoing option ticks never REST-poll.
 
 
 def test_subscriptions_and_resubscribe(live):
@@ -221,6 +222,8 @@ def test_reconnect_loop_resubscribes(live):
         task = asyncio.create_task(provider.run())
         try:
             await asyncio.wait_for(reached.wait(), timeout=3)
+            assert provider.reconnect_count == 1
+            assert provider.status == 'CONNECTED'
             assert len(connections) == 2
             assert connections[0].sent == connections[1].sent
             assert connections[1].sent[0] == {'a': 'subscribe', 'v': [256265]}
@@ -235,3 +238,30 @@ def test_synced_indices_available_without_any_levels(live):
     client, _ = live
     assert client.get('/levels').json() == []
     assert client.get('/connection').json()['available_instruments'] == ['NIFTY', 'BANKNIFTY']
+
+
+def test_continuous_socket_prices_do_not_poll_rest_and_expose_metrics(live):
+    client, broker = live
+    client.post('/levels', json=dict(instrument='NIFTY', price=25000, enabled=True))
+    provider = client.app.state.market_data_provider
+    provider.subscribed = {256265}
+    provider.set_status('CONNECTED')
+    with client.websocket_connect('/ws/market') as socket:
+        for price in [24900, 24901, 24902]:
+            client.portal.call(provider.handle_message, frame(256265, price))
+            event = socket.receive_json()
+            assert event['type'] == 'MARKET_PRICE_UPDATED'
+            assert event['data']['price'] == price
+        broker.ltp.assert_not_awaited()
+        assert provider.ticks_received == 3
+        assert provider.last_tick_at
+        result = client.get('/connection').json()
+        assert result['ticks_received'] == 3
+        assert result['subscribed_instrument_count'] == 1
+        assert result['last_tick_at'] == provider.last_tick_at
+        client.portal.call(provider.set_status, 'DISCONNECTED')
+        status = socket.receive_json()
+        assert status['type'] == 'ZERODHA_CONNECTION_STATUS'
+        assert status['data']['connection_status'] == 'DISCONNECTED'
+        assert 'api_key' not in json.dumps(status)
+        assert 'access_token' not in json.dumps(status)

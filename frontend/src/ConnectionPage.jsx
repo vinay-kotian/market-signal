@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { request } from './api';
 import { authenticationStatus } from './connectionState';
 
-export default function ConnectionPage({ connection, error, onRefresh }) {
+export default function ConnectionPage({ connection, error, onRefresh, feedStatus = 'DISCONNECTED', lastUiEvent }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [actionError, setActionError] = useState('');
@@ -22,11 +22,18 @@ export default function ConnectionPage({ connection, error, onRefresh }) {
     <p className="ms-sub">Execution remains PAPER. Market data mode is configured in the backend environment and takes effect after restart.</p>
     {(error || actionError) && <p className="ms-error" role="alert">{actionError || error}</p>}
     {!connection && !error && <p>Loading connection…</p>}
+    <dl className="ms-report-metrics">
+      <div><dt>Browser live feed</dt><dd>{feedStatus}</dd></div>
+      <div><dt>Last UI event</dt><dd>{lastUiEvent ? new Date(lastUiEvent).toLocaleString() : '—'}</dd></div>
+    </dl>
     {connection && <>
       <dl className="ms-report-metrics">
         <div><dt>Market data</dt><dd>{connection.market_data_mode}</dd></div>
         <div><dt>Connection</dt><dd>{status}</dd></div>
-        <div><dt>Price stream</dt><dd>{connection.connection_status}</dd></div>
+        <div><dt>Zerodha WebSocket</dt><dd>{connection.market_data_mode === 'ZERODHA' ? (connection.connection_status === 'CONNECTED' ? 'CONNECTED' : 'DISCONNECTED') : 'NOT_APPLICABLE'}<small className="ms-time">{connection.connection_status}</small></dd></div>
+        <div><dt>Last Zerodha tick (received)</dt><dd>{connection.last_tick_at ? new Date(connection.last_tick_at).toLocaleString() : '—'}</dd></div>
+        <div><dt>Subscribed instruments</dt><dd>{connection.subscribed_instrument_count ?? 0}</dd></div>
+        <div><dt>Ticks received / reconnects</dt><dd>{connection.ticks_received ?? 0} / {connection.reconnect_count ?? 0}</dd></div>
         <div><dt>Instrument sync</dt><dd>{connection.instrument_sync_status}</dd></div>
         <div><dt>Last successful sync</dt><dd>{connection.last_successful_sync ? new Date(connection.last_successful_sync).toLocaleString() : '—'}</dd></div>
       </dl>

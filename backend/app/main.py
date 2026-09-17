@@ -3,6 +3,7 @@ from contextlib import suppress
 import asyncio
 import os
 from pathlib import Path
+from app.live_feed import WebSocketHub, LiveEventPublisher, router as live_router
 from app.backtests import BacktestRunner, router as backtest_router
 
 from app.zerodha.session_store import SessionStore
@@ -98,10 +99,16 @@ def create_app(database_path=None, signal_settings=None,
         app.state.market_close = market_close
         app.state.position_monitor = positions
         app.state.trade_events = TradeEventRepository(app.state.database_path)
+        app.state.websocket_hub = WebSocketHub()
+        app.state.live_prices = {}
+        app.state.live_price_changes = {}
+        publisher = LiveEventPublisher(app.state)
+        app.state.live_publisher = publisher
+        market_close.on_change = publisher.committed
         app.state.market_data_provider = (
-            ZerodhaMarketDataProvider(flow.on_tick, instruments, app.state.kite,
-                                      LevelRepository(app.state.database_path), trade_repository, socket_factory)
-            if is_zerodha else SimulatedMarketDataProvider(flow.on_tick))
+            ZerodhaMarketDataProvider(publisher.on_tick, instruments, app.state.kite,
+                                      LevelRepository(app.state.database_path), trade_repository, socket_factory, on_status=publisher.connection)
+            if is_zerodha else SimulatedMarketDataProvider(publisher.on_tick))
         app.state.connection_lock = asyncio.Lock()
         app.state.zerodha_task = None
         if is_zerodha:
@@ -138,6 +145,7 @@ def create_app(database_path=None, signal_settings=None,
     app.include_router(trade_router)
     app.include_router(backtest_router)
     app.include_router(connection_router)
+    app.include_router(live_router)
 
     @app.get("/health")
     async def health():
