@@ -390,3 +390,39 @@ an owner-readable local credential file, outside trading tables. React receives
 only authentication status, never the access token or API secret. Authentication
 and streaming status are separate. Login does not alter PAPER execution or any
 strategy/risk rule.
+
+
+## Level Rearming
+
+After a trade is successfully entered for a configured level,
+that level becomes DISARMED.
+
+A DISARMED level cannot generate another trade.
+
+The level becomes ACTIVE again only when the underlying price
+moves at least the configured distance away from the level.
+
+Setting:
+
+level_rearm_distance_points = 50
+
+Rearm condition:
+
+abs(current_price - level) >= level_rearm_distance_points
+
+Example:
+
+Level = 23231
+Rearm distance = 50
+
+The level reactivates when price reaches:
+
+23281 or higher
+
+or
+
+23181 or lower
+
+Level state must persist across application restart.
+
+Different configured levels are independent.

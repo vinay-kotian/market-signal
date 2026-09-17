@@ -2,6 +2,7 @@ from contextlib import nullcontext
 from math import isfinite
 
 from app.database import connect
+from app.level_repository import LevelRepository
 from app.option_instruments import OptionInstrumentSource
 from app.option_prices import OptionPriceSource
 from app.settings import TradeSettings
@@ -44,6 +45,10 @@ class PaperExecutor:
                     failure_reason=reason, timestamp=timestamp,
                 ), connection)
 
+            level_state = connection.execute('SELECT status FROM levels WHERE id = ?',
+                                             (signal.level_id,)).fetchone()
+            if level_state is not None and level_state['status'] == 'DISARMED':
+                return fail('LEVEL_DISARMED')
             if self.settings.trade_mode not in ("PAPER", "BACKTEST"):
                 return fail("LIVE_MODE_NOT_SUPPORTED")
             if self.settings.trade_mode != self.repository.mode:
@@ -81,6 +86,10 @@ class PaperExecutor:
                 breakeven_activation_percent=self.settings.breakeven_activation_percent,
                 breakeven_lock_percent=self.settings.breakeven_lock_percent,
             ), connection)
+            LevelRepository(self.repository.database_path).change_status(
+                signal.level_id, 'DISARMED', signal.trigger_price, timestamp,
+                connection=connection, trade_id=trade.trade_id,
+            )
             return self.repository.record_result(TradeEntryResult(
                 option_selection_id=selection.id, trade_id=trade.trade_id, status="OPEN",
                 failure_reason=None, timestamp=trade.entry_time,

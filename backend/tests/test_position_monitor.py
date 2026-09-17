@@ -144,7 +144,7 @@ def test_option_tick_updates_quote_and_negative_price_is_rejected(client):
     assert client.post('/simulation/tick', json={'instrument': trade['option_symbol'], 'price': -1}).status_code == 422
     assert client.get('/trades').json()[0]['status'] == 'OPEN'
     tick(client, trade['option_symbol'], 110)
-    tick(client, 'NIFTY', 24990)
+    tick(client, 'NIFTY', 24950)  # Re-arm before testing the next entry quote.
     tick(client, 'NIFTY', 25000)
     assert client.get('/trades').json()[0]['entry_price'] == 110
     assert client.get('/trades').json()[0]['initial_stop_loss'] == 99

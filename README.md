@@ -877,3 +877,21 @@ the same Kite app, and restart; Python auto-reload does not reread shell exports
 ## AWS Lightsail deployment
 
 See [deploy/README.md](deploy/README.md) for Ubuntu, Nginx, systemd, external SQLite storage, HTTPS, and deployment on push to main. No Docker is required.
+
+### Level re-arming
+
+`LEVEL_REARM_DISTANCE_POINTS=50` configures the positive underlying-price distance
+needed to re-arm a level (restart the backend after changing its environment).
+Backtests accept the same `level_rearm_distance_points` setting independently.
+
+Successful trade entry persists `DISARMED` and `LEVEL_DISARMED` together with the
+trade. Rejected signals and failed entries do not disarm. Enabled disarmed levels
+continue observing underlying prices without generating signals. A distance of
+at least the setting persists `ACTIVE` and `LEVEL_REARMED`; only a later return or
+crossing can trigger again. Option quotes and closing trades do not re-arm levels.
+
+`GET /levels` includes `status`; `GET /levels/{id}/events` returns ordered persisted
+state events with the underlying price, timestamp and entry trade ID where applicable.
+Each level ID is independent. Restarting, editing, or toggling enabled does not
+reset its state. Legacy levels migrate as ACTIVE without changing existing saved
+states. The dashboard and Levels page display state separately from enabled status.

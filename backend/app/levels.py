@@ -3,7 +3,7 @@ from typing import Annotated, List
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response, status
 
 from app.level_repository import LevelRepository
-from app.models import Level, LevelInput
+from app.models import Level, LevelInput, LevelEvent
 
 
 router = APIRouter(prefix="/levels", tags=["levels"])
@@ -47,3 +47,10 @@ def delete_level(id: LevelId, repository: LevelRepository = Depends(get_reposito
     if not repository.delete(id):
         raise HTTPException(status_code=404, detail="Level not found")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get('/{id}/events', response_model=List[LevelEvent])
+def level_events(id: LevelId, repository: LevelRepository = Depends(get_repository)):
+    if repository.get(id) is None:
+        raise HTTPException(status_code=404, detail='Level not found')
+    return repository.events(id)

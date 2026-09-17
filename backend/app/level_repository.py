@@ -1,8 +1,10 @@
 from datetime import datetime, timezone
+from contextlib import nullcontext
+from decimal import Decimal
 from typing import List, Optional
 
 from app.database import connect
-from app.models import Level, LevelInput
+from app.models import Level, LevelInput, LevelEvent
 
 
 class LevelRepository:
@@ -68,3 +70,30 @@ class LevelRepository:
                 "DELETE FROM levels WHERE id = ?", (level_id,)
             )
             return cursor.rowcount > 0
+
+    def change_status(self, level_id, status, price, timestamp, connection=None, trade_id=None):
+        if status not in ('ACTIVE', 'DISARMED'):
+            raise ValueError('Unknown level state')
+        context = connect(self.database_path) if connection is None else nullcontext(connection)
+        with context as connection:
+            changed = connection.execute(
+                'UPDATE levels SET status = ?, updated_at = ? WHERE id = ? AND status != ?',
+                (status, timestamp.isoformat(), level_id, status),
+            ).rowcount
+            if changed:
+                connection.execute("""INSERT INTO level_events
+                    (level_id, event_type, underlying_price, timestamp, trade_id)
+                    VALUES (?, ?, ?, ?, ?)""",
+                    (level_id, 'LEVEL_REARMED' if status == 'ACTIVE' else 'LEVEL_DISARMED',
+                     price, timestamp.isoformat(), trade_id))
+            return bool(changed)
+
+    def rearm(self, level, price, distance, timestamp):
+        if abs(Decimal(str(price)) - Decimal(str(level.price))) >= Decimal(str(distance)):
+            return self.change_status(level.id, 'ACTIVE', price, timestamp)
+        return False
+
+    def events(self, level_id):
+        with connect(self.database_path) as connection:
+            return [LevelEvent(**dict(row)) for row in connection.execute(
+                'SELECT * FROM level_events WHERE level_id = ? ORDER BY id', (level_id,))]

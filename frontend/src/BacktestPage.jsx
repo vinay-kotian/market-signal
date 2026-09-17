@@ -5,6 +5,7 @@ import { formatPrice } from './format';
 const defaults = {
   lookback_minutes: 15, minimum_approach_distance_enabled: false,
   minimum_approach_distance_points: 0, itm_depth: 1, number_of_lots: 1,
+  level_rearm_distance_points: 50,
   stop_loss_percentage: 10, trailing_stop_percentage: 10,
   breakeven_protection_enabled: true, breakeven_activation_percent: 10,
   breakeven_lock_percent: 0, trading_start_time: '09:15',

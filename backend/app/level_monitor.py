@@ -12,7 +12,7 @@ from app.database import connect
 from app.option_instruments import SimulatedOptionInstrumentSource
 from app.option_repository import OptionSelectionRepository
 from app.option_selector import OptionSelector
-from app.settings import OptionSettings
+from app.settings import OptionSettings, TradeSettings
 
 
 def utc_now():
@@ -45,15 +45,24 @@ class LevelMonitor:
             previous = self._previous_prices.get(tick.instrument)
             current = tick.price
             timestamp = self._clock()
+            levels = self._repository.list_enabled(tick.instrument)
+            active_levels = []
+            distance = (self._paper_executor.settings.level_rearm_distance_points
+                        if self._paper_executor else TradeSettings().level_rearm_distance_points)
+            for level in levels:
+                if level.status == 'DISARMED':
+                    self._repository.rearm(level, current, distance, timestamp)
+                    # Re-arming is not a trigger: require a later return/crossing.
+                else:
+                    active_levels.append(level)
             if previous == current:
                 self._history.record(tick.instrument, current, timestamp)
                 return
 
-            levels = self._repository.list_enabled(tick.instrument)
             history = self._history.recent(tick.instrument, timestamp)
             triggers = []
             signals = []
-            for level in levels:
+            for level in active_levels:
                 touched = current == level.price
                 crossed = previous is not None and (
                     previous < level.price <= current

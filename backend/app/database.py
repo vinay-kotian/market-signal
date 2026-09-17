@@ -91,3 +91,15 @@ def initialize_database(database_path, stop_loss_percentage=10, trade_settings=N
             )
             """
         )
+
+        columns = {row['name'] for row in connection.execute('PRAGMA table_info(levels)')}
+        if 'status' not in columns:
+            connection.execute("ALTER TABLE levels ADD COLUMN status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK(status IN ('ACTIVE', 'DISARMED'))")
+        connection.execute("""CREATE TABLE IF NOT EXISTS level_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            level_id INTEGER NOT NULL,
+            event_type TEXT NOT NULL CHECK(event_type IN ('LEVEL_DISARMED', 'LEVEL_REARMED')),
+            underlying_price REAL NOT NULL,
+            timestamp TEXT NOT NULL,
+            trade_id INTEGER
+        )""")

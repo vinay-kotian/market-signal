@@ -1,3 +1,4 @@
+from app.option_prices import SimulatedOptionPrices
 import asyncio
 from datetime import datetime, timedelta, timezone
 
@@ -90,6 +91,8 @@ def test_insufficient_history(client):
 
 
 def test_latest_approach_stops_at_opposite_side(client):
+    # Test signal/trigger semantics without a successful entry disarming the level.
+    client.app.state.paper_executor.prices = SimulatedOptionPrices()
     add_level(client)
     signals = ticks(client, [24900, 25010, 25030, 24990, 25000])
     assert len(signals) == 3
@@ -100,6 +103,8 @@ def test_latest_approach_stops_at_opposite_side(client):
 
 
 def test_previous_touch_resets_segment_and_duplicate_ticks_do_not_signal(client):
+    # Test signal/trigger semantics without a successful entry disarming the level.
+    client.app.state.paper_executor.prices = SimulatedOptionPrices()
     add_level(client)
     signals = ticks(client, [24900, 25000, 25000, 24990, 25000, 25000])
     assert len(signals) == 2
@@ -147,7 +152,7 @@ def test_expired_extreme_is_excluded(tmp_path):
 
 def test_signals_persist_and_recent_limit_does_not_delete_history(tmp_path):
     path = tmp_path / "restart.sqlite3"
-    with TestClient(create_app(path)) as client:
+    with TestClient(create_app(path, option_prices=SimulatedOptionPrices())) as client:
         assert client.get("/signals").json() == []
         add_level(client)
         signals = ticks(client, [24990] + [25010 if i % 2 == 0 else 24990 for i in range(105)])

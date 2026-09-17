@@ -167,3 +167,15 @@ def test_invalid_input(client, updates):
     payload = dict(instrument='NIFTY', levels=[25000], dataset=dataset())
     payload.update(updates)
     assert client.post('/backtests/run', json=payload).status_code == 422
+
+
+def test_backtest_reuses_level_rearming(client):
+    rows = dataset([('10:01:30', 90)]) + [
+        tick('10:02:00', 'NIFTY', 24990), tick('10:03:00', 'NIFTY', 25000),
+        tick('10:04:00', 'NIFTY', 24950), tick('10:05:00', 'NIFTY', 25000)]
+    result = run(client, rows)
+    assert len(result['signals']) == len(result['trades']) == 2
+    assert result['trades'][0]['entry_time'].startswith('2026-09-14T10:05:00')
+    # A different distance applies to this isolated run only.
+    result = run(client, rows, level_rearm_distance_points=75)
+    assert len(result['signals']) == len(result['trades']) == 1

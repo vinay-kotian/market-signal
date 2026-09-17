@@ -1,3 +1,4 @@
+from app.option_prices import SimulatedOptionPrices
 import asyncio
 
 import pytest
@@ -99,6 +100,8 @@ def test_initial_exact_touch(client):
 
 
 def test_duplicates_are_suppressed_but_later_recross_triggers(client):
+    # Test signal/trigger semantics without a successful entry disarming the level.
+    client.app.state.paper_executor.prices = SimulatedOptionPrices()
     add_level(client)
     for price in [24990, 25000, 25000, 25000, 25005]:
         publish(client, price)
@@ -141,6 +144,8 @@ def test_invalid_tick_does_not_advance_previous_price(client, payload):
 
 
 def test_recent_events_are_bounded_and_newest_first(client):
+    # Test signal/trigger semantics without a successful entry disarming the level.
+    client.app.state.paper_executor.prices = SimulatedOptionPrices()
     add_level(client)
     publish(client, 24990)
     for index in range(105):

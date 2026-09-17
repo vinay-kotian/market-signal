@@ -28,6 +28,7 @@ class OptionSettings(BaseModel):
 
 class TradeSettings(BaseModel):
     trade_mode: Literal["PAPER", "LIVE", "BACKTEST"] = "PAPER"
+    level_rearm_distance_points: float = Field(default=50, gt=0, allow_inf_nan=False)
     number_of_lots: int = Field(default=1, ge=1)
     stop_loss_percentage: float = Field(default=10, gt=0, lt=100, allow_inf_nan=False)
     trailing_stop_percentage: float = Field(default=10, gt=0, lt=100, allow_inf_nan=False)
