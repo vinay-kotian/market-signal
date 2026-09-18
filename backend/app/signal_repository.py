@@ -1,4 +1,7 @@
 from contextlib import nullcontext
+from datetime import datetime, time, timedelta
+
+from app.trading_date import TRADING_TIMEZONE
 
 from app.database import connect
 from app.signal_models import SignalAnalysis, SignalResult
@@ -33,11 +36,23 @@ class SignalRepository:
                 saved.append(SignalResult(id=cursor.lastrowid, **signal.model_dump()))
         return saved
 
-    def recent(self, limit: int = 100) -> list[SignalResult]:
+    def recent(self, limit: int = 100, signal_date=None, instrument=None, valid=None) -> list[SignalResult]:
         if limit < 1:
             raise ValueError("limit must be positive")
+        clauses, values = [], []
+        if signal_date is not None:
+            start = datetime.combine(signal_date, time.min, TRADING_TIMEZONE)
+            clauses.extend(['julianday(timestamp) >= julianday(?)', 'julianday(timestamp) < julianday(?)'])
+            values.extend([start.isoformat(), (start + timedelta(days=1)).isoformat()])
+        if instrument is not None:
+            clauses.append('UPPER(instrument) = ?')
+            values.append(instrument.strip().upper())
+        if valid is not None:
+            clauses.append('valid = ?')
+            values.append(valid)
+        where = ' WHERE ' + ' AND '.join(clauses) if clauses else ''
         with connect(self.database_path) as connection:
             rows = connection.execute(
-                "SELECT * FROM signals ORDER BY id DESC LIMIT ?", (limit,)
+                f"SELECT * FROM signals{where} ORDER BY id DESC LIMIT ?", (*values, limit)
             ).fetchall()
             return [SignalResult(**dict(row)) for row in rows]

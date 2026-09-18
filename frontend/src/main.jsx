@@ -119,7 +119,7 @@ function App() {
           await request(editor.id ? `/levels/${editor.id}` : '/levels', { method: editor.id ? 'PUT' : 'POST', body: JSON.stringify(data) });
           setSelected(data.instrument); setEditor(null);
         })} />}
-        {page === 'levels' && <label>Level dates <select value={levelView} onChange={event => { setLevelView(event.target.value); setEditor(null); }}><option value="TODAY">Today · {today} (Asia/Kolkata)</option><option value="ALL">All dates · includes expired</option></select></label>}
+        {page === 'levels' && <label className="ms-level-date-filter">Level dates <select value={levelView} title={levelView === 'TODAY' ? `${today} · Asia/Kolkata` : 'All dates, including expired levels'} onChange={event => { setLevelView(event.target.value); setEditor(null); }}><option value="TODAY">Today</option><option value="ALL">All dates</option></select></label>}
         <div className="ms-sectionhead"><span>Configured levels{page === 'levels' && selected ? ` · ${selected}` : ''}</span><span className="ms-sub">{rows.length} levels</span></div>
         {levels === null && !errors.levels ? <p>Loading levels…</p> : <div className="ms-tablewrap"><table>
           <thead><tr><th>Level price</th><th>Trading date</th><th>Level state</th>{page === 'dashboard' ? <><th className="ms-num">Distance · pts</th><th>Status · recent</th></> : <><th>Enabled</th><th>Actions</th></>}</tr></thead>
@@ -148,7 +148,7 @@ function App() {
             <div className="ms-fields"><label>Instrument<select value={selected} disabled={busy || !instruments.length} onChange={event => setSelected(event.target.value)}>{!instruments.length && <option value="">Add a level first</option>}{instruments.map(symbol => <option key={symbol}>{symbol}</option>)}</select></label><label>Simulated price<input required type="number" step="any" value={tickPrice} onChange={event => setTickPrice(event.target.value)} /></label><button className="ms-button ms-primary" disabled={busy || !selected}>{busy ? 'Processing…' : 'Send Tick →'}</button></div>
             <div className="ms-message" role="status">{message}</div>
           </form>}
-          <SignalsTable signals={signals} error={errors.signals} onRetry={() => mutate(async () => {})} />
+          <SignalsTable signals={signals} today={today} />
           <OptionSelectionsTable selections={selections} error={errors.selections} onRetry={() => mutate(async () => {})} />
         </>}
         </>}
