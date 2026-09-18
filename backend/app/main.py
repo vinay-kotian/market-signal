@@ -57,6 +57,8 @@ def create_app(database_path=None, signal_settings=None,
             raise ValueError('ZERODHA market data requires PAPER execution')
         initialize_database(app.state.database_path, execution_settings.stop_loss_percentage,
                             execution_settings.model_dump())
+        levels = LevelRepository(app.state.database_path, current_time)
+        app.state.level_repository = levels
         engine = SignalEngine(signal_settings or SignalSettings.from_environment())
         signal_repository = SignalRepository(app.state.database_path)
         option_repository = OptionSelectionRepository(app.state.database_path)
@@ -80,7 +82,7 @@ def create_app(database_path=None, signal_settings=None,
         selector = OptionSelector(instruments)
         executor = PaperExecutor(trade_repository, instruments, prices,
                                  execution_settings, engine.settings, selection_settings)
-        monitor = LevelMonitor(LevelRepository(app.state.database_path), engine,
+        monitor = LevelMonitor(levels, engine,
                                signal_repository=signal_repository, option_selector=selector,
                                option_settings=selection_settings,
                                option_repository=option_repository, paper_executor=executor,
@@ -103,12 +105,19 @@ def create_app(database_path=None, signal_settings=None,
         app.state.websocket_hub = WebSocketHub()
         app.state.live_prices = {}
         app.state.live_price_changes = {}
+
+        def publish_expired(changed):
+            for level in changed:
+                app.state.websocket_hub.publish('LEVEL_UPDATED', dict(level=level))
+
+        monitor.on_expired = publish_expired
+        await monitor.reconcile()
         publisher = LiveEventPublisher(app.state)
         app.state.live_publisher = publisher
         market_close.on_change = publisher.committed
         app.state.market_data_provider = (
             ZerodhaMarketDataProvider(publisher.on_tick, instruments, app.state.kite,
-                                      LevelRepository(app.state.database_path), trade_repository, socket_factory, on_status=publisher.connection)
+                                      levels, trade_repository, socket_factory, on_status=publisher.connection)
             if is_zerodha else SimulatedMarketDataProvider(publisher.on_tick))
         app.state.connection_lock = asyncio.Lock()
         app.state.zerodha_task = None
@@ -123,9 +132,13 @@ def create_app(database_path=None, signal_settings=None,
             app.state.zerodha_task = asyncio.create_task(app.state.market_data_provider.run())
         await market_close.check()
         close_task = asyncio.create_task(market_close.run())
+        expiry_task = asyncio.create_task(monitor.run_expiry_checks())
         try:
             yield
         finally:
+            expiry_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await expiry_task
             if app.state.zerodha_task is not None:
                 app.state.zerodha_task.cancel()
                 with suppress(asyncio.CancelledError):

@@ -115,7 +115,7 @@ def test_previous_touch_resets_segment_and_duplicate_ticks_do_not_signal(client)
 def test_lookback_boundary_and_expired_previous_price(tmp_path, gap, expected_distance):
     path = tmp_path / "timed.sqlite3"
     initialize_database(path)
-    repository = LevelRepository(path)
+    repository = LevelRepository(path, clock=lambda: datetime(2026, 9, 14, tzinfo=timezone.utc))
     repository.create(LevelInput(instrument="NIFTY", price=25000, enabled=True))
     engine = SignalEngine()
     now = datetime(2026, 9, 14, tzinfo=timezone.utc)
@@ -135,7 +135,7 @@ def test_lookback_boundary_and_expired_previous_price(tmp_path, gap, expected_di
 def test_expired_extreme_is_excluded(tmp_path):
     path = tmp_path / "extreme.sqlite3"
     initialize_database(path)
-    repository = LevelRepository(path)
+    repository = LevelRepository(path, clock=lambda: datetime(2026, 9, 14, tzinfo=timezone.utc))
     repository.create(LevelInput(instrument="NIFTY", price=25000, enabled=True))
     engine = SignalEngine(SignalSettings(lookback_minutes=1))
     start = datetime(2026, 9, 14, tzinfo=timezone.utc)

@@ -426,30 +426,78 @@ or
 Level state must persist across application restart.
 
 Different configured levels are independent.
-## Trade provenance and classification
 
-Each new PAPER or BACKTEST trade stores the explicit configured `strategy_version`
-(default `STRATEGY_VERSION=1.0.0`), starts `VALID`, and is included in strategy
-metrics. Its entry-time `settings_snapshot` includes signal, approach-distance,
-option-selection, quantity, risk, breakeven, rearming, and trading-time settings.
-Changing configuration later never updates an existing snapshot or version.
-Versions are configured explicitly and are not inferred from Git.
+## Level State
 
-Classification is reporting metadata: `validity_status`, `validity_reason`, and
-`exclude_from_strategy_metrics`. Allowed statuses are `VALID`,
-`INVALID_STRATEGY_BUG`, `INVALID_DATA_ISSUE`, `INVALID_EXECUTION_ISSUE`, and
-`MANUAL_REVIEW`. Status describes the assessment; the exclusion flag explicitly
-controls metric inclusion independently. Reclassifying does not change execution
-fields, persisted events, or position monitoring, and never deletes a trade.
+Each configured level has a persistent state:
 
-The default PAPER report view is `STRATEGY`, using only trades with exclusion
-false. `RAW` uses all PAPER trades. Both views show recorded, included, and
-excluded counts across all PAPER trades, including open trades. Total/open/closed
-counts and all performance metrics use the selected view; realised metrics still
-use closed trades only. Raw history always retains excluded trades.
+ACTIVE
+DISARMED
+EXPIRED
 
-The startup migration adds metadata columns transactionally without replacing
-trade rows or events. Historical trades have version `UNKNOWN`, snapshot
-`{"provenance":"LEGACY_UNAVAILABLE"}`, and status `MANUAL_REVIEW`, with an
-explanatory reason. They remain included until explicitly reviewed/excluded;
-current settings are never presented as their original entry settings.
+A successful trade entry changes the level to DISARMED.
+
+Rejected signals or failed trade entries do not disarm the level.
+
+A DISARMED level continues to receive underlying price updates but cannot generate a new signal.
+
+The level becomes ACTIVE again when:
+
+abs(current_price - level) >= level_rearm_distance_points
+
+The re-arming tick only changes the level back to ACTIVE.
+A later touch/cross is required for another trade.
+
+Level state must survive application restart.
+
+Each level is independent.
+
+
+## Daily Level Validity
+
+Each configured level is valid for one trading day only.
+
+A level stores:
+- level_date
+- status
+
+Possible states:
+ACTIVE
+DISARMED
+EXPIRED
+
+Only levels for the current trading date are eligible for monitoring and trading.
+
+At the start of a new trading day, all previous-day levels become EXPIRED.
+
+Expired levels:
+- must not generate signals
+- must not create trades
+- must not rearm
+- remain stored for audit/history
+
+Trading date is determined using Asia/Kolkata.
+
+The trading date is the Asia/Kolkata calendar date of the injected application
+clock, including in historical replay. Expiry begins at local midnight, not at
+the entry cutoff or mandatory position-exit time. No holiday calendar is added.
+
+Startup and a single background check every second reconcile old levels. Tick
+processing also reconciles before evaluating, and execution rechecks the date
+after quote preparation. Date checks block stale entries even before the next
+background check has persisted EXPIRED. Expiry applies to disabled levels too.
+
+Level dates cannot be edited to renew an old level. Expired levels cannot be
+edited, deleted, or rearmed; create a new daily level instead. Their original
+IDs, dates, and existing level events remain queryable. Expiring a level does
+not close its trades or alter the existing position-risk rules.
+
+Migration derives each legacy level's date from its creation timestamp converted
+to Asia/Kolkata (legacy naive timestamps are interpreted as UTC). It preserves
+IDs and existing events; startup then expires any overdue rows. It never assigns
+all old levels today's date.
+
+Backtest levels use the first replay record's trading date. Advancing the replay
+clock expires them on a later date, including when only the requested end time
+crosses midnight. Backtests do not automatically recreate levels on subsequent
+dates; configure a separate daily run for each new daily level set.

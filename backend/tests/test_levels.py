@@ -41,7 +41,8 @@ def test_update_level(client):
     assert updated.items() >= changes.items()
     assert updated["id"] == original["id"]
     assert updated["created_at"] == original["created_at"]
-    assert updated["updated_at"] > original["updated_at"]
+    # The injected clock is held fixed by this fixture.
+    assert updated["updated_at"] >= original["updated_at"]
     assert client.get(f"/levels/{original['id']}").json() == updated
 
 

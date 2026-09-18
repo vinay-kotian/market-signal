@@ -909,7 +909,7 @@ and Chrome/server validation. Existing HTTPS servers must install the new
 See the [strategy changelog](docs/strategy-changelog.md) for version dates,
 behavior changes, and corrected replay status.
 
-Set `STRATEGY_VERSION=1.0.0` in the backend environment and bump it deliberately
+Set `STRATEGY_VERSION=1.1.0` in the backend environment and bump it deliberately
 when releasing strategy changes. New PAPER and BACKTEST entries persist that
 version and the complete settings snapshot at entry; backtest results also store
 the version. No Git revision is used automatically.
@@ -947,3 +947,32 @@ trades retain their IDs, outcomes, and events. They receive `UNKNOWN` version,
 complete original settings cannot be recovered. They remain included until
 reviewed; migration does not silently remove historical performance. Back up the
 SQLite database using the normal deployment backup procedure before upgrading.
+
+
+### Daily levels
+
+Levels default to the current Asia/Kolkata date. The Levels page opens on today's
+levels and offers **All dates · includes expired** to inspect older records.
+Each row shows its date and ACTIVE, DISARMED, or EXPIRED state. A date can be
+chosen when creating a level, but cannot be changed afterward. Future dates are
+stored but not eligible until their date; past-date creations are already expired.
+
+`GET /levels` retains the complete history. Use
+`GET /levels?level_date=2026-09-18` to query one date or `GET /levels/{id}` to
+inspect an individual level. PUT/DELETE on expired levels return 409. Create a
+new daily level instead of recycling an old ID.
+
+Startup and one background task reconcile expiry, with checks every second and
+before tick evaluation. Levels become ineligible at Asia/Kolkata midnight even
+if no tick has arrived. Expiry does not change monitoring or exits of existing
+positions. The migration preserves records/events and derives legacy dates from
+`created_at` in Asia/Kolkata; it does not renew old levels.
+
+Backtest levels are assigned the first replay date and expire if replay advances
+to a later date. There is no automatic daily renewal; run separate daily level
+sets for subsequent dates. Saved backtest results include the dated levels and
+their final state.
+
+This change is strategy version **1.1.0**. Set the server's explicit
+`STRATEGY_VERSION=1.1.0` when deploying; an existing environment override wins
+against the application default.

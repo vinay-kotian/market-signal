@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { request } from './api';
 import { createLiveFeed, marketSocketUrl, applyLiveEvent } from './liveFeed';
-import { formatPrice, levelStatus } from './format';
+import { formatPrice, levelStatus, tradingDate, levelsForDate } from './format';
 import SignalsTable from './SignalsTable';
 import OptionSelectionsTable from './OptionSelectionsTable';
 import LevelForm from './LevelForm';
@@ -14,6 +14,12 @@ import { initialPage } from './connectionState';
 import './styles.css';
 
 function App() {
+  const [levelView, setLevelView] = useState('TODAY');
+  const [today, setToday] = useState(() => tradingDate());
+  useEffect(() => {
+    const timer = setInterval(() => setToday(tradingDate()), 1000);
+    return () => clearInterval(timer);
+  }, []);
   const [page, setPage] = useState(() => initialPage(window.location.pathname));
   const [liveState, setLiveState] = useState({ connection: null, levels: null, events: null,
     signals: null, selections: null, trades: null, entryResults: null, prices: {} });
@@ -81,7 +87,8 @@ function App() {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
   function navigate(next) { window.history.pushState({}, '', '/' + next); setPage(next); setEditor(null); setDeleting(null); }
-  const rows = (levels ?? []).filter(level => level.instrument === selected);
+  const rows = levelsForDate(levels ?? [], today, page === 'levels' ? levelView : 'TODAY')
+    .filter(level => level.instrument === selected);
   const live = connection?.market_data_mode === 'ZERODHA';
   const shownPrices = prices;
   const current = shownPrices[selected]?.price;
@@ -112,18 +119,19 @@ function App() {
           await request(editor.id ? `/levels/${editor.id}` : '/levels', { method: editor.id ? 'PUT' : 'POST', body: JSON.stringify(data) });
           setSelected(data.instrument); setEditor(null);
         })} />}
+        {page === 'levels' && <label>Level dates <select value={levelView} onChange={event => { setLevelView(event.target.value); setEditor(null); }}><option value="TODAY">Today · {today} (Asia/Kolkata)</option><option value="ALL">All dates · includes expired</option></select></label>}
         <div className="ms-sectionhead"><span>Configured levels{page === 'levels' && selected ? ` · ${selected}` : ''}</span><span className="ms-sub">{rows.length} levels</span></div>
         {levels === null && !errors.levels ? <p>Loading levels…</p> : <div className="ms-tablewrap"><table>
-          <thead><tr><th>Level price</th><th>Level state</th>{page === 'dashboard' ? <><th className="ms-num">Distance · pts</th><th>Status · recent</th></> : <><th>Enabled</th><th>Actions</th></>}</tr></thead>
-          <tbody>{rows.map(level => <tr key={level.id}><td>{formatPrice(level.price)}</td><td><span className="ms-status">{level.status}</span></td>{page === 'dashboard' ? <>
+          <thead><tr><th>Level price</th><th>Trading date</th><th>Level state</th>{page === 'dashboard' ? <><th className="ms-num">Distance · pts</th><th>Status · recent</th></> : <><th>Enabled</th><th>Actions</th></>}</tr></thead>
+          <tbody>{rows.map(level => <tr key={level.id}><td>{formatPrice(level.price)}</td><td>{level.level_date}</td><td><span className="ms-status">{level.status}</span></td>{page === 'dashboard' ? <>
             <td className="ms-num">{current == null ? '—' : `${level.price > current ? '+' : ''}${formatPrice(level.price - current)}`}</td>
             <td><span className={`ms-status ${levelStatus(level, events).toLowerCase()}`}>{levelStatus(level, events)}</span></td>
-          </> : <><td><input className="ms-checkbox" type="checkbox" aria-label={`Enable level ${level.price}`} checked={level.enabled} disabled={busy} onChange={() => mutate(() => request(`/levels/${level.id}`, { method: 'PUT', body: JSON.stringify({ instrument: level.instrument, price: level.price, enabled: !level.enabled }) }))} /></td>
-            <td><button className="ms-link" disabled={busy} onClick={() => setEditor(level)}>Edit</button><button className="ms-link ms-delete" disabled={busy} onClick={() => {
+          </> : <><td><input className="ms-checkbox" type="checkbox" aria-label={`Enable level ${level.price}`} checked={level.enabled} disabled={busy || level.status === 'EXPIRED'} onChange={() => mutate(() => request(`/levels/${level.id}`, { method: 'PUT', body: JSON.stringify({ instrument: level.instrument, price: level.price, enabled: !level.enabled }) }))} /></td>
+            <td><button className="ms-link" disabled={busy || level.status === 'EXPIRED'} onClick={() => setEditor(level)}>Edit</button><button className="ms-link ms-delete" disabled={busy || level.status === 'EXPIRED'} onClick={() => {
               if (deleting !== level.id) setDeleting(level.id);
               else mutate(async () => { await request(`/levels/${level.id}`, { method: 'DELETE' }); setDeleting(null); });
             }}>{deleting === level.id ? 'Confirm delete' : 'Delete'}</button>{deleting === level.id && <button className="ms-link" onClick={() => setDeleting(null)}>Cancel</button>}</td></>}</tr>)}
-            {levels && rows.length === 0 && <tr><td colSpan="4" className="ms-empty">No levels configured. Add a level to begin.</td></tr>}
+            {levels && rows.length === 0 && <tr><td colSpan="5" className="ms-empty">No levels for this date view. Add a daily level to begin.</td></tr>}
           </tbody>
         </table></div>}
         {page === 'dashboard' && <>

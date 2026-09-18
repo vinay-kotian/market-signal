@@ -27,7 +27,7 @@ class OptionSettings(BaseModel):
 
 
 class TradeSettings(BaseModel):
-    strategy_version: str = Field(default_factory=lambda: os.getenv("STRATEGY_VERSION", "1.0.0"), min_length=1, pattern=r"\S")
+    strategy_version: str = Field(default_factory=lambda: os.getenv("STRATEGY_VERSION", "1.1.0"), min_length=1, pattern=r"\S")
     trade_mode: Literal["PAPER", "LIVE", "BACKTEST"] = "PAPER"
     level_rearm_distance_points: float = Field(default=50, gt=0, allow_inf_nan=False)
     number_of_lots: int = Field(default=1, ge=1)

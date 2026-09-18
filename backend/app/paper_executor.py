@@ -2,6 +2,7 @@ from contextlib import nullcontext
 from math import isfinite
 
 from app.database import connect
+from app.trading_date import trading_date
 from app.level_repository import LevelRepository
 from app.option_instruments import OptionInstrumentSource
 from app.option_prices import OptionPriceSource
@@ -47,8 +48,13 @@ class PaperExecutor:
                     failure_reason=reason, timestamp=timestamp,
                 ), connection)
 
-            level_state = connection.execute('SELECT status FROM levels WHERE id = ?',
+            level_state = connection.execute('SELECT status, level_date FROM levels WHERE id = ?',
                                              (signal.level_id,)).fetchone()
+            if level_state is not None:
+                if level_state['status'] == 'EXPIRED' or level_state['level_date'] < trading_date(timestamp).isoformat():
+                    return fail('LEVEL_EXPIRED')
+                if level_state['level_date'] != trading_date(timestamp).isoformat():
+                    return fail('LEVEL_NOT_CURRENT')
             if level_state is not None and level_state['status'] == 'DISARMED':
                 return fail('LEVEL_DISARMED')
             if self.settings.trade_mode not in ("PAPER", "BACKTEST"):

@@ -1,5 +1,7 @@
 import sqlite3
 
+from app.level_schema import initialize_daily_levels
+
 from app.trade_metadata import initialize_trade_metadata
 from app.trade_schema import initialize_trades
 from app.trailing_schema import initialize_trailing
@@ -105,3 +107,5 @@ def initialize_database(database_path, stop_loss_percentage=10, trade_settings=N
             timestamp TEXT NOT NULL,
             trade_id INTEGER
         )""")
+
+        initialize_daily_levels(connection)

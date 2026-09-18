@@ -18,3 +18,15 @@ test('old triggers do not apply to edited level configuration', () => {
   assert.equal(levelStatus(level, [event]), 'WAITING');
   assert.equal(levelStatus(level, [{ ...event, triggered_at: '2026-09-14T11:00:00Z' }]), 'TRIGGERED');
 });
+
+test('trading dates roll over at Kolkata midnight regardless of browser timezone', async () => {
+  const { tradingDate, levelsForDate } = await import('./format.js');
+  assert.equal(tradingDate(new Date('2026-09-14T18:29:59Z')), '2026-09-14');
+  assert.equal(tradingDate(new Date('2026-09-14T18:30:00Z')), '2026-09-15');
+  const rows = [{ id: 1, level_date: '2026-09-14', status: 'EXPIRED' },
+    { id: 2, level_date: '2026-09-15', status: 'ACTIVE' },
+    { id: 3, level_date: '2026-09-16', status: 'ACTIVE' }];
+  assert.deepEqual(levelsForDate(rows, '2026-09-15').map(row => row.id), [2]);
+  assert.deepEqual(levelsForDate(rows, '2026-09-15', 'ALL'), rows);
+  assert.equal(levelStatus({ enabled: false, status: 'EXPIRED' }, null), 'EXPIRED');
+});

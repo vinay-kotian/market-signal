@@ -2,6 +2,7 @@ import asyncio
 from collections import deque
 from datetime import datetime, timezone
 
+from app.trading_date import trading_date
 from app.events import LevelTriggered
 from app.level_repository import LevelRepository
 from app.market_data import PriceTick
@@ -38,6 +39,26 @@ class LevelMonitor:
         self._events: deque[LevelTriggered] = deque(maxlen=100)
         self._next_event_id = 1
         self._lock = asyncio.Lock()
+        self.on_expired = None
+
+    def _expire(self, timestamp):
+        changed = self._repository.expire_before(timestamp)
+        if changed and self.on_expired:
+            self.on_expired(changed)
+        return changed
+
+    async def reconcile(self):
+        async with self._lock:
+            return self._expire(self._clock())
+
+    async def run_expiry_checks(self):
+        while True:
+            try:
+                await self.reconcile()
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception('Level expiry check failed; retrying')
+            await asyncio.sleep(1)
 
     async def on_tick(self, tick: PriceTick) -> None:
         # Keep reading the baseline, evaluating levels, and updating state together.
@@ -45,7 +66,8 @@ class LevelMonitor:
             previous = self._previous_prices.get(tick.instrument)
             current = tick.price
             timestamp = self._clock()
-            levels = self._repository.list_enabled(tick.instrument)
+            self._expire(timestamp)
+            levels = self._repository.list_enabled(tick.instrument, timestamp)
             active_levels = []
             distance = (self._paper_executor.settings.level_rearm_distance_points
                         if self._paper_executor else TradeSettings().level_rearm_distance_points)
@@ -53,7 +75,7 @@ class LevelMonitor:
                 if level.status == 'DISARMED':
                     self._repository.rearm(level, current, distance, timestamp)
                     # Re-arming is not a trigger: require a later return/crossing.
-                else:
+                elif level.status == 'ACTIVE':
                     active_levels.append(level)
             if previous == current:
                 self._history.record(tick.instrument, current, timestamp)
@@ -91,6 +113,13 @@ class LevelMonitor:
                     selections[index] = selection
                     if self._paper_executor is not None:
                         await self._paper_executor.prepare(selection)
+
+            # A quote fetch may straddle midnight. Do not persist stale-day signals.
+            if selections and self._paper_executor is not None:
+                execution_time = self._clock()
+                if trading_date(execution_time) != trading_date(timestamp):
+                    self._expire(execution_time)
+                    return
 
             # A failed write leaves the transition retryable, without partial results.
             if signals:

@@ -5,6 +5,7 @@ import struct
 from datetime import datetime, timezone
 from math import isfinite
 
+from app.trading_date import trading_date
 from app.database import connect
 from app.market_data import PriceTick
 from app.option_prices import SimulatedOptionPrices
@@ -49,7 +50,9 @@ class ZerodhaMarketDataProvider:
         self.latest[tick.instrument] = tick.price
 
     def required_tokens(self):
-        records = [self.instruments.index(level.instrument) for level in self.levels.list() if level.enabled]
+        today = trading_date(self.levels.clock())
+        records = [self.instruments.index(level.instrument) for level in self.levels.list()
+                   if level.enabled and level.status in ('ACTIVE', 'DISARMED') and level.level_date == today]
         with connect(self.trades.database_path) as connection:
             records.extend(self.instruments.option(trade.option_symbol) for trade in self.trades.all_open(connection))
         return {r.instrument_token for r in records if r is not None}

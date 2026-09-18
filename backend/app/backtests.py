@@ -89,7 +89,7 @@ class BacktestRunner:
                                ('RUNNING', config.model_dump_json(), json.dumps(dict(id=run_id, status='RUNNING', strategy_version=config.strategy_version))))
         try:
             trades = TradeRepository(path, mode='BACKTEST')
-            levels = LevelRepository(path)
+            levels = LevelRepository(path, clock)
             for price in dict.fromkeys(config.levels):
                 levels.create(LevelInput(instrument=config.instrument, price=price, enabled=True))
             values = config.model_dump()
@@ -116,6 +116,7 @@ class BacktestRunner:
                         clock.timestamp = deadline
                         await closing.check()
                 clock.timestamp = timestamp
+                await monitor.reconcile()
 
             await HistoricalMarketDataProvider(flow.on_tick).replay(records, advance)
             if config.end_time:
@@ -128,6 +129,7 @@ class BacktestRunner:
             result = dict(id=run_id, status='COMPLETED', strategy_version=config.strategy_version, **report,
                           wins=report['winning_trades'], losses=report['losing_trades'],
                           breakeven=report['breakeven_trades'],
+                          levels=[level.model_dump(mode='json') for level in levels.list()],
                           trades=[trade.model_dump(mode='json') for trade in trades.recent(max(count, 1))],
                           signals=[signal.model_dump(mode='json') for signal in SignalRepository(path).recent(max(signal_count, 1))],
                           option_selections=[row.model_dump(mode='json') for row in OptionSelectionRepository(path).recent(max(selection_count, 1))],

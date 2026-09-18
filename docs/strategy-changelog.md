@@ -5,6 +5,25 @@ behavior change, and relevant validation here before using a new version. Dates
 are Asia/Kolkata calendar dates. Versions are not derived automatically from Git.
 The complete current rules are in [strategy-rules.md](strategy-rules.md).
 
+## 1.1.0 — 2026-09-18 (implementation; deployment pending)
+
+Daily-expiring levels. Previously, enabled levels could remain eligible across
+calendar days. Now every level has one `level_date`, based on Asia/Kolkata.
+
+- Only today's ACTIVE/DISARMED levels are evaluated; past dates become EXPIRED
+  on startup, on ticks, and through a single periodic reconciliation task.
+- Expiry is terminal. Retain expired levels and their events for audit; create a
+  new level for a new date. Existing rearm distance and entry/exit rules are unchanged.
+- Legacy dates derive from `created_at`, rather than the migration date.
+- Backtests date levels using the replay clock, expire them on rollover, and do
+  not automatically renew them on later dates.
+- Validation: 270 backend tests and 13 frontend tests passed, including midnight,
+  startup, historical queries, migration, asynchronous quote rollover, and replay
+  coverage. Frontend production build passed.
+
+Set `STRATEGY_VERSION=1.1.0` when deploying this behavior. Existing configured
+versions are not rewritten automatically; historical trade versions stay intact.
+
 ## 1.0.0 — 2026-09-18
 
 Initial versioned baseline: records the existing strategy, including the level
@@ -26,13 +45,6 @@ of version tracking, not a claim that earlier trades ran version 1.0.0.
 
 Historical trades without recorded provenance remain `UNKNOWN`; do not relabel
 those trades as 1.0.0 or reconstruct their settings from today's configuration.
-
-## Next release (unreleased)
-
-No additional rule change is approved or assigned a version yet. For the next
-release, record its explicit version (for example, 1.1.0), actual release date,
-old and new behavior, settings/default changes, and test/backtest evidence.
-Do not set `STRATEGY_VERSION=1.1.0` until that release is defined.
 
 ## Corrected replay comparison — 2026-09-17 (pending)
 
