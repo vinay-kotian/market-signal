@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request, Query, HTTPException
 from pydantic import BaseModel
 from app.paper_report import PaperReportingService, PaperTradingReport
 
-from app.trade_models import Trade, TradeEntryResult
+from app.trade_models import Trade, TradeEntryResult, TradeClassification
 from app.trade_events import TradeEvent
 
 
@@ -39,8 +39,8 @@ class TradeDetail(BaseModel):
 
 
 @router.get('/reports/paper-trading', response_model=PaperTradingReport)
-def paper_report(request: Request):
-    return PaperReportingService(request.app.state.trade_repository).report()
+def paper_report(request: Request, view: Literal["RAW", "STRATEGY"] = "STRATEGY"):
+    return PaperReportingService(request.app.state.trade_repository).report(view)
 
 
 @router.get('/trades/history', response_model=TradeHistory)
@@ -57,3 +57,11 @@ def trade_detail(trade_id: int, request: Request):
     if detail is None:
         raise HTTPException(status_code=404, detail='Paper trade not found')
     return detail
+
+
+@router.patch('/trades/{trade_id}/classification', response_model=Trade)
+def classify_trade(trade_id: int, classification: TradeClassification, request: Request):
+    trade = request.app.state.trade_repository.classify(trade_id, classification)
+    if trade is None:
+        raise HTTPException(status_code=404, detail='Paper trade not found')
+    return trade

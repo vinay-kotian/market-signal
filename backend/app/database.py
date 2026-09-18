@@ -1,5 +1,6 @@
 import sqlite3
 
+from app.trade_metadata import initialize_trade_metadata
 from app.trade_schema import initialize_trades
 from app.trailing_schema import initialize_trailing
 from contextlib import contextmanager
@@ -25,6 +26,7 @@ def initialize_database(database_path, stop_loss_percentage=10, trade_settings=N
         connection.execute('BEGIN IMMEDIATE')
         initialize_trades(connection, stop_loss_percentage)
         initialize_trailing(connection, trade_settings or {})
+        initialize_trade_metadata(connection)
         connection.execute("""CREATE TABLE IF NOT EXISTS simulated_option_quotes (
             symbol TEXT PRIMARY KEY, price REAL NOT NULL CHECK(price >= 0), timestamp TEXT NOT NULL
         )""")

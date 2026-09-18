@@ -903,3 +903,47 @@ See [live data flow and audit](docs/live-data-flow.md) for the Zerodha socket
 path, remaining entry-time REST quote, browser reconnect behavior, metrics,
 and Chrome/server validation. Existing HTTPS servers must install the new
 `/ws/` Nginx location without overwriting Certbot configuration.
+
+### Strategy versions and trade validity
+
+See the [strategy changelog](docs/strategy-changelog.md) for version dates,
+behavior changes, and corrected replay status.
+
+Set `STRATEGY_VERSION=1.0.0` in the backend environment and bump it deliberately
+when releasing strategy changes. New PAPER and BACKTEST entries persist that
+version and the complete settings snapshot at entry; backtest results also store
+the version. No Git revision is used automatically.
+
+In **Paper Report**, select STRATEGY (default) or RAW. STRATEGY performance uses
+only included trades; RAW performance uses every PAPER trade. Recorded, included,
+and excluded counts make the difference visible. History retains every trade.
+Open a history row to inspect version/settings and save a manual classification.
+The exclusion checkbox explicitly controls performance inclusion, independently
+of the validity label. Classification does not change risk monitoring.
+
+API examples:
+
+```http
+GET /reports/paper-trading?view=STRATEGY
+GET /reports/paper-trading?view=RAW
+PATCH /trades/123/classification
+Content-Type: application/json
+
+{
+  "validity_status": "INVALID_STRATEGY_BUG",
+  "reason": "Repeated entry caused by level rearm bug",
+  "exclude_from_strategy_metrics": true
+}
+```
+
+The PATCH returns the updated trade. Unknown trades return 404; unsupported
+statuses or extra fields return 422. Use the same endpoint to reclassify or restore
+inclusion. It changes only classification metadata, preserving execution fields
+and the persisted event timeline.
+
+Startup performs an additive, transactional, repeatable SQLite migration. Existing
+trades retain their IDs, outcomes, and events. They receive `UNKNOWN` version,
+`MANUAL_REVIEW` status, and a `LEGACY_UNAVAILABLE` snapshot marker because their
+complete original settings cannot be recovered. They remain included until
+reviewed; migration does not silently remove historical performance. Back up the
+SQLite database using the normal deployment backup procedure before upgrading.

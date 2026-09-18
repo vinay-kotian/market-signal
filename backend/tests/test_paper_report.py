@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from app.database import connect
 from app.main import create_app
 from app.trade_models import TradeEntry
+from app.settings import SignalSettings, OptionSettings, TradeSettings
 
 
 NOW = datetime(2026, 9, 14, 4, 30, tzinfo=timezone.utc)
@@ -14,6 +15,9 @@ NOW = datetime(2026, 9, 14, 4, 30, tzinfo=timezone.utc)
 def add_trade(client, index=1, pnl=None, instrument='NIFTY', entered=None):
     repository = client.app.state.trade_repository
     entry = TradeEntry(
+        settings_snapshot={**SignalSettings().model_dump(mode="json"),
+                           **OptionSettings().model_dump(mode="json"),
+                           **TradeSettings().model_dump(mode="json")},
         signal_id=index, option_selection_id=index, instrument=instrument,
         trigger_level=25000, direction='FROM_BELOW', option_symbol=f'SIM{index}PE',
         option_type='PE', strike=25050, expiry='2026-09-17', lot_size=10,
@@ -35,6 +39,7 @@ def test_empty_report(client):
     response = client.get('/reports/paper-trading')
     assert response.status_code == 200
     report = response.json()
+    assert report.pop('view') == 'STRATEGY'
     assert report.pop('profit_factor') is None
     assert all(value == 0 for value in report.values())
 
@@ -59,7 +64,7 @@ def test_mixed_and_open_trades(client):
     for index, pnl in enumerate([200, 100, -50, -100, 0, None], 1):
         add_trade(client, index, pnl)
     report = client.get('/reports/paper-trading').json()
-    assert report == dict(total_trades=6, open_trades=1, closed_trades=5,
+    assert report == dict(view='STRATEGY', recorded_trades=6, included_trades=6, excluded_trades=0, total_trades=6, open_trades=1, closed_trades=5,
         winning_trades=2, losing_trades=2, breakeven_trades=1, win_rate=50,
         gross_profit=300, gross_loss=150, net_pnl=150, average_profit=150,
         average_loss=75, maximum_profit=200, maximum_loss=100, profit_factor=2)

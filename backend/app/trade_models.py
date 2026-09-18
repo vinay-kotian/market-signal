@@ -1,10 +1,35 @@
 from datetime import date, datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel
+import json
+
+from pydantic import BaseModel, Field, field_validator, ConfigDict
+from app.settings import TradeSettings
+
+
+ValidityStatus = Literal["VALID", "INVALID_STRATEGY_BUG", "INVALID_DATA_ISSUE",
+                         "INVALID_EXECUTION_ISSUE", "MANUAL_REVIEW"]
+
+
+class TradeClassification(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    validity_status: ValidityStatus
+    reason: str = Field(max_length=4000)
+    exclude_from_strategy_metrics: bool
 
 
 class TradeEntry(BaseModel):
+    strategy_version: str = Field(default_factory=lambda: TradeSettings().strategy_version)
+    validity_status: ValidityStatus = "VALID"
+    validity_reason: Optional[str] = None
+    exclude_from_strategy_metrics: bool = False
+    settings_snapshot: dict
+
+    @field_validator("settings_snapshot", mode="before")
+    @classmethod
+    def decode_snapshot(cls, value):
+        return json.loads(value) if isinstance(value, str) else value
+
     signal_id: int
     option_selection_id: int
     instrument: str

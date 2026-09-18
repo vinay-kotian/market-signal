@@ -5,7 +5,7 @@ from app.database import connect
 from app.level_repository import LevelRepository
 from app.option_instruments import OptionInstrumentSource
 from app.option_prices import OptionPriceSource
-from app.settings import TradeSettings
+from app.settings import TradeSettings, SignalSettings, OptionSettings
 from app.trade_models import TradeEntry, TradeEntryResult
 from app.trade_repository import TradeRepository
 from app.trade_schema import stop_price
@@ -14,11 +14,13 @@ from app.trading_time import TradingTimeRules
 
 class PaperExecutor:
     def __init__(self, repository: TradeRepository, instruments: OptionInstrumentSource,
-                 prices: OptionPriceSource, settings=None):
+                 prices: OptionPriceSource, settings=None, signal_settings=None, option_settings=None):
         self.repository = repository
         self.instruments = instruments
         self.prices = prices
         self.settings = settings or TradeSettings()
+        self.signal_settings = signal_settings or SignalSettings()
+        self.option_settings = option_settings or OptionSettings()
         self.time_rules = TradingTimeRules(self.settings)
 
     async def prepare(self, selection):
@@ -69,6 +71,11 @@ class PaperExecutor:
                 return fail("OPTION_PRICE_UNAVAILABLE")
             self.repository.record_option_price(contract.symbol, price, timestamp, connection)
             trade = self.repository.save(TradeEntry(
+                strategy_version=self.settings.strategy_version,
+                settings_snapshot={**self.signal_settings.model_dump(mode='json'),
+                                   **self.option_settings.model_dump(mode='json'),
+                                   **self.settings.model_dump(mode='json'),
+                                   'timezone': 'Asia/Kolkata'},
                 trade_mode=self.settings.trade_mode,
                 signal_id=signal.id, option_selection_id=selection.id,
                 instrument=selection.instrument, trigger_level=signal.level,

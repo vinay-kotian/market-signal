@@ -426,3 +426,30 @@ or
 Level state must persist across application restart.
 
 Different configured levels are independent.
+## Trade provenance and classification
+
+Each new PAPER or BACKTEST trade stores the explicit configured `strategy_version`
+(default `STRATEGY_VERSION=1.0.0`), starts `VALID`, and is included in strategy
+metrics. Its entry-time `settings_snapshot` includes signal, approach-distance,
+option-selection, quantity, risk, breakeven, rearming, and trading-time settings.
+Changing configuration later never updates an existing snapshot or version.
+Versions are configured explicitly and are not inferred from Git.
+
+Classification is reporting metadata: `validity_status`, `validity_reason`, and
+`exclude_from_strategy_metrics`. Allowed statuses are `VALID`,
+`INVALID_STRATEGY_BUG`, `INVALID_DATA_ISSUE`, `INVALID_EXECUTION_ISSUE`, and
+`MANUAL_REVIEW`. Status describes the assessment; the exclusion flag explicitly
+controls metric inclusion independently. Reclassifying does not change execution
+fields, persisted events, or position monitoring, and never deletes a trade.
+
+The default PAPER report view is `STRATEGY`, using only trades with exclusion
+false. `RAW` uses all PAPER trades. Both views show recorded, included, and
+excluded counts across all PAPER trades, including open trades. Total/open/closed
+counts and all performance metrics use the selected view; realised metrics still
+use closed trades only. Raw history always retains excluded trades.
+
+The startup migration adds metadata columns transactionally without replacing
+trade rows or events. Historical trades have version `UNKNOWN`, snapshot
+`{"provenance":"LEGACY_UNAVAILABLE"}`, and status `MANUAL_REVIEW`, with an
+explanatory reason. They remain included until explicitly reviewed/excluded;
+current settings are never presented as their original entry settings.

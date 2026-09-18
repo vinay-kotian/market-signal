@@ -1,3 +1,4 @@
+import json
 from contextlib import nullcontext
 
 from app.database import connect
@@ -25,6 +26,7 @@ class TradeRepository:
         context = connect(self.database_path) if connection is None else nullcontext(connection)
         with context as connection:
             values = entry.model_dump(mode="json")
+            values['settings_snapshot'] = json.dumps(values['settings_snapshot'])
             # Column names come only from the fixed model, never from request data.
             columns = ', '.join(values)
             placeholders = ', '.join('?' for _ in values)
@@ -114,13 +116,13 @@ class TradeRepository:
     def results(self):
         with connect(self.database_path) as connection:
             return connection.execute(
-                "SELECT status, realised_pnl FROM trades WHERE trade_mode = ?", (self.mode,)
+                "SELECT status, realised_pnl, exclude_from_strategy_metrics FROM trades WHERE trade_mode = ?", (self.mode,)
             ).fetchall()
 
     def paper_results(self):
         with connect(self.database_path) as connection:
             return connection.execute(
-                "SELECT status, realised_pnl FROM trades WHERE trade_mode = 'PAPER'"
+                "SELECT status, realised_pnl, exclude_from_strategy_metrics FROM trades WHERE trade_mode = 'PAPER'"
             ).fetchall()
 
     def history(self, page=1, page_size=20, status=None, instrument=None):
@@ -153,6 +155,18 @@ class TradeRepository:
                 return None
             return dict(trade=Trade(**dict(row)), events=TradeEventRepository(
                 self.database_path).for_trade(trade_id, connection))
+
+    def classify(self, trade_id, classification):
+        with connect(self.database_path) as connection:
+            cursor = connection.execute("""UPDATE trades SET validity_status = ?,
+                validity_reason = ?, exclude_from_strategy_metrics = ?
+                WHERE trade_id = ? AND trade_mode = ?""",
+                (classification.validity_status, classification.reason,
+                 classification.exclude_from_strategy_metrics, trade_id, self.mode))
+            if not cursor.rowcount:
+                return None
+            row = connection.execute('SELECT * FROM trades WHERE trade_id = ?', (trade_id,)).fetchone()
+            return Trade(**dict(row))
 
     def recent_results(self, limit=100):
         with connect(self.database_path) as connection:

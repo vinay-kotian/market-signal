@@ -86,7 +86,7 @@ class BacktestRunner:
         with connect(path) as connection:
             connection.execute('CREATE TABLE backtest_run (status TEXT, request TEXT, result TEXT)')
             connection.execute('INSERT INTO backtest_run VALUES (?, ?, ?)',
-                               ('RUNNING', config.model_dump_json(), json.dumps(dict(id=run_id, status='RUNNING'))))
+                               ('RUNNING', config.model_dump_json(), json.dumps(dict(id=run_id, status='RUNNING', strategy_version=config.strategy_version))))
         try:
             trades = TradeRepository(path, mode='BACKTEST')
             levels = LevelRepository(path)
@@ -97,7 +97,7 @@ class BacktestRunner:
             signal_settings = SignalSettings(**{key: values[key] for key in SignalSettings.model_fields})
             option_settings = OptionSettings(**{key: values[key] for key in OptionSettings.model_fields})
             prices = SimulatedOptionPrices()  # No invented quotes or future observations.
-            executor = PaperExecutor(trades, instruments, prices, settings)
+            executor = PaperExecutor(trades, instruments, prices, settings, signal_settings, option_settings)
             monitor = LevelMonitor(levels, SignalEngine(signal_settings), clock,
                 signal_repository=SignalRepository(path), option_selector=OptionSelector(instruments),
                 option_settings=option_settings, option_repository=OptionSelectionRepository(path),
@@ -125,7 +125,7 @@ class BacktestRunner:
                 signal_count = connection.execute('SELECT COUNT(*) FROM signals').fetchone()[0]
                 selection_count = connection.execute('SELECT COUNT(*) FROM option_selections').fetchone()[0]
             report = calculate_report(trades.results()).model_dump(mode='json')
-            result = dict(id=run_id, status='COMPLETED', **report,
+            result = dict(id=run_id, status='COMPLETED', strategy_version=config.strategy_version, **report,
                           wins=report['winning_trades'], losses=report['losing_trades'],
                           breakeven=report['breakeven_trades'],
                           trades=[trade.model_dump(mode='json') for trade in trades.recent(max(count, 1))],
@@ -138,7 +138,7 @@ class BacktestRunner:
         except Exception:
             import logging
             logging.getLogger(__name__).exception('Backtest %s failed', run_id)
-            result = dict(id=run_id, status='FAILED', error='Replay failed; inspect backend logs')
+            result = dict(id=run_id, status='FAILED', strategy_version=config.strategy_version, error='Replay failed; inspect backend logs')
         with connect(path) as connection:
             connection.execute('UPDATE backtest_run SET status = ?, result = ?',
                                (result['status'], json.dumps(result)))

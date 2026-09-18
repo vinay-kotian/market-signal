@@ -76,12 +76,13 @@ def create_app(database_path=None, signal_settings=None,
             if option_prices is None:
                 for symbol, price in trade_repository.saved_option_prices().items():
                     prices.set_price(symbol, price)
+        selection_settings = option_settings or OptionSettings.from_environment()
         selector = OptionSelector(instruments)
         executor = PaperExecutor(trade_repository, instruments, prices,
-                                 execution_settings)
+                                 execution_settings, engine.settings, selection_settings)
         monitor = LevelMonitor(LevelRepository(app.state.database_path), engine,
                                signal_repository=signal_repository, option_selector=selector,
-                               option_settings=option_settings or OptionSettings.from_environment(),
+                               option_settings=selection_settings,
                                option_repository=option_repository, paper_executor=executor,
                                clock=current_time)
         app.state.trade_repository = trade_repository
