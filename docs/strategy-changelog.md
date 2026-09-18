@@ -1,81 +1,98 @@
 # Strategy changelog
 
-Use an explicit `STRATEGY_VERSION` for each strategy release. Record the date,
-behavior change, and relevant validation here before using a new version. Dates
-are Asia/Kolkata calendar dates. Versions are not derived automatically from Git.
-The complete current rules are in [strategy-rules.md](strategy-rules.md).
+Dates below are implementation dates in Asia/Kolkata, not deployment dates.
+Versions are explicit `STRATEGY_VERSION` labels, never inferred from Git.
+Commit links identify the implementation; they do not prove the version label
+configured on the server. The current application default is **1.1.0**, but an
+explicit environment setting takes precedence. Existing trade versions and entry
+settings snapshots are never rewritten when the default changes.
 
-## 1.1.0 — 2026-09-18 (implementation; deployment pending)
+See [strategy-rules.md](strategy-rules.md) for the current rules.
 
-Daily-expiring levels. Previously, enabled levels could remain eligible across
-calendar days. Now every level has one `level_date`, based on Asia/Kolkata.
+## 1.1.0 — 2026-09-18 — Daily-expiring levels
 
-- Only today's ACTIVE/DISARMED levels are evaluated; past dates become EXPIRED
-  on startup, on ticks, and through a single periodic reconciliation task.
-- Expiry is terminal. Retain expired levels and their events for audit; create a
-  new level for a new date. Existing rearm distance and entry/exit rules are unchanged.
-- Legacy dates derive from `created_at`, rather than the migration date.
-- Backtests date levels using the replay clock, expire them on rollover, and do
-  not automatically renew them on later dates.
-- Validation: 270 backend tests and 13 frontend tests passed, including midnight,
-  startup, historical queries, migration, asynchronous quote rollover, and replay
-  coverage. Frontend production build passed.
+Implementation: [03c1da9](https://github.com/vinay-kotian/market-signal/commit/03c1da9ddea492d0478b1bcc1e04b19d48c00f88).
 
-Set `STRATEGY_VERSION=1.1.0` when deploying this behavior. Existing configured
-versions are not rewritten automatically; historical trade versions stay intact.
+Previously, levels could remain eligible across calendar days. Each level now
+belongs to one `level_date`, defaulting to today's Asia/Kolkata calendar date.
 
-## 1.0.0 — 2026-09-18
+- Only enabled levels dated today are eligible. ACTIVE levels can trigger;
+  DISARMED levels can rearm at the existing distance threshold. The rearming
+  tick itself does not trigger another entry.
+- Previous-day levels become ineligible at local midnight. Startup, tick
+  processing, and a single background check every second persist EXPIRED.
+  Execution checks the date again after quote preparation. Disabled levels
+  expire too; future-dated levels are ineligible until their date.
+- EXPIRED is terminal: no signals, new trades, or rearming. Expired records
+  cannot be edited or deleted. Dates cannot be changed to renew a level; create
+  a new daily level. Existing positions keep their normal risk monitoring.
+- Migration preserves IDs and existing events. Legacy `level_date` derives from
+  `created_at` converted to Asia/Kolkata; legacy naive timestamps are interpreted
+  as UTC. Old levels are not assigned the migration date.
+- Backtests assign levels the first replay record's trading date, after range
+  filtering. A later replay date expires them, including an explicit end time
+  crossing midnight. Levels are not automatically renewed on subsequent dates.
+- The Levels page defaults to today and offers an all-dates history view.
+  Apart from daily level eligibility, signal, selection, quantity, rearming
+  distance, stop, breakeven, and trading-time rules are unchanged.
 
-Initial versioned baseline: records the existing strategy, including the level
-rearming correction implemented on 2026-09-17. This entry marks the introduction
-of version tracking, not a claim that earlier trades ran version 1.0.0.
+Validation at implementation: 270 backend tests and 13 frontend tests passed;
+production frontend build passed. Interactive browser verification was unavailable.
 
-- After a successful entry, persist the level as DISARMED. Block another entry
-  until the underlying moves at least `level_rearm_distance_points` away from
-  that level (default 50 points). Levels rearm independently and retain state
-  across restarts. Implementation reference: `4df8d23` (2026-09-17).
-- Retain existing approach-distance, option-selection, stop-loss, trailing-stop,
-  breakeven, trading-window, and mandatory-exit rules.
-- Capture the version and entry settings on new trades and the version on
-  backtest results. Classification and RAW/STRATEGY reporting do not alter entry
-  or exit rules.
-- Validation: 257 backend tests passed after version/classification tracking was
-  added. A corrected replay of 2026-09-17 remains pending historical data and
-  confirmation of the defect being compared.
+Deployment is tracked by the [1.1.0 workflow run](https://github.com/vinay-kotian/market-signal/actions/runs/35305859884).
+Set the server's explicit `STRATEGY_VERSION=1.1.0` when deploying this behavior.
+A successful code deployment alone does not verify that environment value.
 
-Historical trades without recorded provenance remain `UNKNOWN`; do not relabel
-those trades as 1.0.0 or reconstruct their settings from today's configuration.
+## 1.0.0 — 2026-09-18 — Initial versioned baseline and trade classification
 
-## Corrected replay comparison — 2026-09-17 (pending)
+Implementation: [59ad38f](https://github.com/vinay-kotian/market-signal/commit/59ad38f4c7eed2dd4948c68ee3ae86fc45e918cd).
 
-Compare persisted RAW PAPER execution with an isolated BACKTEST of the confirmed
-correction. Neither the replay nor its interpretation changes original trades or
-events. Record the actual replay version and entry settings with the result.
+Introduced explicit version tracking around the existing strategy, including the
+2026-09-17 rearming fix described below. This release did not introduce a new
+entry or exit rule, or retroactively assign a version to older executions.
 
-Required inputs:
+- New PAPER/BACKTEST trades store a strategy version and entry-time settings
+  snapshot. New trades default to VALID and included in strategy metrics.
+  New backtest results also persist their strategy version.
+- Manual classification changes reporting metadata without changing execution
+  fields or persisted trade events.
+- STRATEGY is the default PAPER report view and excludes trades whose
+  `exclude_from_strategy_metrics` flag is true. RAW includes all PAPER trades.
+  The flag controls inclusion independently of the validity label; realised
+  performance still uses CLOSED trades only.
+- Legacy trade migration preserves records/events and assigns version UNKNOWN,
+  status MANUAL_REVIEW, and a LEGACY_UNAVAILABLE snapshot marker. Legacy trades
+  remain included until explicitly excluded; current settings are not substituted
+  for missing historical provenance.
 
-- The day's PAPER trades and events, plus any positions carried into that day.
-- Timestamped underlying and option prices, including sufficient lookback before
-  the first evaluation and observations through the relevant exit times.
-- The day's enabled levels, initial rearm state, instruments/contracts, and
-  original settings; document any missing or assumed inputs explicitly.
-- Confirmation of the defect and correction to replay. The level-rearming fix
-  is a candidate, not yet a confirmed explanation for that day's trades.
+Validation at implementation: 257 backend tests and 12 frontend tests passed;
+production frontend build passed. The [1.0.0 deployment workflow](https://github.com/vinay-kotian/market-signal/actions/runs/35304370825)
+completed successfully; the server's explicit version setting was not inspected.
 
-The server API supplied all 159 PAPER trades for the date; see the
-[RAW baseline comparison](strategy-comparison-2026-09-17.md). Historical tick
-availability on the server is still unverified.
+## Before version tracking — 2026-09-17 — Persistent level rearming
 
-The local `backend/levels.sqlite3` contains no trades, and the bundled
-`nifty-demo` fixture is synthetic data for 2026-09-14. Neither supplies the
-2026-09-17 comparison. The current replay runner uses synthetic option contracts
-and fresh level state; real contract data or carried state must be supported
-faithfully before claiming an equivalent replay. Do not substitute demo prices,
-trade events, or latest-only quotes for the missing tick history.
+Implementation: [4df8d23](https://github.com/vinay-kotian/market-signal/commit/4df8d23db36c112a7a213248d90e414c59924ff0).
 
-Once inputs are available, record the RAW and corrected results side by side:
-trade/open/closed counts, wins/losses/breakeven, win rate, gross profit/loss, net
-P&L, and profit factor. Explain changed entries and exits individually. Use the
-same time range and metric definitions, and disclose data gaps. An entry-day
-cohort includes that day's entries and their recorded outcomes; it is distinct
-from P&L realised during that calendar day. State which comparison is used.
+A successful entry disarms its level. Further entries are blocked until the
+underlying moves at least `level_rearm_distance_points` away (default 50 points).
+Rearming requires a later touch/cross for another entry. Rejected signals and
+failed entries do not disarm levels. Each level's state is independent and
+survives restart. Daily expiry was added later in 1.1.0.
+
+This implementation predates version capture. Do not label its historical trades
+1.0.0 solely from their date or infer which code was running from the commit time.
+
+## Corrected replay of 2026-09-17 — Not yet run
+
+The server API supplied 159 PAPER trades for the date in the snapshot retrieved
+on 2026-09-18. The [RAW baseline comparison](strategy-comparison-2026-09-17.md)
+records those outcomes and the outstanding replay inputs.
+
+A corrected replay still needs historical underlying/option ticks, original
+levels/settings and starting state, contract metadata, and confirmation of the
+defect and correction being tested. The current runner uses synthetic contracts
+and fresh level state; the bundled 2026-09-14 demo is not the flawed day's data.
+Do not treat deduplicating recorded trades as a corrected backtest.
+
+No corrected results or performance improvement are claimed. Neither a future
+replay nor reclassification should rewrite the original execution history.
