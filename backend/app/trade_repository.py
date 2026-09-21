@@ -1,4 +1,7 @@
 import json
+from datetime import datetime, time
+
+from app.trading_date import TRADING_TIMEZONE
 from contextlib import nullcontext
 
 from app.database import connect
@@ -144,6 +147,39 @@ class TradeRepository:
             ).fetchall()
             return dict(items=[Trade(**dict(row)) for row in rows], total=total,
                         page=page, page_size=page_size)
+
+    def by_date(self, date):
+        start = datetime.combine(date, time.min, TRADING_TIMEZONE)
+        with connect(self.database_path) as connection:
+            rows = connection.execute(
+                """SELECT * FROM trades WHERE trade_mode = 'PAPER'
+                AND julianday(entry_time) >= julianday(?) AND julianday(entry_time) < julianday(?) + 1
+                ORDER BY julianday(entry_time) DESC, trade_id DESC""",
+                (start.isoformat(), start.isoformat()),
+            ).fetchall()
+            return [Trade(**dict(row)) for row in rows]
+
+    def classify_bulk(self, classification):
+        ids = list(dict.fromkeys(classification.trade_ids))
+        with connect(self.database_path) as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            # Validate every target before writing. One missing/non-PAPER ID rejects
+            # the entire batch, rather than silently applying a partial update.
+            rows = [connection.execute(
+                "SELECT * FROM trades WHERE trade_id = ? AND trade_mode = 'PAPER'", (trade_id,)
+            ).fetchone() for trade_id in ids]
+            if any(row is None for row in rows):
+                return None
+            connection.executemany(
+                """UPDATE trades SET validity_status = ?, validity_reason = ?,
+                exclude_from_strategy_metrics = ? WHERE trade_id = ? AND trade_mode = 'PAPER'""",
+                [(classification.validity_status, classification.reason,
+                  classification.exclude_from_strategy_metrics, trade_id) for trade_id in ids],
+            )
+            return [Trade(**{**dict(row), 'validity_status': classification.validity_status,
+                             'validity_reason': classification.reason,
+                             'exclude_from_strategy_metrics': classification.exclude_from_strategy_metrics})
+                    for row in rows]
 
     def detail(self, trade_id):
         with connect(self.database_path) as connection:

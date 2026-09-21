@@ -501,3 +501,19 @@ Backtest levels use the first replay record's trading date. Advancing the replay
 clock expires them on a later date, including when only the requested end time
 crosses midnight. Backtests do not automatically recreate levels on subsequent
 dates; configure a separate daily run for each new daily level set.
+
+## Bulk trade classification
+
+A trade's reporting date is its entry timestamp converted to Asia/Kolkata, not
+its exit date or the browser's local date. Date queries include every PAPER
+trade for that date, regardless of execution status or classification.
+
+Bulk classification updates only validity status, validity reason, and the
+strategy-metric exclusion flag for the explicitly requested trade IDs. The whole
+batch commits or none of it does; a missing or non-PAPER target rejects the batch.
+Original execution fields, timestamps, versions, snapshots, and events are retained.
+
+The UI confirms the selected count, classification, and inclusion choice before
+applying. RAW metrics continue to include every PAPER trade; STRATEGY metrics
+exclude flagged trades. Restoring VALID and clearing the exclusion flag restores
+metric inclusion without changing execution history or trading behavior.

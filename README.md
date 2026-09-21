@@ -976,3 +976,34 @@ their final state.
 This change is strategy version **1.1.0**. Set the server's explicit
 `STRATEGY_VERSION=1.1.0` when deploying; an existing environment override wins
 against the application default.
+
+### Bulk classification by trading date
+
+In **Paper Report**, choose a trading date (entry date in Asia/Kolkata). Check
+individual trades or **Select All** to select every matching trade across pages.
+Leave Status and Instrument unfiltered to select the whole day. Choose the
+classification, enter a reason, and set **Exclude from strategy metrics**.
+**Apply Classification** asks for confirmation of the exact count, status, and
+inclusion choice before saving. Cancelling changes nothing.
+
+RAW continues to include those trades and their original outcomes. STRATEGY
+excludes trades with the exclusion flag enabled. Both summaries and the table
+reload after a successful change. Summary metrics still cover all dates; the
+date/status/instrument filters affect the table and selection only.
+
+To restore trades, select them again, choose VALID, uncheck the exclusion box,
+and confirm. Changing the status alone does not change the exclusion flag.
+
+API:
+
+- `GET /trades/by-date?date=2026-09-17` returns all PAPER trades entered on that
+  Kolkata date, newest first, including OPEN and excluded trades.
+- `PATCH /trades/classification/bulk` accepts `trade_ids`, `validity_status`,
+  `reason`, and `exclude_from_strategy_metrics`, and returns the updated trades.
+  Duplicate IDs are applied once. Empty/invalid IDs or unsupported fields return
+  422. A missing or non-PAPER ID returns 404 and rejects the entire batch.
+
+The bulk update is transactional and changes only the three classification
+fields. Prices, P&L, execution timestamps, settings snapshots, versions, and
+trade events remain unchanged. No schema migration or strategy-version bump is
+needed for this reporting-only feature.

@@ -1,10 +1,11 @@
+from datetime import date as TradingDate
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Request, Query, HTTPException
 from pydantic import BaseModel
 from app.paper_report import PaperReportingService, PaperTradingReport
 
-from app.trade_models import Trade, TradeEntryResult, TradeClassification
+from app.trade_models import Trade, TradeEntryResult, TradeClassification, BulkTradeClassification
 from app.trade_events import TradeEvent
 
 
@@ -49,6 +50,19 @@ def trade_history(request: Request, page: int = Query(1, ge=1),
                   status: Optional[Literal['OPEN', 'CLOSED']] = None,
                   instrument: Optional[str] = Query(None, min_length=1, max_length=100)):
     return request.app.state.trade_repository.history(page, page_size, status, instrument)
+
+
+@router.get('/trades/by-date', response_model=list[Trade])
+def trades_by_date(request: Request, date: TradingDate):
+    return request.app.state.trade_repository.by_date(date)
+
+
+@router.patch('/trades/classification/bulk', response_model=list[Trade])
+def classify_trades(classification: BulkTradeClassification, request: Request):
+    trades = request.app.state.trade_repository.classify_bulk(classification)
+    if trades is None:
+        raise HTTPException(status_code=404, detail='One or more PAPER trades not found; no trades changed')
+    return trades
 
 
 @router.get('/trades/{trade_id}', response_model=TradeDetail)

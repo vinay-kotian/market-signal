@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional
 
 import json
 
@@ -16,6 +16,10 @@ class TradeClassification(BaseModel):
     validity_status: ValidityStatus
     reason: str = Field(max_length=4000)
     exclude_from_strategy_metrics: bool
+
+
+class BulkTradeClassification(TradeClassification):
+    trade_ids: list[Annotated[int, Field(strict=True, ge=1, le=9223372036854775807)]] = Field(min_length=1)
 
 
 class TradeEntry(BaseModel):
