@@ -62,8 +62,8 @@ class TradeRepository:
     def close_at_stop(self, trade, price, timestamp, connection, *, effective_stop):
         # The monitor may have advanced protection on this tick; its Trade object
         # still contains the earlier stop. Use the exact stop that triggered exit.
-        advanced = Decimal(str(effective_stop)) > Decimal(str(trade.initial_stop_loss))
-        reason = 'TRAILING_STOP_LOSS' if advanced else 'STOP_LOSS'
+        entry_protected = Decimal(str(effective_stop)) >= Decimal(str(trade.entry_price))
+        reason = 'TRAILING_STOP_LOSS' if entry_protected else 'STOP_LOSS'
         return self.close(trade, price, timestamp, reason, connection)
 
     def all_open(self, connection):

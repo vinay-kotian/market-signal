@@ -611,38 +611,33 @@ index settings (default 30 or explicit per-run overrides), and the shared engine
 
 ## Stop Exit Classification
 
-If the trade exits using the original downside stop before the effective stop
-has advanced through trailing or breakeven protection:
+Classify a stop-triggered exit using the effective stop from the triggering tick:
 
-exit_reason = STOP_LOSS
+- `effective_stop < entry_price` → `STOP_LOSS`
+- `effective_stop >= entry_price` → `TRAILING_STOP_LOSS`
 
-If the effective stop has moved forward because of trailing-stop or breakeven
-protection and that protected stop is triggered:
+The threshold is entry protection, not an increase above `initial_stop_loss`.
+With entry 100, stops at 90, 94, or 99 produce STOP_LOSS, even if trailing logic
+raised them from an earlier value. Stops at 100 (breakeven) or 108 produce
+TRAILING_STOP_LOSS. Breakeven protection uses the same classification; it does
+not introduce a separate exit reason.
 
-exit_reason = TRAILING_STOP_LOSS
+Use the stop that triggered the exit, not the final fill price or realised P&L.
+For example, stop 101 with entry 100 remains TRAILING_STOP_LOSS when the
+received/execution price gaps to 99.80. Protection may change on the triggering
+tick itself, so classification receives that newly calculated effective stop.
 
-Classification must be based on the effective stop state at the time of exit,
-not only on final realised P&L.
-
-At a stop trigger, compare the effective stop calculated for that tick with
-`initial_stop_loss`. A strictly higher effective stop produces
-`TRAILING_STOP_LOSS`; otherwise use `STOP_LOSS`. The effective stop still uses
-the existing maximum of initial, previous, trailing, and activated breakeven
-protection. No stop formula, activation threshold, or entry rule changes.
-
-Trailing protection that advances the stop while it is still below entry also
-counts as `TRAILING_STOP_LOSS`. Breakeven protection that moves the stop to
-entry or above uses the same reason. A gap/slippage below entry does not turn
-an advanced-stop exit into `STOP_LOSS`; P&L describes the outcome, not the
-protection that triggered it.
+The effective stop still uses the existing maximum of initial, previous,
+trailing, and activated breakeven protection. Stop formulas, activation
+thresholds, monotonic behavior, execution prices, and entry rules are unchanged.
 
 Both stop classifications retain `STOP_LOSS_HIT` and `POSITION_CLOSED` events.
 Market-close precedence and its events remain unchanged. Non-stop reasons are
 not inferred from stop state. Historical CLOSED trades retain their saved
-reasons and events, even if their stop fields suggest an advanced stop; there
-is no historical reclassification or backfill.
+reasons and events, including trailing exits recorded below entry under the
+previous rule; there is no historical reclassification or backfill.
 
 PAPER and BACKTEST both use `PositionMonitor` and `TradeRepository.close_at_stop`,
 passing the effective stop from the triggering tick. Persisted stop protection
-survives restart. Trades, Report, and Backtest display the four reasons as
+survives restart. Trades, Report, and Backtest display the saved reasons as
 Stop Loss, Trailing Stop Loss, Market Closing Exit, and Manual Square Off.
