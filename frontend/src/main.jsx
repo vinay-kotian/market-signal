@@ -70,10 +70,12 @@ function App() {
     client.refresh(); client.start();
     return () => { client.stop(); feed.current = null; };
   }, []);
-  const instruments = [...new Set((levels ?? []).map(level => level.instrument))];
+  const viewingAllDates = page === 'levels' && levelView === 'ALL';
+  const visibleLevels = levelsForDate(levels ?? [], today, viewingAllDates ? 'ALL' : 'TODAY');
+  const instruments = [...new Set(visibleLevels.map(level => level.instrument))];
   useEffect(() => {
     if (!instruments.includes(selected)) setSelected(instruments[0] ?? '');
-  }, [levels]);
+  }, [levels, today, viewingAllDates]);
 
   async function mutate(action) {
     setBusy(true); setErrors(previous => ({ ...previous, action: null })); setMessage('');
@@ -96,8 +98,7 @@ function App() {
     setPage(next); setEditor(null); setDeleting(null);
     if (section) requestAnimationFrame(() => document.getElementById(section)?.focus());
   }
-  const rows = levelsForDate(levels ?? [], today, page === 'levels' ? levelView : 'TODAY')
-    .filter(level => level.instrument === selected);
+  const rows = visibleLevels.filter(level => level.instrument === selected);
   const live = connection?.market_data_mode === 'ZERODHA';
   const shownPrices = prices;
   const current = shownPrices[selected]?.price;
@@ -109,9 +110,10 @@ function App() {
         <div className="ms-sidehead"><span className="ms-label">Watchlist</span><span className="ms-sub">{instruments.length} instruments</span></div>
         <div className="ms-search"><input type="search" aria-label="Search instruments" placeholder="Search instruments" value={search} onChange={event => setSearch(event.target.value)} /></div>
         <div className="ms-watchlist">{instruments.filter(symbol => symbol.toLowerCase().includes(search.toLowerCase())).map(symbol => <button className="ms-watch" aria-pressed={symbol === selected} key={symbol} disabled={busy} onClick={() => { setSelected(symbol); setEditor(null); }}>
-          <span>{symbol}<small>{levels.filter(level => level.instrument === symbol).length} levels</small></span>
+          <span>{symbol}<small>{visibleLevels.filter(level => level.instrument === symbol).length} levels · {viewingAllDates ? 'all dates' : 'today'}</small></span>
           <span className="ms-quote">{formatPrice(shownPrices[symbol]?.price)}<small className={shownPrices[symbol]?.change >= 0 ? 'ms-up' : 'ms-down'}>{shownPrices[symbol]?.change == null ? 'Waiting for next tick' : `${shownPrices[symbol].change >= 0 ? '↗ +' : '↘ '}${formatPrice(shownPrices[symbol].change)}`}</small></span>
         </button>)}</div>
+        {levels && !instruments.length && <p className="ms-sidefoot">{viewingAllDates ? 'No saved levels.' : 'No levels for today. Add a daily level in Levels.'}</p>}
         <div className="ms-sidefoot">{live ? 'Live Zerodha prices' : 'Simulated prices received by the backend'}<br />{live ? 'Movement since previous received tick' : 'Movement since previous submitted tick'}</div>
       </aside>
       <main>
