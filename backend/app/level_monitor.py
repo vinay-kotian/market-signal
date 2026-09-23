@@ -3,6 +3,7 @@ from collections import deque
 from datetime import datetime, timezone
 
 from app.trading_date import trading_date
+from app.index_settings import IndexSettingsRepository
 from app.events import LevelTriggered
 from app.level_repository import LevelRepository
 from app.market_data import PriceTick
@@ -40,6 +41,7 @@ class LevelMonitor:
         self._next_event_id = 1
         self._lock = asyncio.Lock()
         self.on_expired = None
+        self.on_armed = None
 
     def _expire(self, timestamp):
         changed = self._repository.expire_before(timestamp)
@@ -66,13 +68,19 @@ class LevelMonitor:
             previous = self._previous_prices.get(tick.instrument)
             current = tick.price
             timestamp = self._clock()
+            self._repository.record_price(tick.instrument, current, timestamp)
             self._expire(timestamp)
             levels = self._repository.list_enabled(tick.instrument, timestamp)
             active_levels = []
             distance = (self._paper_executor.settings.level_rearm_distance_points
                         if self._paper_executor else TradeSettings().level_rearm_distance_points)
+            initial_distance = IndexSettingsRepository(self._repository.database_path).distance(tick.instrument)
             for level in levels:
-                if level.status == 'DISARMED':
+                if level.status == 'PENDING_ARM':
+                    if self._repository.initial_arm(level, current, initial_distance, timestamp) and self.on_armed:
+                        self.on_armed([self._repository.get(level.id)])
+                    # Initial arming is a state transition only, never an entry tick.
+                elif level.status == 'DISARMED':
                     self._repository.rearm(level, current, distance, timestamp)
                     # Re-arming is not a trigger: require a later return/crossing.
                 elif level.status == 'ACTIVE':

@@ -1,3 +1,4 @@
+from active_level_fixture import create_active_level, create_active_record
 from app.option_prices import SimulatedOptionPrices
 import asyncio
 from datetime import datetime, timedelta, timezone
@@ -17,7 +18,7 @@ from app.signal_repository import SignalRepository
 
 
 def add_level(client, price=25000, instrument="NIFTY", enabled=True):
-    return client.post("/levels", json={
+    return create_active_level(client, json={
         "instrument": instrument, "price": price, "enabled": enabled,
     }).json()
 
@@ -116,7 +117,7 @@ def test_lookback_boundary_and_expired_previous_price(tmp_path, gap, expected_di
     path = tmp_path / "timed.sqlite3"
     initialize_database(path)
     repository = LevelRepository(path, clock=lambda: datetime(2026, 9, 14, tzinfo=timezone.utc))
-    repository.create(LevelInput(instrument="NIFTY", price=25000, enabled=True))
+    create_active_record(repository, LevelInput(instrument="NIFTY", price=25000, enabled=True))
     engine = SignalEngine()
     now = datetime(2026, 9, 14, tzinfo=timezone.utc)
 
@@ -136,7 +137,7 @@ def test_expired_extreme_is_excluded(tmp_path):
     path = tmp_path / "extreme.sqlite3"
     initialize_database(path)
     repository = LevelRepository(path, clock=lambda: datetime(2026, 9, 14, tzinfo=timezone.utc))
-    repository.create(LevelInput(instrument="NIFTY", price=25000, enabled=True))
+    create_active_record(repository, LevelInput(instrument="NIFTY", price=25000, enabled=True))
     engine = SignalEngine(SignalSettings(lookback_minutes=1))
     start = datetime(2026, 9, 14, tzinfo=timezone.utc)
     times = iter([start, start + timedelta(seconds=61), start + timedelta(seconds=62)])

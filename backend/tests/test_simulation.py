@@ -1,3 +1,4 @@
+from active_level_fixture import create_active_level, create_active_record
 from app.option_prices import SimulatedOptionPrices
 import asyncio
 
@@ -13,8 +14,7 @@ from app.models import LevelInput
 
 
 def add_level(client, price=25000, instrument="NIFTY", enabled=True):
-    response = client.post(
-        "/levels", json={"instrument": instrument, "price": price, "enabled": enabled}
+    response = create_active_level(client, json={"instrument": instrument, "price": price, "enabled": enabled}
     )
     assert response.status_code == 201
     return response.json()
@@ -118,7 +118,11 @@ def test_levels_are_reloaded_and_prices_tracked_without_levels(client):
         f"/levels/{level['id']}",
         json={"instrument": "NIFTY", "price": 25000, "enabled": True},
     )
-    publish(client, 25005)
+    publish(client, 25005)  # Only 15 points from the edit reference: still pending.
+    assert events(client) == []
+    publish(client, 25020)  # Exactly 30 points arms without triggering.
+    assert events(client) == []
+    publish(client, 25000)
     assert len(events(client)) == 1
     client.delete(f"/levels/{level['id']}")
     publish(client, 24990)
@@ -172,7 +176,7 @@ def test_concurrent_duplicate_publications(tmp_path):
     path = tmp_path / "concurrent.sqlite3"
     initialize_database(path)
     repository = LevelRepository(path)
-    repository.create(LevelInput(instrument="NIFTY", price=25000, enabled=True))
+    create_active_record(repository, LevelInput(instrument="NIFTY", price=25000, enabled=True))
 
     async def scenario():
         monitor = LevelMonitor(repository)

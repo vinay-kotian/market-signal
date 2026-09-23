@@ -33,6 +33,7 @@ from app.option_prices import SimulatedOptionPrices
 from app.paper_executor import PaperExecutor
 from app.trade_repository import TradeRepository
 from app.trade_routes import router as trade_router
+from app.index_settings import router as index_settings_router
 from app.position_monitor import PositionMonitor
 from app.simulation_flow import SimulationFlow
 from app.trade_events import TradeEventRepository
@@ -111,6 +112,7 @@ def create_app(database_path=None, signal_settings=None,
                 app.state.websocket_hub.publish('LEVEL_UPDATED', dict(level=level))
 
         monitor.on_expired = publish_expired
+        monitor.on_armed = publish_expired
         await monitor.reconcile()
         publisher = LiveEventPublisher(app.state)
         app.state.live_publisher = publisher
@@ -157,6 +159,7 @@ def create_app(database_path=None, signal_settings=None,
     app.include_router(signals_router)
     app.include_router(option_router)
     app.include_router(trade_router)
+    app.include_router(index_settings_router)
     app.include_router(backtest_router)
     app.include_router(connection_router)
     app.include_router(live_router)

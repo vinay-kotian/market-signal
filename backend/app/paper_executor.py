@@ -2,6 +2,7 @@ from contextlib import nullcontext
 from math import isfinite
 
 from app.database import connect
+from app.index_settings import IndexSettingsRepository
 from app.trading_date import trading_date
 from app.level_repository import LevelRepository
 from app.option_instruments import OptionInstrumentSource
@@ -51,6 +52,8 @@ class PaperExecutor:
             level_state = connection.execute('SELECT status, level_date FROM levels WHERE id = ?',
                                              (signal.level_id,)).fetchone()
             if level_state is not None:
+                if level_state['status'] == 'PENDING_ARM':
+                    return fail('LEVEL_PENDING_ARM')
                 if level_state['status'] == 'EXPIRED' or level_state['level_date'] < trading_date(timestamp).isoformat():
                     return fail('LEVEL_EXPIRED')
                 if level_state['level_date'] != trading_date(timestamp).isoformat():
@@ -81,7 +84,8 @@ class PaperExecutor:
                 settings_snapshot={**self.signal_settings.model_dump(mode='json'),
                                    **self.option_settings.model_dump(mode='json'),
                                    **self.settings.model_dump(mode='json'),
-                                   'timezone': 'Asia/Kolkata'},
+                                   'timezone': 'Asia/Kolkata',
+                                   'initial_arm_distance_points': IndexSettingsRepository(self.repository.database_path).distance(selection.instrument)},
                 trade_mode=self.settings.trade_mode,
                 signal_id=signal.id, option_selection_id=selection.id,
                 instrument=selection.instrument, trigger_level=signal.level,

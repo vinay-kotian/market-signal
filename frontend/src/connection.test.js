@@ -41,3 +41,20 @@ test('new live level automatically selects the first synced instrument', async (
     assert.match(html, /<option value="BANKNIFTY">BANKNIFTY/);
   } finally { await server.close(); }
 });
+
+test('Settings renders separate per-index distance inputs', async () => {
+  const server = await createServer({ optimizeDeps: { noDiscovery: true }, server: { middlewareMode: true, hmr: false }, appType: 'custom' });
+  try {
+    const { default: SettingsPage } = await server.ssrLoadModule('/src/SettingsPage.jsx');
+    const html = renderToStaticMarkup(React.createElement(SettingsPage, {
+      indexes: [{ instrument: 'NIFTY', initial_arm_distance_points: 30, updated_at: 'a' },
+        { instrument: 'BANKNIFTY', initial_arm_distance_points: 50, updated_at: 'b' }],
+      onRefresh() {},
+    }));
+    assert.match(html, /NIFTY Initial Arm Distance/);
+    assert.match(html, /BANKNIFTY Initial Arm Distance/);
+    assert.match(html, /value="30"/);
+    assert.match(html, /value="50"/);
+    assert.equal(initialPage('/settings'), 'settings');
+  } finally { await server.close(); }
+});

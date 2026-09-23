@@ -1,3 +1,4 @@
+from active_level_fixture import create_active_level, create_active_record
 from datetime import datetime, timezone
 from dataclasses import replace
 
@@ -16,7 +17,7 @@ from app.trade_repository import TradeRepository
 
 
 def add_level(client, instrument="NIFTY", price=25000):
-    assert client.post('/levels', json={"instrument": instrument, "price": price, "enabled": True}).status_code == 201
+    assert create_active_level(client, json={"instrument": instrument, "price": price, "enabled": True}).status_code == 201
 
 
 def publish(client, prices, instrument="NIFTY"):

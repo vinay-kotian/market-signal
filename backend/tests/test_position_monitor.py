@@ -1,3 +1,4 @@
+from active_level_fixture import create_active_level, create_active_record
 from datetime import datetime, timezone
 
 import pytest
@@ -19,7 +20,7 @@ def tick(client, symbol, price):
 
 
 def enter(client):
-    assert client.post('/levels', json={'instrument': 'NIFTY', 'price': 25000, 'enabled': True}).status_code == 201
+    assert create_active_level(client, json={'instrument': 'NIFTY', 'price': 25000, 'enabled': True}).status_code == 201
     tick(client, 'NIFTY', 24900)
     tick(client, 'NIFTY', 25000)
     return client.get('/trades').json()[0]

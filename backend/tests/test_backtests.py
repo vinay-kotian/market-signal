@@ -1,3 +1,4 @@
+from active_level_fixture import create_active_level, create_active_record
 from datetime import datetime
 
 import pytest
@@ -16,7 +17,7 @@ def tick(time, instrument, price):
 
 
 def dataset(option_ticks=()):
-    return [tick('09:59:00', SYMBOL, 100), tick('10:00:00', 'NIFTY', 24900),
+    return [tick('09:59:00', SYMBOL, 100), tick('09:59:30', 'NIFTY', 24930), tick('10:00:00', 'NIFTY', 24900),
             tick('10:01:00', 'NIFTY', 25000),
             *[tick(time, SYMBOL, price) for time, price in option_ticks]]
 
@@ -45,7 +46,7 @@ def test_replay_order_and_shared_services(client, monkeypatch):
     monkeypatch.setattr(LevelMonitor, 'on_tick', observe_tick)
     monkeypatch.setattr(SignalEngine, 'analyze', observe_analyze)
     result = run(client, list(reversed(dataset())))
-    assert [price for _, price in seen] == [24900, 25000]
+    assert [price for _, price in seen] == [24930, 24900, 25000]
     assert seen[0][0] < seen[1][0]
     assert len(analyses) == 1
     assert result['signals'][0]['direction'] == 'FROM_BELOW'
@@ -123,7 +124,7 @@ def test_no_future_entry_quote(client):
 
 def test_repeat_runs_and_paper_state_are_isolated(client):
     # Preserve existing app state while replaying multiple independent histories.
-    client.post('/levels', json=dict(instrument='NIFTY', price=25000, enabled=True))
+    create_active_level(client, json=dict(instrument='NIFTY', price=25000, enabled=True))
     client.post('/simulation/tick', json=dict(instrument='NIFTY', price=24900))
     paths = ['/levels', '/trades', '/reports/paper-trading', '/signals', '/simulation/events']
     before = {path: client.get(path).json() for path in paths}

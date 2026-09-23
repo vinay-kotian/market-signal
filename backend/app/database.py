@@ -109,3 +109,6 @@ def initialize_database(database_path, stop_loss_percentage=10, trade_settings=N
         )""")
 
         initialize_daily_levels(connection)
+
+        from app.index_settings import initialize_index_settings
+        initialize_index_settings(connection)

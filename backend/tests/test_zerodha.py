@@ -1,3 +1,4 @@
+from active_level_fixture import create_active_level, create_active_record
 import asyncio
 import hashlib
 import json
@@ -88,7 +89,7 @@ def test_failed_sync_preserves_previous_master(live):
 def test_normalized_ticks_and_shared_pipeline(live):
     client, broker = live
     app = client.app
-    client.post('/levels', json=dict(instrument='NIFTY', price=25000, enabled=True))
+    create_active_level(client, json=dict(instrument='NIFTY', price=25000, enabled=True))
     provider = app.state.market_data_provider
     assert isinstance(provider, ZerodhaMarketDataProvider)
     provider.subscribed = {256265}
@@ -112,8 +113,8 @@ def test_normalized_ticks_and_shared_pipeline(live):
 
 def test_subscriptions_and_resubscribe(live):
     client, _ = live
-    client.post('/levels', json=dict(instrument='NIFTY', price=25000, enabled=True))
-    client.post('/levels', json=dict(instrument='BANKNIFTY', price=51000, enabled=False))
+    create_active_level(client, json=dict(instrument='NIFTY', price=25000, enabled=True))
+    create_active_level(client, json=dict(instrument='BANKNIFTY', price=51000, enabled=False))
     provider = client.app.state.market_data_provider
     socket = type('Socket', (), {'send': AsyncMock()})()
     provider.socket = socket
@@ -188,7 +189,7 @@ def test_authentication_protocol_and_secret_redaction():
 def test_missing_entry_quote_cannot_create_trade(live):
     client, broker = live
     broker.ltp.return_value = None
-    client.post('/levels', json=dict(instrument='NIFTY', price=25000, enabled=True))
+    create_active_level(client, json=dict(instrument='NIFTY', price=25000, enabled=True))
     provider = client.app.state.market_data_provider
     asyncio.run(provider.publish(PriceTick(instrument='NIFTY', price=24900)))
     asyncio.run(provider.publish(PriceTick(instrument='NIFTY', price=25000)))
@@ -198,7 +199,7 @@ def test_missing_entry_quote_cannot_create_trade(live):
 
 def test_reconnect_loop_resubscribes(live):
     client, broker = live
-    client.post('/levels', json=dict(instrument='NIFTY', price=25000, enabled=True))
+    create_active_level(client, json=dict(instrument='NIFTY', price=25000, enabled=True))
     original = client.app.state.market_data_provider
     connections = []
     async def check():
@@ -242,7 +243,7 @@ def test_synced_indices_available_without_any_levels(live):
 
 def test_continuous_socket_prices_do_not_poll_rest_and_expose_metrics(live):
     client, broker = live
-    client.post('/levels', json=dict(instrument='NIFTY', price=25000, enabled=True))
+    create_active_level(client, json=dict(instrument='NIFTY', price=25000, enabled=True))
     provider = client.app.state.market_data_provider
     provider.subscribed = {256265}
     provider.set_status('CONNECTED')

@@ -1,3 +1,4 @@
+from active_level_fixture import create_active_level, create_active_record
 import asyncio
 from datetime import datetime, timezone
 
@@ -46,7 +47,7 @@ def test_accept_broadcast_multiple_clients_and_cleanup(client):
 
 
 def test_committed_strategy_events_and_stops(client):
-    id = client.post('/levels', json=dict(instrument='NIFTY', price=25000, enabled=True)).json()['id']
+    id = create_active_level(client, json=dict(instrument='NIFTY', price=25000, enabled=True)).json()['id']
     with client.websocket_connect('/ws/market') as socket:
         tick(client, 24900)
         until_price(socket)
@@ -73,7 +74,7 @@ def test_committed_strategy_events_and_stops(client):
 def test_market_close_without_tick_pushes_exit(tmp_path):
     now = [datetime(2026, 9, 14, 4, 30, tzinfo=timezone.utc)]
     with TestClient(create_app(tmp_path / 'db', clock=lambda: now[0])) as client:
-        client.post('/levels', json=dict(instrument='NIFTY', price=25000, enabled=True))
+        create_active_level(client, json=dict(instrument='NIFTY', price=25000, enabled=True))
         tick(client, 24900)
         tick(client, 25000)
         with client.websocket_connect('/ws/market') as socket:
@@ -124,7 +125,7 @@ def test_slow_browser_buffer_is_bounded():
 
 def test_rollback_emits_no_trade_or_level_event(client, monkeypatch):
     from app.level_repository import LevelRepository
-    client.post('/levels', json=dict(instrument='NIFTY', price=25000, enabled=True))
+    create_active_level(client, json=dict(instrument='NIFTY', price=25000, enabled=True))
     tick(client, 24900)
     queue = asyncio.Queue(maxsize=256)
     client.app.state.websocket_hub.clients.add(queue)

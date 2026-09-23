@@ -5,6 +5,11 @@
     "price": 100
   },
   {
+    "timestamp": "2026-09-14T09:59:30+05:30",
+    "instrument": "NIFTY",
+    "price": 24930
+  },
+  {
     "timestamp": "2026-09-14T10:00:00+05:30",
     "instrument": "NIFTY",
     "price": 24900

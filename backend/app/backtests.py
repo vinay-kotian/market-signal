@@ -10,6 +10,7 @@ from pydantic import AwareDatetime, Field, model_validator
 from app.database import connect, initialize_database
 from app.historical_market_data import HistoricalMarketDataProvider, HistoricalTick
 from app.level_monitor import LevelMonitor
+from app.index_settings import IndexInstrument, IndexSettingsInput, IndexSettingsRepository
 from app.level_repository import LevelRepository
 from app.models import LevelInput
 from app.option_instruments import SimulatedOptionInstrumentSource
@@ -30,6 +31,7 @@ from app.trading_time import MarketCloseService, TradingTimeRules
 
 class BacktestInput(TradeSettings, SignalSettings, OptionSettings):
     trade_mode: Literal['BACKTEST'] = 'BACKTEST'
+    index_settings: dict[IndexInstrument, IndexSettingsInput] = Field(default_factory=dict)
     instrument: Literal['NIFTY', 'BANKNIFTY']
     levels: list[float] = Field(min_length=1, max_length=100)
     dataset: Optional[list[HistoricalTick]] = Field(default=None, min_length=1, max_length=10000)
@@ -88,6 +90,8 @@ class BacktestRunner:
             connection.execute('INSERT INTO backtest_run VALUES (?, ?, ?)',
                                ('RUNNING', config.model_dump_json(), json.dumps(dict(id=run_id, status='RUNNING', strategy_version=config.strategy_version))))
         try:
+            for instrument, index_config in config.index_settings.items():
+                IndexSettingsRepository(path).update(instrument, index_config)
             trades = TradeRepository(path, mode='BACKTEST')
             levels = LevelRepository(path, clock)
             for price in dict.fromkeys(config.levels):

@@ -1,3 +1,4 @@
+from active_level_fixture import create_active_level, create_active_record
 import asyncio
 import sqlite3
 from datetime import datetime, timezone
@@ -40,7 +41,7 @@ def test_failed_multi_level_write_rolls_back_and_can_retry(tmp_path):
     initialize_database(path)
     levels = LevelRepository(path)
     for price in [25000, 25100]:
-        levels.create(LevelInput(instrument="NIFTY", price=price, enabled=True))
+        create_active_record(levels, LevelInput(instrument="NIFTY", price=price, enabled=True))
     with connect(path) as connection:
         connection.execute("""
             CREATE TRIGGER fail_second_signal BEFORE INSERT ON signals

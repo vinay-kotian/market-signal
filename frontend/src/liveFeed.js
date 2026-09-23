@@ -80,6 +80,7 @@ export function applyLiveEvent(state, event) {
         prices: { ...state.prices, [data.instrument]: { price: data.price, change: data.change } } };
     case 'ZERODHA_CONNECTION_STATUS':
       return { ...state, connection: { ...state.connection, ...data } };
+    case 'INDEX_SETTINGS_UPDATED': return { ...state, indexes: [...(state.indexes ?? []).filter(index => index.instrument !== data.instrument), data] };
     case 'LEVEL_TRIGGERED': return { ...state, events: upsert(state.events, data) };
     case 'LEVEL_DISARMED':
     case 'LEVEL_REARMED':

@@ -1,3 +1,4 @@
+from active_level_fixture import create_active_level, create_active_record
 import threading
 from datetime import datetime
 
@@ -30,9 +31,9 @@ class Clock:
 
 
 def test_today_eligible_and_historical_queryable(client):
-    today = client.post('/levels', json=PAYLOAD).json()
-    yesterday = client.post('/levels', json={**PAYLOAD, 'level_date': '2026-09-13'}).json()
-    future = client.post('/levels', json={**PAYLOAD, 'level_date': '2026-09-15'}).json()
+    today = create_active_level(client, json=PAYLOAD).json()
+    yesterday = create_active_level(client, json={**PAYLOAD, 'level_date': '2026-09-13'}).json()
+    future = create_active_level(client, json={**PAYLOAD, 'level_date': '2026-09-15'}).json()
     assert today['level_date'] == '2026-09-14'
     assert today['status'] == future['status'] == 'ACTIVE'
     assert yesterday['status'] == 'EXPIRED'
@@ -53,7 +54,7 @@ def test_today_eligible_and_historical_queryable(client):
 ])
 def test_date_defaults_use_kolkata(tmp_path, timestamp, expected):
     with TestClient(create_app(tmp_path / 'date.db', clock=Clock(timestamp))) as client:
-        assert client.post('/levels', json=PAYLOAD).json()['level_date'] == expected
+        assert create_active_level(client, json=PAYLOAD).json()['level_date'] == expected
 
 
 def test_naive_clock_rejected():
@@ -64,9 +65,9 @@ def test_naive_clock_rejected():
 def test_startup_expires_active_disarmed_and_disabled_preserving_history(tmp_path):
     path, clock = tmp_path / 'startup.db', Clock()
     with TestClient(create_app(path, clock=clock)) as client:
-        disarmed = client.post('/levels', json=PAYLOAD).json()
-        active = client.post('/levels', json={**PAYLOAD, 'price': 26000}).json()
-        disabled = client.post('/levels', json={**PAYLOAD, 'enabled': False}).json()
+        disarmed = create_active_level(client, json=PAYLOAD).json()
+        active = create_active_level(client, json={**PAYLOAD, 'price': 26000}).json()
+        disabled = create_active_level(client, json={**PAYLOAD, 'enabled': False}).json()
         publish(client, [24900, 25000])
         events = client.get(f"/levels/{disarmed['id']}/events").json()
         assert events[0]['event_type'] == 'LEVEL_DISARMED'
@@ -91,7 +92,7 @@ def test_startup_expires_active_disarmed_and_disabled_preserving_history(tmp_pat
 def test_expiry_without_ticks_and_websocket_notification(tmp_path):
     clock = Clock('2026-09-14T18:29:59+00:00')
     with TestClient(create_app(tmp_path / 'rollover.db', clock=clock)) as client:
-        level = client.post('/levels', json=PAYLOAD).json()
+        level = create_active_level(client, json=PAYLOAD).json()
         changed = threading.Event()
         monitor = client.app.state.level_monitor
         original = monitor.on_expired
@@ -109,13 +110,13 @@ def test_expiry_without_ticks_and_websocket_notification(tmp_path):
             assert message['data']['level']['id'] == level['id']
             assert message['data']['level']['status'] == 'EXPIRED'
         assert client.get(f"/levels/{level['id']}").json()['status'] == 'EXPIRED'
-        assert client.post('/levels', json=PAYLOAD).json()['level_date'] == '2026-09-15'
+        assert create_active_level(client, json=PAYLOAD).json()['level_date'] == '2026-09-15'
 
 
 def test_tick_expiry_blocks_old_rearm_even_before_background_check(tmp_path):
     clock = Clock()
     with TestClient(create_app(tmp_path / 'tick.db', clock=clock)) as client:
-        level = client.post('/levels', json=PAYLOAD).json()
+        level = create_active_level(client, json=PAYLOAD).json()
         publish(client, [24900, 25000])
         old = client.app.state.level_repository.get(level['id'])
         assert old.status == 'DISARMED'
@@ -130,7 +131,7 @@ def test_tick_expiry_blocks_old_rearm_even_before_background_check(tmp_path):
 def test_execution_rechecks_date_and_expired_is_terminal(tmp_path):
     clock = Clock()
     with TestClient(create_app(tmp_path / 'execution.db', clock=clock, option_prices=SimulatedOptionPrices())) as client:
-        level = client.post('/levels', json=PAYLOAD).json()
+        level = create_active_level(client, json=PAYLOAD).json()
         publish(client, [24900, 25000])
         signal = SignalResult(**client.get('/signals').json()[0])
         selection = StoredOptionSelection(**client.get('/option-selections').json()[0])
@@ -149,7 +150,7 @@ def test_execution_rechecks_date_and_expired_is_terminal(tmp_path):
 def test_quote_fetch_crossing_midnight_does_not_save_stale_signals(tmp_path):
     clock = Clock()
     with TestClient(create_app(tmp_path / 'quote.db', clock=clock)) as client:
-        level = client.post('/levels', json=PAYLOAD).json()
+        level = create_active_level(client, json=PAYLOAD).json()
         publish(client, [24900])
 
         async def delayed_quote(selection):
@@ -164,7 +165,7 @@ def test_quote_fetch_crossing_midnight_does_not_save_stale_signals(tmp_path):
 
 
 def test_level_date_cannot_be_edited(client):
-    level = client.post('/levels', json=PAYLOAD).json()
+    level = create_active_level(client, json=PAYLOAD).json()
     assert client.put(f"/levels/{level['id']}", json={**PAYLOAD, 'level_date': '2026-09-15'}).status_code == 409
     assert client.get(f"/levels/{level['id']}").json() == level
 
@@ -193,7 +194,7 @@ def test_migration_preserves_ids_events_sequence_and_derives_local_date(tmp_path
     repository = LevelRepository(path, Clock('2026-09-15T10:00:00+05:30'))
     repository.expire_before(repository.clock())
     assert repository.get(7).status == 'EXPIRED'
-    assert repository.create(LevelInput(**PAYLOAD)).id == 100
+    assert create_active_record(repository, LevelInput(**PAYLOAD)).id == 100
 
 
 def test_backtest_levels_use_replay_date_and_expire_on_rollover(client):

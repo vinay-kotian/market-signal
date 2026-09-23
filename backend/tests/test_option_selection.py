@@ -1,3 +1,4 @@
+from active_level_fixture import create_active_level, create_active_record
 import asyncio
 import sqlite3
 from datetime import date, datetime, timedelta, timezone
@@ -66,7 +67,7 @@ def test_missing_contract_does_not_fall_back_to_later_expiry():
 
 
 def add_level(client, price=25000, instrument="NIFTY"):
-    response = client.post("/levels", json={"instrument": instrument, "price": price, "enabled": True})
+    response = create_active_level(client, json={"instrument": instrument, "price": price, "enabled": True})
     assert response.status_code == 201
 
 
@@ -129,7 +130,7 @@ def test_option_write_failure_rolls_back_signals_and_can_retry(tmp_path):
     path = tmp_path / "atomic.sqlite3"
     initialize_database(path)
     levels = LevelRepository(path)
-    levels.create(LevelInput(instrument="NIFTY", price=25000, enabled=True))
+    create_active_record(levels, LevelInput(instrument="NIFTY", price=25000, enabled=True))
     with connect(path) as connection:
         connection.execute("""CREATE TRIGGER fail_option BEFORE INSERT ON option_selections
             BEGIN SELECT RAISE(ABORT, 'test failure'); END""")

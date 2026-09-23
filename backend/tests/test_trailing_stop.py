@@ -1,3 +1,4 @@
+from active_level_fixture import create_active_level, create_active_record
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -9,7 +10,7 @@ from app.trade_repository import TradeRepository
 
 
 def enter(client):
-    client.post('/levels', json={'instrument': 'NIFTY', 'price': 25000, 'enabled': True})
+    create_active_level(client, json={'instrument': 'NIFTY', 'price': 25000, 'enabled': True})
     for price in [24900, 25000]:
         assert client.post('/simulation/tick', json={'instrument': 'NIFTY', 'price': price}).status_code == 200
     return client.get('/trades').json()[0]

@@ -17,12 +17,12 @@ class LevelRepository:
         now = timestamp.isoformat()
         today = trading_date(timestamp)
         level_date = data.level_date or today
-        status = 'EXPIRED' if level_date < today else 'ACTIVE'
+        status = 'EXPIRED' if level_date < today else 'PENDING_ARM'
         with connect(self.database_path) as connection:
             cursor = connection.execute(
-                """INSERT INTO levels (instrument, price, enabled, created_at, updated_at, level_date, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (data.instrument, data.price, data.enabled, now, now, level_date.isoformat(), status),
+                """INSERT INTO levels (instrument, price, enabled, created_at, updated_at, level_date, status, activation_reference_price)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (data.instrument, data.price, data.enabled, now, now, level_date.isoformat(), status, self._latest_price(connection, data.instrument)),
             )
             row = connection.execute('SELECT * FROM levels WHERE id = ?', (cursor.lastrowid,)).fetchone()
             return Level(**dict(row))
@@ -45,7 +45,7 @@ class LevelRepository:
         with connect(self.database_path) as connection:
             rows = connection.execute(
                 """SELECT * FROM levels WHERE instrument = ? AND enabled = 1
-                AND level_date = ? AND status IN ('ACTIVE', 'DISARMED') ORDER BY id""",
+                AND level_date = ? AND status IN ('ACTIVE', 'DISARMED', 'PENDING_ARM') ORDER BY id""",
                 (instrument, today),
             ).fetchall()
             return [Level(**dict(row)) for row in rows]
@@ -61,8 +61,8 @@ class LevelRepository:
             if data.level_date is not None and data.level_date.isoformat() != row['level_date']:
                 raise ValueError('A level date cannot be changed; create a new daily level')
             connection.execute(
-                """UPDATE levels SET instrument = ?, price = ?, enabled = ?, updated_at = ? WHERE id = ?""",
-                (data.instrument, data.price, data.enabled, timestamp.isoformat(), level_id),
+                """UPDATE levels SET instrument = ?, price = ?, enabled = ?, updated_at = ?, status = 'PENDING_ARM', activation_reference_price = ? WHERE id = ?""",
+                (data.instrument, data.price, data.enabled, timestamp.isoformat(), self._latest_price(connection, data.instrument), level_id),
             )
             return Level(**dict(connection.execute('SELECT * FROM levels WHERE id = ?', (level_id,)).fetchone()))
 
@@ -114,6 +114,35 @@ class LevelRepository:
                     (level_id, 'LEVEL_REARMED' if status == 'ACTIVE' else 'LEVEL_DISARMED',
                      price, timestamp.isoformat(), trade_id))
             return bool(changed)
+
+    @staticmethod
+    def _latest_price(connection, instrument):
+        row = connection.execute('SELECT price FROM underlying_quotes WHERE instrument = ?', (instrument,)).fetchone()
+        return row[0] if row else None
+
+    def record_price(self, instrument, price, timestamp):
+        with connect(self.database_path) as connection:
+            connection.execute("""INSERT INTO underlying_quotes VALUES (?, ?, ?)
+                ON CONFLICT(instrument) DO UPDATE SET price = excluded.price, timestamp = excluded.timestamp""",
+                (instrument, price, timestamp.isoformat()))
+
+    def initial_arm(self, level, price, distance, timestamp):
+        with connect(self.database_path) as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            row = connection.execute("SELECT * FROM levels WHERE id = ? AND status = 'PENDING_ARM' AND enabled = 1 AND level_date = ?",
+                                     (level.id, trading_date(timestamp).isoformat())).fetchone()
+            if row is None:
+                return False
+            reference = row['activation_reference_price']
+            if reference is None:
+                connection.execute('UPDATE levels SET activation_reference_price = ?, updated_at = ? WHERE id = ?',
+                                   (price, timestamp.isoformat(), level.id))
+                return True
+            if distance is not None and abs(Decimal(str(price)) - Decimal(str(reference))) >= Decimal(str(distance)):
+                connection.execute("UPDATE levels SET status = 'ACTIVE', updated_at = ? WHERE id = ?",
+                                   (timestamp.isoformat(), level.id))
+                return True
+        return False
 
     def rearm(self, level, price, distance, timestamp):
         if abs(Decimal(str(price)) - Decimal(str(level.price))) >= Decimal(str(distance)):

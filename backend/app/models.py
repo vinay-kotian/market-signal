@@ -16,7 +16,8 @@ class LevelInput(BaseModel):
 class Level(LevelInput):
     id: int
     level_date: date
-    status: Literal["ACTIVE", "DISARMED", "EXPIRED"] = "ACTIVE"
+    status: Literal["ACTIVE", "DISARMED", "EXPIRED", "PENDING_ARM"] = "ACTIVE"
+    activation_reference_price: Optional[float] = None
     created_at: datetime
     updated_at: datetime
 

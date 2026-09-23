@@ -517,3 +517,76 @@ The UI confirms the selected count, classification, and inclusion choice before
 applying. RAW metrics continue to include every PAPER trade; STRATEGY metrics
 exclude flagged trades. Restoring VALID and clearing the exclusion flag restores
 metric inclusion without changing execution history or trading behavior.
+
+## Initial Level Arming
+
+New or edited levels must not become immediately eligible for trading.
+
+When a level is created or edited:
+
+- capture the latest underlying index price as `activation_reference_price`
+- set the level status to `PENDING_ARM`
+- do not allow the level to generate a signal while in `PENDING_ARM`
+
+The level becomes `ACTIVE` only after the underlying index moves the configured initial arming distance away from the captured reference price.
+
+Formula:
+
+abs(current_price - activation_reference_price)
+>= initial_arm_distance_points
+
+The tick that satisfies the arming condition only changes the level from:
+
+PENDING_ARM → ACTIVE
+
+It must not generate a trade on the same tick.
+
+A later touch or crossing of the configured level is required.
+
+### Index-wise Initial Arm Distance
+
+Initial arming distance is configured per index.
+
+Defaults:
+
+- NIFTY = 30 points
+- BANKNIFTY = 30 points
+
+All levels belonging to the same index use that index's configured value.
+
+The setting is managed from:
+
+Settings → Index Rules
+
+Example:
+
+NIFTY Initial Arm Distance = 30
+BANKNIFTY Initial Arm Distance = 50
+
+Changing an index setting:
+
+- affects `PENDING_ARM` levels for that index
+- does not reset `ACTIVE` levels
+- does not reset `DISARMED` levels
+- does not affect other indices
+- does not affect `EXPIRED` levels
+
+The configuration must persist across application restarts.
+
+### Difference From Post-Trade Rearming
+
+Initial arming and post-trade rearming are separate rules.
+
+Initial arming:
+
+- happens after level create/edit
+- measures movement from `activation_reference_price`
+- uses the index-wise initial arm distance
+
+Post-trade rearming:
+
+- happens after a successful trade
+- measures movement from the configured level itself
+- uses `level_rearm_distance_points`
+
+These two rules must not be mixed.

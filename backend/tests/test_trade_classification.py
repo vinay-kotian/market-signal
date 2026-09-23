@@ -70,7 +70,7 @@ def test_entry_snapshot_and_version_survive_settings_changes(tmp_path, monkeypat
         publish(client, [24900, 25000])
         trade, = client.get('/trades').json()
         expected = {**signals.model_dump(mode='json'), **options.model_dump(mode='json'),
-                    **settings.model_dump(mode='json'), 'timezone': 'Asia/Kolkata'}
+                    **settings.model_dump(mode='json'), 'timezone': 'Asia/Kolkata', 'initial_arm_distance_points': 30}
         assert trade['settings_snapshot'] == expected
         assert trade['strategy_version'] == '1.2.3'
         assert trade['validity_status'] == 'VALID'

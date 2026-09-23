@@ -4,6 +4,7 @@ export const formatPrice = value => value == null ? '—' : value.toLocaleString
 
 export function levelStatus(level, events) {
   if (level.status === 'EXPIRED') return 'EXPIRED';
+  if (level.status === 'PENDING_ARM') return 'PENDING_ARM';
   if (!level.enabled) return 'DISABLED';
   if (events === null) return 'UNAVAILABLE';
   return events.some(event => event.level_id === level.id

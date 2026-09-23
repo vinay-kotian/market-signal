@@ -1,3 +1,4 @@
+from active_level_fixture import create_active_level, create_active_record
 import sqlite3
 
 import pytest
@@ -10,7 +11,7 @@ from app.settings import SignalSettings, TradeSettings
 
 
 def level(client, price=25000):
-    return client.post('/levels', json=dict(instrument='NIFTY', price=price, enabled=True)).json()['id']
+    return create_active_level(client, json=dict(instrument='NIFTY', price=price, enabled=True)).json()['id']
 
 
 def ticks(client, *prices, instrument='NIFTY'):
@@ -89,7 +90,7 @@ def test_independent_levels_and_later_return(client):
         'LEVEL_DISARMED', 'LEVEL_REARMED', 'LEVEL_DISARMED']
 
 
-def test_restart_and_edits_preserve_disarmed(tmp_path):
+def test_restart_preserves_disarmed_and_edit_resets_initial_arm(tmp_path):
     path = tmp_path / 'test.db'
     with TestClient(create_app(path)) as client:
         id = level(client)
@@ -100,10 +101,11 @@ def test_restart_and_edits_preserve_disarmed(tmp_path):
         assert events(client, id) == original_events
         for enabled in (False, True):
             client.put(f'/levels/{id}', json=dict(instrument='NIFTY', price=25000, enabled=enabled))
-            assert state(client, id) == 'DISARMED'
-        ticks(client, 25000, 25049, 25000)
+            assert state(client, id) == 'PENDING_ARM'
+        ticks(client, 25000, 25029)
+        assert state(client, id) == 'PENDING_ARM'
         assert len(client.get('/signals').json()) == 1
-        ticks(client, 25050)
+        ticks(client, 25030)
         assert state(client, id) == 'ACTIVE'
 
 
