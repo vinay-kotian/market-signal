@@ -27,6 +27,14 @@ def master():
         rows.append(dict(instrument_token=10000+index, exchange_token=2000+index,
             tradingsymbol=f'NIFTY269212{strike}PE', name='NIFTY', exchange='NFO', segment='NFO-OPT',
             instrument_type='PE', strike=strike, expiry='2026-09-21', lot_size=65, tick_size=0.05))
+    rows.append(dict(instrument_token=265, exchange_token=1, tradingsymbol='SENSEX', name='SENSEX',
+        exchange='BSE', segment='INDICES', instrument_type='EQ', strike=0, expiry='', lot_size=0, tick_size=0.05))
+    for index, strike in enumerate([79900, 80000, 80100]):
+        for option_type in ('CE', 'PE'):
+            rows.append(dict(instrument_token=20000 + index * 2 + (option_type == 'PE'),
+                exchange_token=3000 + index * 2 + (option_type == 'PE'),
+                tradingsymbol=f'SENSEX26921{strike}{option_type}', name='SENSEX', exchange='BFO', segment='BFO-OPT',
+                instrument_type=option_type, strike=strike, expiry='2026-09-21', lot_size=37, tick_size=0.05))
     return rows
 
 
@@ -75,6 +83,67 @@ def test_normalization_and_lookup(live):
     reloaded = ZerodhaInstrumentService(client.app.state.database_path, FakeConnector())
     assert reloaded.records == service.records
     assert reloaded.last_sync == service.last_sync
+
+
+def test_sensex_normalization_option_selection_and_cached_metadata(live):
+    from datetime import date
+    from app.option_selector import OptionSelector
+
+    client, broker = live
+    service = client.app.state.zerodha_instruments
+    assert service.index('SENSEX').exchange == 'BSE'
+    assert service.index('SENSEX').instrument_token == 265
+    assert service.strike_step('SENSEX') == 100
+    for direction, strike, option_type in [('FROM_ABOVE', 79900, 'CE'), ('FROM_BELOW', 80100, 'PE')]:
+        selection = OptionSelector(service).select('SENSEX', 80000, direction, 1, date(2026, 9, 14))
+        assert selection.status == 'SELECTED'
+        assert selection.itm_strike == strike
+        contract = service.option(selection.option_symbol)
+        assert contract.exchange == 'BFO'
+        assert contract.instrument_type == option_type
+        assert contract.lot_size == 37  # Fixture metadata, not a hardcoded SENSEX lot size.
+    reloaded = ZerodhaInstrumentService(client.app.state.database_path, broker)
+    assert reloaded.contracts('SENSEX') == service.contracts('SENSEX')
+    assert normalize(dict(master()[-1], exchange='NFO', segment='NFO-OPT')) is None
+    assert normalize(dict(master()[-1], name='BANKEX')) is None
+
+    # Prove the selector derives spacing, even for a different instrument master.
+    rows = [dict(row, strike=80000 + (row['strike'] - 80000) * 2)
+            if row['name'] == 'SENSEX' and row['instrument_type'] in ('CE', 'PE') else row
+            for row in master()]
+    broker.instruments.return_value = rows
+    assert client.post('/zerodha/instruments/sync').status_code == 200
+    assert service.strike_step('SENSEX') == 200
+    selection = OptionSelector(service).select('SENSEX', 80000, 'FROM_BELOW', 1, date(2026, 9, 14))
+    assert selection.status == 'SELECTED'
+    assert selection.itm_strike == 80200
+
+
+def test_sensex_live_ticks_open_paper_trade_with_bfo_quote(live):
+    client, broker = live
+    level = client.post('/levels', json=dict(instrument='SENSEX', price=80000, enabled=True)).json()
+    provider = client.app.state.market_data_provider
+    assert provider.required_tokens() == {265}
+    provider.subscribed = {265}
+    for price in (79900, 79929):
+        client.portal.call(provider.handle_message, frame(265, price))
+        assert client.get(f"/levels/{level['id']}").json()['status'] == 'PENDING_ARM'
+    client.portal.call(provider.handle_message, frame(265, 79930))
+    assert client.get('/signals').json() == []
+    assert client.get(f"/levels/{level['id']}").json()['status'] == 'ACTIVE'
+    client.portal.call(provider.handle_message, frame(265, 80000))
+    trade, = client.get('/trades').json()
+    assert trade['instrument'] == 'SENSEX'
+    assert trade['trade_mode'] == 'PAPER'
+    assert trade['quantity'] == 37
+    assert trade['entry_price'] == 120
+    broker.ltp.assert_awaited_once_with('BFO', trade['option_symbol'])
+    assert provider.required_tokens() == {265, 20005}
+    assert client.get(f"/levels/{level['id']}").json()['status'] == 'DISARMED'
+    provider.subscribed = provider.required_tokens()
+    client.portal.call(provider.handle_message, frame(20005, 100))
+    assert client.get('/trades').json()[0]['exit_reason'] == 'STOP_LOSS'
+    assert provider.required_tokens() == {265}
 
 
 def test_failed_sync_preserves_previous_master(live):
@@ -238,7 +307,7 @@ def test_reconnect_loop_resubscribes(live):
 def test_synced_indices_available_without_any_levels(live):
     client, _ = live
     assert client.get('/levels').json() == []
-    assert client.get('/connection').json()['available_instruments'] == ['NIFTY', 'BANKNIFTY']
+    assert client.get('/connection').json()['available_instruments'] == ['NIFTY', 'BANKNIFTY', 'SENSEX']
 
 
 def test_continuous_socket_prices_do_not_poll_rest_and_expose_metrics(live):

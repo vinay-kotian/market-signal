@@ -32,7 +32,7 @@ from app.trading_time import MarketCloseService, TradingTimeRules
 class BacktestInput(TradeSettings, SignalSettings, OptionSettings):
     trade_mode: Literal['BACKTEST'] = 'BACKTEST'
     index_settings: dict[IndexInstrument, IndexSettingsInput] = Field(default_factory=dict)
-    instrument: Literal['NIFTY', 'BANKNIFTY']
+    instrument: IndexInstrument
     levels: list[float] = Field(min_length=1, max_length=100)
     dataset: Optional[list[HistoricalTick]] = Field(default=None, min_length=1, max_length=10000)
     fixture: Optional[Literal['nifty-demo']] = None

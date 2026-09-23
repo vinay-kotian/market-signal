@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { request } from './api';
 import { formatPrice } from './format';
+import { supportedIndices } from './indices';
 
 const defaults = {
   lookback_minutes: 15, minimum_approach_distance_enabled: false,
@@ -49,9 +50,12 @@ export default function BacktestPage() {
     <form onSubmit={run}>
       <fieldset disabled={busy || reading} className="ms-backtest-fields">
         <div className="ms-report-filters">
-          <label>Instrument<select value={instrument} onChange={event => setInstrument(event.target.value)}><option>NIFTY</option><option>BANKNIFTY</option></select></label>
+          <label>Instrument<select value={instrument} onChange={event => {
+            setInstrument(event.target.value);
+            if (event.target.value !== 'NIFTY') setSource('file');
+          }}>{supportedIndices.map(symbol => <option key={symbol}>{symbol}</option>)}</select></label>
           <label>Levels, separated by commas<input required value={levels} onChange={event => setLevels(event.target.value)} /></label>
-          <label>Price data<select value={source} onChange={event => setSource(event.target.value)}><option value="demo">NIFTY demo · 14 Sep 2026</option><option value="file">Local JSON file</option></select></label>
+          <label>Price data<select value={source} onChange={event => setSource(event.target.value)}><option value="demo" disabled={instrument !== 'NIFTY'}>NIFTY demo · 14 Sep 2026</option><option value="file">Local JSON file</option></select></label>
         </div>
         {source === 'file' && <label>JSON dataset<input type="file" accept=".json,application/json" onChange={async event => {
           const file = event.target.files?.[0]; setDataset(null); setFileName(''); setError('');

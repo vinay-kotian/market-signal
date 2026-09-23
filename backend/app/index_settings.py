@@ -1,14 +1,12 @@
 from datetime import datetime
 from math import isfinite
-from typing import Literal
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.database import connect
+from app.indices import IndexInstrument, SUPPORTED_INDICES
 from app.trading_date import utc_now
-
-IndexInstrument = Literal['NIFTY', 'BANKNIFTY']
 
 
 class IndexSettingsInput(BaseModel):
@@ -28,12 +26,23 @@ class IndexSettings(IndexSettingsInput):
 
 
 def initialize_index_settings(connection):
-    connection.execute("""CREATE TABLE IF NOT EXISTS index_settings (
-        instrument TEXT PRIMARY KEY CHECK(instrument IN ('NIFTY', 'BANKNIFTY')),
+    schema = """CREATE TABLE IF NOT EXISTS index_settings (
+        instrument TEXT PRIMARY KEY CHECK(instrument IN ('NIFTY', 'BANKNIFTY', 'SENSEX')),
         initial_arm_distance_points REAL NOT NULL CHECK(initial_arm_distance_points >= 0),
-        updated_at TEXT NOT NULL)""")
+        updated_at TEXT NOT NULL)"""
+    existing = connection.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'index_settings'").fetchone()
+    if existing and "'SENSEX'" not in existing['sql']:
+        # Rebuild the old two-index CHECK constraint without resetting saved values.
+        if not connection.in_transaction:
+            connection.execute('BEGIN IMMEDIATE')
+        connection.execute('ALTER TABLE index_settings RENAME TO index_settings_previous')
+        connection.execute(schema)
+        connection.execute('INSERT INTO index_settings SELECT * FROM index_settings_previous')
+        connection.execute('DROP TABLE index_settings_previous')
+    else:
+        connection.execute(schema)
     connection.executemany('INSERT OR IGNORE INTO index_settings VALUES (?, 30, ?)',
-                           [(symbol, utc_now().isoformat()) for symbol in ('NIFTY', 'BANKNIFTY')])
+                           [(symbol, utc_now().isoformat()) for symbol in SUPPORTED_INDICES])
     connection.execute('''CREATE TABLE IF NOT EXISTS underlying_quotes (
         instrument TEXT PRIMARY KEY, price REAL NOT NULL, timestamp TEXT NOT NULL)''')
 
@@ -45,7 +54,7 @@ class IndexSettingsRepository:
     def list(self):
         with connect(self.path) as connection:
             return [IndexSettings(**dict(row)) for row in connection.execute(
-                "SELECT * FROM index_settings ORDER BY CASE instrument WHEN 'NIFTY' THEN 0 ELSE 1 END")]
+                "SELECT * FROM index_settings ORDER BY CASE instrument WHEN 'NIFTY' THEN 0 WHEN 'BANKNIFTY' THEN 1 ELSE 2 END")]
 
     def distance(self, instrument):
         with connect(self.path) as connection:

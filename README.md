@@ -375,6 +375,7 @@ expiries 7 and 14 days after the startup UTC date:
 | --- | --- | --- |
 | NIFTY | 50 | 24500–25500 |
 | BANKNIFTY | 100 | 50000–52000 |
+| SENSEX | 100 | 79000–81000 |
 
 Symbols look like `SIM-NIFTY-2026-09-21-24950-CE`. They are local test symbols,
 not exchange contracts. Expiries are synthetic dates, not an exchange calendar.
@@ -453,12 +454,12 @@ LIVE is a recognized mode but always returns `LIVE_MODE_NOT_SUPPORTED` and canno
 create a trade; the SQLite schema also allows only PAPER trades.
 
 Quantity is `contract.lot_size × number_of_lots`. The synthetic NIFTY contracts
-have lot size 10 and BANKNIFTY contracts have lot size 20. These are explicit test
+have lot size 10; BANKNIFTY and SENSEX contracts have lot size 20. These are explicit test
 values, not current exchange lot sizes. Both the lot size and lot count are saved
 with quantity so the calculation remains inspectable after configuration changes.
 
 The default quote source starts with a 100.00 premium for each synthetic NIFTY
-option and 200.00 for each synthetic BANKNIFTY option. These are arbitrary test
+option and 200.00 for each synthetic BANKNIFTY or SENSEX option. These are arbitrary test
 quotes, not market-derived prices or a pricing model. The source keeps the last
 supplied quote by option symbol; `set_price(symbol, price)` can update it in code.
 Underlying ticks do not update option premiums. Tests can inject an empty/custom
@@ -727,7 +728,7 @@ realised performance. Range filtering is inclusive and does not preload
 quotes or strategy history from before `start_time`.
 
 V1 supports 1–10,000 records and up to 100 level inputs for one underlying
-(NIFTY or BANKNIFTY). Duplicate level inputs are collapsed. Local data is JSON;
+(NIFTY, BANKNIFTY, or SENSEX). Duplicate level inputs are collapsed. Local data is JSON;
 CSV ingestion is not included. The option universe is synthetic, seeded from
 the first included tick's Asia/Kolkata date, with expiries +7/+14 days and the
 existing fixed strike ranges and test lot sizes. These are not real exchange
@@ -786,7 +787,7 @@ Open **Connection** in React:
 3. You return automatically to frontend `/connection`, showing **CONNECTED**.
    Click **Sync instruments** to start the price feed. Authentication status is
    separate from the WebSocket's connection state, which is also displayed.
-4. Add enabled NIFTY/BANKNIFTY levels. The watchlist displays received prices;
+4. Add enabled NIFTY/BANKNIFTY/SENSEX levels. The watchlist displays received prices;
    dashboard data updates through one shared browser WebSocket. Simulation input is hidden and
    its API is blocked while ZERODHA mode is active.
 
@@ -817,8 +818,8 @@ streaming failures log states without credential-bearing URLs or exceptions.
 External reverse proxies must also avoid recording callback query strings.
 The backend remains local-only; this is not a multi-user authentication system.
 
-`ZerodhaInstrumentService` filters the master to NSE NIFTY 50 / NIFTY BANK and
-NFO NIFTY/BANKNIFTY CE/PE contracts. Normalized metadata (tokens, exchange,
+`ZerodhaInstrumentService` filters the master to NSE NIFTY 50 / NIFTY BANK, BSE
+SENSEX, NFO NIFTY/BANKNIFTY CE/PE contracts, and BFO SENSEX CE/PE contracts. Normalized metadata (tokens, exchange,
 symbol, underlying, segment, type, strike, expiry, lots and tick size) is stored
 in SQLite keyed by exchange and symbol, with a last-successful-sync timestamp.
 Invalid syncs leave the previous master intact. Sync again each trading day;

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { supportedIndices } from './indices';
 import { request } from './api';
 import { formatPrice } from './format';
 import BulkTradeClassification from './BulkTradeClassification';
@@ -86,7 +87,7 @@ export default function PaperReportPage({ refreshKey }) {
     <form className="ms-report-filters" onSubmit={event => { event.preventDefault(); setChecked([]); setInstrument(draft.trim().toUpperCase()); setPage(1); setSelected(null); }}>
       <label>Trading date (Asia/Kolkata)<input type="date" value={date} onChange={event => { setDate(event.target.value); setPage(1); setSelected(null); setChecked([]); setNotice(''); }} /></label>
       <label>Status<select value={status} onChange={event => { setStatus(event.target.value); setChecked([]); setPage(1); setSelected(null); }}><option value="">All statuses</option><option>OPEN</option><option>CLOSED</option></select></label>
-      <label>Instrument<input value={draft} onChange={event => setDraft(event.target.value)} placeholder="e.g. NIFTY" /></label>
+      <label>Instrument<input list="report-instruments" value={draft} onChange={event => setDraft(event.target.value)} placeholder="All indices" /><datalist id="report-instruments">{supportedIndices.map(symbol => <option key={symbol} value={symbol} />)}</datalist></label>
       <button className="ms-button">Apply filter</button>
     </form>
     </fieldset>

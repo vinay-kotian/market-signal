@@ -551,6 +551,7 @@ Defaults:
 
 - NIFTY = 30 points
 - BANKNIFTY = 30 points
+- SENSEX = 30 points
 
 All levels belonging to the same index use that index's configured value.
 
@@ -590,3 +591,23 @@ Post-trade rearming:
 - uses `level_rearm_distance_points`
 
 These two rules must not be mixed.
+
+## SENSEX Support
+
+NIFTY, BANKNIFTY, and SENSEX share the same level lifecycle, signal engine,
+option selection, PAPER execution, post-trade rearming, and daily expiry rules.
+Each index has an independent initial arming distance in Settings → Index Rules.
+Existing saved distances and timestamps are preserved when SENSEX is added.
+
+Zerodha sync includes the BSE SENSEX index and BFO SENSEX CE/PE contracts.
+Strike spacing is derived from synced strikes using the existing metadata-based
+source; expiry, lot size, symbols, and exchange come from the instrument master.
+No SENSEX-specific selection or strategy rule is introduced. Refresh instrument
+sync after upgrading to populate SENSEX in an existing instrument cache.
+
+Simulation and historical replay use synthetic SENSEX contracts around 80000
+with 100-point spacing, lot size 20, and expiries 7/14 days after the seed date.
+These are local fixture values, not exchange specifications. Simulation seeds
+option premiums at 200; backtests only use option quotes supplied in historical
+records. SENSEX backtests use local JSON data, the historical clock, isolated
+index settings (default 30 or explicit per-run overrides), and the shared engine.

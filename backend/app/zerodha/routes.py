@@ -2,6 +2,7 @@ import asyncio
 import secrets
 import logging
 from app.zerodha.auth_errors import LoginError, describe
+from app.indices import SUPPORTED_INDICES
 import time
 from urllib.parse import urlsplit
 from fastapi.responses import RedirectResponse
@@ -40,8 +41,8 @@ def connection_snapshot(state):
             configuration_error = describe(LoginError('API_KEY_MISSING', 'Set ZERODHA_API_KEY in the backend terminal and restart.'))
         elif not state.market_settings.api_secret.get_secret_value():
             configuration_error = describe(LoginError('API_SECRET_MISSING', 'Set ZERODHA_API_SECRET from the same Kite app in the backend terminal and restart.'))
-    available_instruments = ([symbol for symbol in ('NIFTY', 'BANKNIFTY')
-                              if instruments.index(symbol) is not None] if instruments else ['NIFTY', 'BANKNIFTY'])
+    available_instruments = ([symbol for symbol in SUPPORTED_INDICES
+                              if instruments.index(symbol) is not None] if instruments else list(SUPPORTED_INDICES))
     return dict(available_instruments=available_instruments, auth_error=state.zerodha_auth_error_detail or configuration_error, auth_status=auth_status, login_url=state.market_settings.backend_login_url(), market_data_mode=state.market_settings.market_data_mode, execution_mode='PAPER',
                 connection_status=getattr(provider, 'status', 'SIMULATED'),
                 authenticated=bool(state.kite and state.kite.authenticated),

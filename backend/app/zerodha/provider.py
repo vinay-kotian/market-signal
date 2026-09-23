@@ -94,7 +94,7 @@ class ZerodhaMarketDataProvider:
                 if size not in (8, 28, 32, 44, 184) or offset + size > len(message):
                     raise ValueError('Invalid quote frame')
                 token, price = struct.unpack_from('!II', message, offset)
-                packets.append((token, price / 100))  # NSE indices/NFO options are in paise.
+                packets.append((token, price / 100))  # Supported NSE/BSE indices and NFO/BFO options use paise.
                 offset += size
             if offset != len(message):
                 raise ValueError('Trailing quote bytes')

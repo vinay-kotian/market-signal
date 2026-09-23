@@ -6,6 +6,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from app.database import connect
+from app.indices import SUPPORTED_INDICES
 from app.option_instruments import OptionContract
 
 
@@ -26,14 +27,18 @@ class Instrument(BaseModel):
 
 def normalize(row):
     symbol = row.get('tradingsymbol', '')
-    indices = {'NIFTY 50': 'NIFTY', 'NIFTY BANK': 'BANKNIFTY'}
-    is_index = row.get('exchange') == 'NSE' and row.get('segment') == 'INDICES' and symbol in indices
-    is_option = (row.get('exchange') == 'NFO' and row.get('segment') == 'NFO-OPT'
-                 and row.get('instrument_type') in ('CE', 'PE') and row.get('name') in ('NIFTY', 'BANKNIFTY'))
+    indices = {('NSE', 'NIFTY 50'): 'NIFTY', ('NSE', 'NIFTY BANK'): 'BANKNIFTY',
+               ('BSE', 'SENSEX'): 'SENSEX'}
+    index_key = (row.get('exchange'), symbol)
+    is_index = row.get('segment') == 'INDICES' and index_key in indices
+    option_markets = {'NIFTY': ('NFO', 'NFO-OPT'), 'BANKNIFTY': ('NFO', 'NFO-OPT'),
+                      'SENSEX': ('BFO', 'BFO-OPT')}
+    is_option = (option_markets.get(row.get('name')) == (row.get('exchange'), row.get('segment'))
+                 and row.get('instrument_type') in ('CE', 'PE'))
     if not (is_index or is_option):
         return None
     result = Instrument(instrument_token=row['instrument_token'], exchange_token=row.get('exchange_token') or None,
-        trading_symbol=symbol, name=row.get('name', ''), underlying=indices[symbol] if is_index else row['name'],
+        trading_symbol=symbol, name=row.get('name', ''), underlying=indices[index_key] if is_index else row['name'],
         exchange=row['exchange'], segment=row['segment'], instrument_type='INDEX' if is_index else row['instrument_type'],
         strike=row.get('strike') or 0, expiry=row.get('expiry') or None,
         lot_size=row.get('lot_size') or 0, tick_size=row.get('tick_size') or 0)
@@ -60,7 +65,7 @@ class ZerodhaInstrumentService:
         self.status = 'SYNCING'
         try:
             records = [item for row in await self.connector.instruments() if (item := normalize(row)) is not None]
-            if {r.underlying for r in records if r.instrument_type == 'INDEX'} != {'NIFTY', 'BANKNIFTY'}:
+            if {r.underlying for r in records if r.instrument_type == 'INDEX'} != set(SUPPORTED_INDICES):
                 raise ValueError('Instrument master is missing required indices')
             if len({r.instrument_token for r in records}) != len(records):
                 raise ValueError('Duplicate instrument tokens')

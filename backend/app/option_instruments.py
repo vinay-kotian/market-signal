@@ -23,9 +23,9 @@ class SimulatedOptionInstrumentSource:
     """Synthetic contracts, not exchange symbols or an exchange expiry calendar."""
 
     def __init__(self, seed_date: date):
-        self._steps = {"NIFTY": 50, "BANKNIFTY": 100}
+        self._steps = {"NIFTY": 50, "BANKNIFTY": 100, "SENSEX": 100}
         self._contracts = []
-        for instrument, center in [("NIFTY", 25000), ("BANKNIFTY", 51000)]:
+        for instrument, center in [("NIFTY", 25000), ("BANKNIFTY", 51000), ("SENSEX", 80000)]:
             step = self._steps[instrument]
             for days in [7, 14]:
                 expiry = seed_date + timedelta(days=days)

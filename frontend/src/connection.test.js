@@ -41,10 +41,17 @@ test('new live level automatically selects the first synced instrument', async (
   try {
     const { default: LevelForm } = await server.ssrLoadModule('/src/LevelForm.jsx');
     const html = renderToStaticMarkup(React.createElement(LevelForm, {
-      instrument: '', instrumentOptions: ['NIFTY', 'BANKNIFTY'], live: true,
+      instrument: '', instrumentOptions: ['NIFTY', 'BANKNIFTY', 'SENSEX'], live: true,
     }));
     assert.match(html, /<option value="NIFTY" selected="">NIFTY/);
     assert.match(html, /<option value="BANKNIFTY">BANKNIFTY/);
+    assert.match(html, /<option value="SENSEX">SENSEX/);
+    const simulated = renderToStaticMarkup(React.createElement(LevelForm, {
+      instrument: 'NIFTY', instrumentOptions: ['NIFTY', 'BANKNIFTY'], live: false,
+    }));
+    assert.match(simulated, /<select/);
+    assert.match(simulated, /<option value="SENSEX">SENSEX/);
+    assert.doesNotMatch(simulated, /<datalist/);
   } finally { await server.close(); }
 });
 
@@ -54,15 +61,31 @@ test('Settings renders separate per-index distance inputs', async () => {
     const { default: SettingsPage } = await server.ssrLoadModule('/src/SettingsPage.jsx');
     const html = renderToStaticMarkup(React.createElement(SettingsPage, {
       indexes: [{ instrument: 'NIFTY', initial_arm_distance_points: 30, updated_at: 'a' },
-        { instrument: 'BANKNIFTY', initial_arm_distance_points: 50, updated_at: 'b' }],
+        { instrument: 'BANKNIFTY', initial_arm_distance_points: 50, updated_at: 'b' },
+        { instrument: 'SENSEX', initial_arm_distance_points: 60, updated_at: 'c' }],
       onRefresh() {},
     }));
     assert.match(html, /NIFTY Initial Arm Distance/);
     assert.match(html, /BANKNIFTY Initial Arm Distance/);
+    assert.match(html, /SENSEX Initial Arm Distance/);
+    assert.match(html, /value="60"/);
     assert.match(html, /value="30"/);
     assert.match(html, /value="50"/);
     assert.match(html, /id="connection"/);
     assert.match(html, /Market data connection/);
     assert.equal(initialPage('/settings'), 'settings');
+  } finally { await server.close(); }
+});
+
+test('Backtest and Report include SENSEX among the index choices', async () => {
+  const server = await createServer({ optimizeDeps: { noDiscovery: true }, server: { middlewareMode: true, hmr: false }, appType: 'custom' });
+  try {
+    for (const file of ['BacktestPage', 'PaperReportPage']) {
+      const { default: Page } = await server.ssrLoadModule(`/src/${file}.jsx`);
+      const html = renderToStaticMarkup(React.createElement(Page));
+      assert.match(html, /<option[^>]*>SENSEX<\/option>|<option value="SENSEX"/);
+      assert.match(html, /NIFTY/);
+      assert.match(html, /BANKNIFTY/);
+    }
   } finally { await server.close(); }
 });

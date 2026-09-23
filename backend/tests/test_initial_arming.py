@@ -29,7 +29,7 @@ def update(client, instrument, distance):
 
 def test_defaults_update_restart_and_independence(client):
     initial = client.get('/settings/indexes').json()
-    assert {row['instrument']: row['initial_arm_distance_points'] for row in initial} == {'NIFTY': 30, 'BANKNIFTY': 30}
+    assert {row['instrument']: row['initial_arm_distance_points'] for row in initial} == {'NIFTY': 30, 'BANKNIFTY': 30, 'SENSEX': 30}
     response = update(client, 'NIFTY', 40)
     assert response.status_code == 200
     saved = client.get('/settings/indexes').json()

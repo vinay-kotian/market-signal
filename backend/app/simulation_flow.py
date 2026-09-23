@@ -1,4 +1,5 @@
 from fastapi import HTTPException
+from app.indices import SUPPORTED_INDICES
 
 
 class SimulationFlow:
@@ -9,7 +10,7 @@ class SimulationFlow:
         self.refresh_instruments()
 
     def refresh_instruments(self):
-        self.option_symbols = {c.symbol for symbol in ['NIFTY', 'BANKNIFTY']
+        self.option_symbols = {c.symbol for symbol in SUPPORTED_INDICES
                                for c in self.instruments.contracts(symbol)}
 
     async def on_tick(self, tick):
