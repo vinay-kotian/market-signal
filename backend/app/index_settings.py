@@ -1,4 +1,5 @@
 from datetime import datetime
+from contextlib import nullcontext
 from math import isfinite
 
 from fastapi import APIRouter, Request
@@ -56,8 +57,9 @@ class IndexSettingsRepository:
             return [IndexSettings(**dict(row)) for row in connection.execute(
                 "SELECT * FROM index_settings ORDER BY CASE instrument WHEN 'NIFTY' THEN 0 WHEN 'BANKNIFTY' THEN 1 ELSE 2 END")]
 
-    def distance(self, instrument):
-        with connect(self.path) as connection:
+    def distance(self, instrument, connection=None):
+        context = connect(self.path) if connection is None else nullcontext(connection)
+        with context as connection:
             row = connection.execute('SELECT initial_arm_distance_points FROM index_settings WHERE instrument = ?', (instrument,)).fetchone()
             return row[0] if row else None
 

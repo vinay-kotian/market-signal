@@ -6,7 +6,7 @@ export default function SettingsPage({ indexes, error, onRefresh, connection, co
   return <div className="ms-settings">
     <section aria-label="Index Rules">
       <h3 className="ms-sectionhead">Index Rules</h3>
-      <p className="ms-sub">Initial arm distance applies to pending levels for each index. Active and disarmed levels keep their state.</p>
+      <p className="ms-sub">Initial arm distance is the minimum distance between the current index price and the configured level. It is checked on create, edit, and while pending. Changing this setting preserves active and disarmed states.</p>
       {error && <p role="alert">{error} <button onClick={onRefresh}>Retry</button></p>}
       {!indexes && !error && <p>Loading settings…</p>}
       <div className="ms-index-rules">{(indexes ?? []).map(index => <IndexRule key={`${index.instrument}-${index.updated_at}`} index={index} onRefresh={onRefresh} />)}</div>

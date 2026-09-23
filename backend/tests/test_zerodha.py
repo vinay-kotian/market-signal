@@ -125,10 +125,10 @@ def test_sensex_live_ticks_open_paper_trade_with_bfo_quote(live):
     provider = client.app.state.market_data_provider
     assert provider.required_tokens() == {265}
     provider.subscribed = {265}
-    for price in (79900, 79929):
+    for price in (79980, 79971):
         client.portal.call(provider.handle_message, frame(265, price))
         assert client.get(f"/levels/{level['id']}").json()['status'] == 'PENDING_ARM'
-    client.portal.call(provider.handle_message, frame(265, 79930))
+    client.portal.call(provider.handle_message, frame(265, 79970))
     assert client.get('/signals').json() == []
     assert client.get(f"/levels/{level['id']}").json()['status'] == 'ACTIVE'
     client.portal.call(provider.handle_message, frame(265, 80000))

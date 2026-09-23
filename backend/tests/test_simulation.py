@@ -118,9 +118,9 @@ def test_levels_are_reloaded_and_prices_tracked_without_levels(client):
         f"/levels/{level['id']}",
         json={"instrument": "NIFTY", "price": 25000, "enabled": True},
     )
-    publish(client, 25005)  # Only 15 points from the edit reference: still pending.
+    publish(client, 25005)  # Only 5 points from the configured level: still pending.
     assert events(client) == []
-    publish(client, 25020)  # Exactly 30 points arms without triggering.
+    publish(client, 25030)  # Exactly 30 points from the level arms without triggering.
     assert events(client) == []
     publish(client, 25000)
     assert len(events(client)) == 1

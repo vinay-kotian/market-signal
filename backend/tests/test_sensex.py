@@ -40,18 +40,18 @@ def test_sensex_initial_arming_is_independent_and_edit_resets(client, direction)
     assert level['activation_reference_price'] == 80000
     update(client, 'NIFTY', 0)
     update(client, 'BANKNIFTY', 0)
-    tick(client, 80000 + direction * 29, 'SENSEX')
+    tick(client, 80020 + direction * 29, 'SENSEX')
     assert get(client, level)['status'] == 'PENDING_ARM'
     update(client, 'SENSEX', 40)
-    tick(client, 80000 + direction * 30, 'SENSEX')
+    tick(client, 80020 + direction * 30, 'SENSEX')
     assert get(client, level)['status'] == 'PENDING_ARM'
-    tick(client, 80000 + direction * 40, 'SENSEX')
+    tick(client, 80020 + direction * 40, 'SENSEX')
     assert get(client, level)['status'] == 'ACTIVE'
     assert client.get('/signals').json() == []
-    response = client.put(f"/levels/{level['id']}", json=dict(instrument='SENSEX', price=80100, enabled=True))
+    response = client.put(f"/levels/{level['id']}", json=dict(instrument='SENSEX', price=80020 + direction * 40, enabled=True))
     assert response.status_code == 200
     assert response.json()['status'] == 'PENDING_ARM'
-    assert response.json()['activation_reference_price'] == 80000 + direction * 40
+    assert response.json()['activation_reference_price'] == 80020 + direction * 40
 
 
 def test_sensex_full_paper_lifecycle_and_reporting(tmp_path):
@@ -61,7 +61,7 @@ def test_sensex_full_paper_lifecycle_and_reporting(tmp_path):
         level = create(client, 'SENSEX', 80000)
         assert level['activation_reference_price'] is None
         tick(client, 79900, 'SENSEX')
-        assert get(client, level)['status'] == 'PENDING_ARM'
+        assert get(client, level)['status'] == 'ACTIVE'
         assert get(client, level)['activation_reference_price'] == 79900
         tick(client, 79930, 'SENSEX')
         assert get(client, level)['status'] == 'ACTIVE'
@@ -90,7 +90,7 @@ def test_sensex_full_paper_lifecycle_and_reporting(tmp_path):
 
 
 @pytest.mark.parametrize('distance, expected_trades', [(30, 1), (200, 0)])
-def test_sensex_backtest_uses_historical_reference_and_isolated_settings(client, distance, expected_trades):
+def test_sensex_backtest_uses_level_distance_and_isolated_settings(client, distance, expected_trades):
     symbol = 'SIM-SENSEX-2026-09-21-80100-PE'
     rows = [historical_tick('09:59:00', symbol, 100),
             historical_tick('09:59:30', 'SENSEX', 79900),

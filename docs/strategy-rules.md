@@ -433,6 +433,7 @@ Different configured levels are independent.
 
 Each configured level has a persistent state:
 
+PENDING_ARM
 ACTIVE
 DISARMED
 EXPIRED
@@ -464,6 +465,7 @@ A level stores:
 - status
 
 Possible states:
+PENDING_ARM
 ACTIVE
 DISARMED
 EXPIRED
@@ -522,77 +524,70 @@ metric inclusion without changing execution history or trading behavior.
 
 ## Initial Level Arming
 
-New or edited levels must not become immediately eligible for trading.
+Initial Arm Distance measures how far the current underlying index price must
+be from the configured level before that level is eligible to trade:
 
-When a level is created or edited:
+`abs(current_index_price - configured_level) >= initial_arm_distance_points`
 
-- capture the latest underlying index price as `activation_reference_price`
-- set the level status to `PENDING_ARM`
-- do not allow the level to generate a signal while in `PENDING_ARM`
+On create or edit, evaluate this condition immediately using the latest valid
+underlying price and that index's current persisted setting:
 
-The level becomes `ACTIVE` only after the underlying index moves the configured initial arming distance away from the captured reference price.
+- sufficient distance (including exact equality) → `ACTIVE`
+- insufficient distance or no valid price → `PENDING_ARM`
 
-Formula:
+For example, with current NIFTY price 23200 and required distance 30, a level at
+23250 is immediately ACTIVE (50 points away), a level at 23230 is also ACTIVE,
+and a level at 23220 is PENDING_ARM (20 points away). Create/edit only saves the
+level state; it does not produce a signal or trade.
 
-abs(current_price - activation_reference_price)
->= initial_arm_distance_points
+While PENDING_ARM, evaluate distance from the configured level on every valid
+underlying tick. For a level at 23220 with distance 30, price 23249 remains
+pending, while 23250 or 23190 activates it. Pending levels cannot trigger
+signals or trades. The tick that changes PENDING_ARM to ACTIVE only arms the
+level; a subsequent touch/cross is required for a signal.
 
-The tick that satisfies the arming condition only changes the level from:
+If create/edit has no valid price, the first valid tick may activate the level
+immediately if sufficiently far away, but cannot also trigger on that tick.
+Missing or nonpositive/nonfinite prices cannot establish eligibility.
 
-PENDING_ARM → ACTIVE
-
-It must not generate a trade on the same tick.
-
-A later touch or crossing of the configured level is required.
+`activation_reference_price` remains informational metadata for compatibility.
+It records the create/edit observation (or first valid tick if unavailable).
+It is never used in the initial-arming calculation and is not emphasized in
+the UI. Pending levels display current price and distance / required distance.
 
 ### Index-wise Initial Arm Distance
 
-Initial arming distance is configured per index.
+Settings → Index Rules manages separate persistent values in SQLite:
 
-Defaults:
+- NIFTY = 30 points by default
+- BANKNIFTY = 30 points by default
+- SENSEX = 30 points by default
 
-- NIFTY = 30 points
-- BANKNIFTY = 30 points
-- SENSEX = 30 points
+There is no per-level distance override. Changing a setting affects subsequent
+PENDING_ARM evaluations for that index; it does not reset ACTIVE, DISARMED,
+or EXPIRED levels or affect other indices. Edits re-evaluate immediately and
+can produce either ACTIVE or PENDING_ARM, rather than always resetting pending.
 
-All levels belonging to the same index use that index's configured value.
-
-The setting is managed from:
-
-Settings → Index Rules
-
-Example:
-
-NIFTY Initial Arm Distance = 30
-BANKNIFTY Initial Arm Distance = 50
-
-Changing an index setting:
-
-- affects `PENDING_ARM` levels for that index
-- does not reset `ACTIVE` levels
-- does not reset `DISARMED` levels
-- does not affect other indices
-- does not affect `EXPIRED` levels
-
-The configuration must persist across application restarts.
+Stored states, settings, and informational reference prices survive restart.
+Existing ACTIVE/DISARMED levels are not reset by this rule change. Existing
+PENDING_ARM levels use the corrected condition on their next valid tick.
+Daily expiry and disabled/future-day monitoring restrictions remain unchanged.
 
 ### Difference From Post-Trade Rearming
 
-Initial arming and post-trade rearming are separate rules.
+Both distances are measured from the configured level, but apply at different
+lifecycle stages and use separate settings:
 
-Initial arming:
+- initial arming after create/edit uses the index's `initial_arm_distance_points`
+- rearming after successful entry uses `level_rearm_distance_points`
 
-- happens after level create/edit
-- measures movement from `activation_reference_price`
-- uses the index-wise initial arm distance
+Post-trade rearming and its no-same-tick-trigger behavior remain unchanged.
+PENDING_ARM, ACTIVE, and DISARMED daily levels expire at trading-day rollover.
 
-Post-trade rearming:
-
-- happens after a successful trade
-- measures movement from the configured level itself
-- uses `level_rearm_distance_points`
-
-These two rules must not be mixed.
+Backtests use the same repository and LevelMonitor logic with isolated settings
+and the historical clock. Levels initially lack a quote until replay supplies
+one; the first valid historical tick evaluates distance from the level. No
+future price or current PAPER-market observation is used.
 
 ## SENSEX Support
 

@@ -1,11 +1,9 @@
-from datetime import datetime, timezone
-
 import pytest
 from fastapi.testclient import TestClient
 
 from app.database import connect, initialize_database
 from app.main import create_app
-from test_backtests import run, dataset
+from test_backtests import run, tick as historical_tick
 
 
 def tick(client, price, instrument='NIFTY'):
@@ -57,92 +55,145 @@ def test_invalid_instrument_and_per_level_distance_rejected(client):
     assert update(client, 'BANKNIFTY', 0).status_code == 200
 
 
-def test_reference_exact_boundary_and_no_signal_on_arming_tick(client):
+@pytest.mark.parametrize('level_price,expected', [(23250, 'ACTIVE'), (23230, 'ACTIVE'),
+    (23229, 'PENDING_ARM'), (23150, 'ACTIVE'), (23170, 'ACTIVE'), (23171, 'PENDING_ARM')])
+def test_create_evaluates_distance_immediately(client, level_price, expected):
     tick(client, 23200)
-    level = create(client)
+    level = create(client, price=level_price)
+    assert level['status'] == expected
+    assert level['activation_reference_price'] == 23200  # Informational only.
+    assert client.get('/signals').json() == []
+    assert client.get('/simulation/events').json() == []
+    assert client.get('/trades').json() == []
+
+
+@pytest.mark.parametrize('direction', [-1, 1])
+def test_pending_exact_boundary_and_later_touch(client, direction):
+    tick(client, 23200)
+    level = create(client, price=23220)
     assert level['status'] == 'PENDING_ARM'
-    assert level['activation_reference_price'] == 23200
-    tick(client, 23229)
+    tick(client, 23220 + direction * 29)
     assert get(client, level)['status'] == 'PENDING_ARM'
-    tick(client, 23230)
+    tick(client, 23220 + direction * 30)
     assert get(client, level)['status'] == 'ACTIVE'
     assert client.get('/signals').json() == []
-    tick(client, 23231)
+    assert client.get('/simulation/events').json() == []
+    assert client.get('/trades').json() == []
+    tick(client, 23220)
     assert len(client.get('/signals').json()) == 1
 
 
 def test_crossing_level_on_arming_tick_does_not_trigger(client):
     tick(client, 23200)
     level = create(client, price=23220)
-    tick(client, 23230)
+    tick(client, 23250)  # Crosses the level AND arms it, with no signal.
     assert get(client, level)['status'] == 'ACTIVE'
     assert client.get('/signals').json() == []
+    assert client.get('/simulation/events').json() == []
     tick(client, 23220)
     assert len(client.get('/signals').json()) == 1
 
 
 def test_independent_indexes_and_live_changes(client):
-    update(client, 'BANKNIFTY', 50)
-    tick(client, 23200)
-    tick(client, 51000, 'BANKNIFTY')
-    nifty = create(client)
-    bank = create(client, 'BANKNIFTY', 51031)
-    tick(client, 23229)
-    tick(client, 51030, 'BANKNIFTY')
-    assert get(client, nifty)['status'] == get(client, bank)['status'] == 'PENDING_ARM'
-    before = get(client, bank)
-    assert update(client, 'NIFTY', 29).status_code == 200
-    # Identical-price ticks still reevaluate a newly configured threshold.
-    tick(client, 23229)
-    assert get(client, nifty)['status'] == 'ACTIVE'
-    assert get(client, bank) == before
-    tick(client, 51049, 'BANKNIFTY')
-    assert get(client, bank)['status'] == 'PENDING_ARM'
-    tick(client, 51050, 'BANKNIFTY')
-    assert get(client, bank)['status'] == 'ACTIVE'
-    active = get(client, nifty)
+    levels = {}
+    for instrument, price, distance in [('NIFTY', 23200, 30), ('BANKNIFTY', 51000, 50), ('SENSEX', 80000, 70)]:
+        update(client, instrument, distance)
+        tick(client, price, instrument)
+        levels[instrument] = create(client, instrument, price)
+        tick(client, price + distance - 1, instrument)
+        assert get(client, levels[instrument])['status'] == 'PENDING_ARM'
+    before = [get(client, levels[name]) for name in ('BANKNIFTY', 'SENSEX')]
+    update(client, 'NIFTY', 29)
+    tick(client, 23229)  # Same price still reevaluates the new threshold.
+    assert get(client, levels['NIFTY'])['status'] == 'ACTIVE'
+    assert [get(client, levels[name]) for name in ('BANKNIFTY', 'SENSEX')] == before
+    active = get(client, levels['NIFTY'])
     update(client, 'NIFTY', 100)
-    assert get(client, nifty) == active
+    tick(client, 23229)
+    assert get(client, levels['NIFTY']) == active
+    for instrument, price in [('BANKNIFTY', 51050), ('SENSEX', 80070)]:
+        tick(client, price, instrument)
+        assert get(client, levels[instrument])['status'] == 'ACTIVE'
 
 
-def test_edit_resets_reference_and_pending_uses_latest_setting(client):
+@pytest.mark.parametrize('edited_price,expected', [(23250, 'ACTIVE'), (23230, 'ACTIVE'), (23220, 'PENDING_ARM')])
+def test_edit_reevaluates_immediately(client, edited_price, expected):
+    tick(client, 23100)
+    level = create(client, price=23300)
+    assert level['status'] == 'ACTIVE'
     tick(client, 23200)
-    level = create(client)
-    tick(client, 23230)
+    response = client.put(f"/levels/{level['id']}", json=dict(instrument='NIFTY', price=edited_price, enabled=True))
+    assert response.status_code == 200
+    assert response.json()['status'] == expected
+    assert response.json()['activation_reference_price'] == 23200
+    assert client.get('/signals').json() == []
+
+
+def test_edit_uses_new_instruments_price_and_setting(client):
+    tick(client, 23200)
+    tick(client, 80000, 'SENSEX')
+    update(client, 'SENSEX', 50)
+    level = create(client, price=23250)
+    edited = client.put(f"/levels/{level['id']}", json=dict(instrument='SENSEX', price=80040, enabled=True)).json()
+    assert edited['status'] == 'PENDING_ARM'
+    assert edited['activation_reference_price'] == 80000
+    tick(client, 80090, 'SENSEX')
     assert get(client, level)['status'] == 'ACTIVE'
-    response = client.put(f"/levels/{level['id']}", json=dict(instrument='NIFTY', price=23300, enabled=True))
-    assert response.json()['status'] == 'PENDING_ARM'
-    assert response.json()['activation_reference_price'] == 23230
-    update(client, 'NIFTY', 40)
-    tick(client, 23200)  # 30 below reference, still pending with updated config.
-    assert get(client, level)['status'] == 'PENDING_ARM'
-    tick(client, 23190)
-    assert get(client, level)['status'] == 'ACTIVE'
 
 
-def test_missing_price_waits_then_captures_once_and_survives_restart(client):
-    level = create(client)
-    assert level['activation_reference_price'] is None
-    tick(client, 23200)
-    assert get(client, level)['activation_reference_price'] == 23200
-    tick(client, 23210)
-    assert get(client, level)['activation_reference_price'] == 23200
-    with TestClient(create_app(client.app.state.database_path)) as restarted:
-        assert get(restarted, level)['activation_reference_price'] == 23200
-        tick(restarted, 23230)
-        assert get(restarted, level)['status'] == 'ACTIVE'
-        new = create(restarted, price=23300)
-        assert new['activation_reference_price'] == 23230
-
-
-def test_zero_distance_arms_on_next_evaluation_not_on_create(client):
-    update(client, 'NIFTY', 0)
-    tick(client, 23200)
-    level = create(client)
+@pytest.mark.parametrize('price,expected', [(23249, 'PENDING_ARM'), (23250, 'ACTIVE'), (23190, 'ACTIVE'), (23300, 'ACTIVE')])
+def test_missing_price_first_tick_evaluates_without_signal(client, price, expected):
+    level = create(client, price=23220)
     assert level['status'] == 'PENDING_ARM'
+    assert level['activation_reference_price'] is None
+    tick(client, price)
+    assert get(client, level)['status'] == expected
+    assert get(client, level)['activation_reference_price'] == price
+    assert client.get('/signals').json() == []
+    assert client.get('/simulation/events').json() == []
+
+
+def test_restart_preserves_pending_and_ignores_audit_reference(client):
+    tick(client, 23200)
+    update(client, 'NIFTY', 40)
+    level = create(client, price=23220)
+    # A legacy/reference value must never influence the new rule.
+    with connect(client.app.state.database_path) as connection:
+        connection.execute('UPDATE levels SET activation_reference_price = 90000 WHERE id = ?', (level['id'],))
+    with TestClient(create_app(client.app.state.database_path)) as restarted:
+        tick(restarted, 23259)
+        assert get(restarted, level)['status'] == 'PENDING_ARM'
+        assert get(restarted, level)['activation_reference_price'] == 90000
+        tick(restarted, 23260)
+        assert get(restarted, level)['status'] == 'ACTIVE'
+        assert get(restarted, level)['activation_reference_price'] == 90000
+        assert client.get('/settings/indexes').json()[0]['initial_arm_distance_points'] == 40
+
+
+@pytest.mark.parametrize('price', [0, -100])
+def test_invalid_price_does_not_create_or_arm_eligibility(client, price):
+    tick(client, price)
+    level = create(client, price=23220)
+    assert level['status'] == 'PENDING_ARM'
+    assert level['activation_reference_price'] is None
+    tick(client, price - 10)
+    assert get(client, level)['status'] == 'PENDING_ARM'
+    edited = client.put(f"/levels/{level['id']}", json=dict(instrument='NIFTY', price=23250, enabled=True)).json()
+    assert edited['status'] == 'PENDING_ARM'
+    assert edited['activation_reference_price'] is None
     tick(client, 23200)
     assert get(client, level)['status'] == 'ACTIVE'
     assert client.get('/signals').json() == []
+
+
+def test_zero_distance_arms_on_create_or_first_valid_tick(client):
+    update(client, 'NIFTY', 0)
+    missing = create(client, price=23200)
+    assert missing['status'] == 'PENDING_ARM'
+    tick(client, 23200)
+    assert get(client, missing)['status'] == 'ACTIVE'
+    assert client.get('/signals').json() == []
+    assert create(client, price=23200)['status'] == 'ACTIVE'
 
 
 def test_setting_change_does_not_touch_any_level_or_post_trade_rearm(client):
@@ -192,22 +243,70 @@ def test_migration_preserves_existing_states_and_reference(client):
 
 def test_disabled_and_future_pending_levels_do_not_arm(client):
     tick(client, 23200)
-    disabled = client.post('/levels', json=dict(instrument='NIFTY', price=23231, enabled=False)).json()
-    future = client.post('/levels', json=dict(instrument='NIFTY', price=23231, enabled=True, level_date='2026-09-15')).json()
+    disabled = client.post('/levels', json=dict(instrument='NIFTY', price=23220, enabled=False)).json()
+    future = client.post('/levels', json=dict(instrument='NIFTY', price=23220, enabled=True, level_date='2026-09-15')).json()
     tick(client, 23300)
     assert get(client, disabled)['status'] == get(client, future)['status'] == 'PENDING_ARM'
 
 
 def test_setting_update_and_arming_publish_to_other_clients(client):
     tick(client, 23200)
-    level = create(client)
+    level = create(client, price=23220)
     with client.websocket_connect('/ws/market') as socket:
         update(client, 'NIFTY', 18)
         message = socket.receive_json()
         assert message['type'] == 'INDEX_SETTINGS_UPDATED'
         assert message['data']['initial_arm_distance_points'] == 18
-        tick(client, 23218)
+        tick(client, 23238)
         message = socket.receive_json()
         assert message['type'] == 'LEVEL_UPDATED'
         assert message['data']['level']['status'] == 'ACTIVE'
         assert message['data']['level']['id'] == level['id']
+
+
+def test_backtest_first_historical_tick_arms_then_return_can_trade(client):
+    # No PAPER price/settings should leak into replay, and no future tick is needed to arm.
+    tick(client, 25000)
+    update(client, 'NIFTY', 500)
+    rows = [historical_tick('09:59:00', 'SIM-NIFTY-2026-09-21-25050-PE', 100),
+            historical_tick('10:00:00', 'NIFTY', 24970),
+            historical_tick('10:01:00', 'NIFTY', 25000)]
+    partial = run(client, rows[:2])
+    assert partial['levels'][0]['status'] == 'ACTIVE'
+    assert partial['signals'] == []
+    full = run(client, rows)
+    assert len(full['trades']) == 1
+    assert full['trades'][0]['entry_time'] == '2026-09-14T10:01:00+05:30'
+    assert full['levels'][0]['status'] == 'DISARMED'
+
+
+@pytest.mark.parametrize('instrument,price,distance', [('NIFTY', 23200, 40), ('BANKNIFTY', 51000, 50), ('SENSEX', 80000, 60)])
+def test_create_and_edit_use_each_index_setting(client, instrument, price, distance):
+    update(client, instrument, distance)
+    tick(client, price, instrument)
+    assert create(client, instrument, price + distance - 1)['status'] == 'PENDING_ARM'
+    active = create(client, instrument, price + distance)
+    assert active['status'] == 'ACTIVE'
+    result = client.put(f"/levels/{active['id']}", json=dict(instrument=instrument, price=price + distance - 1, enabled=True))
+    assert result.json()['status'] == 'PENDING_ARM'
+
+
+def test_edit_without_current_price_waits_for_valid_tick(client):
+    tick(client, 23200)
+    level = create(client, price=23250)
+    result = client.put(f"/levels/{level['id']}", json=dict(instrument='SENSEX', price=80000, enabled=True)).json()
+    assert result['status'] == 'PENDING_ARM'
+    assert result['activation_reference_price'] is None
+    tick(client, 80030, 'SENSEX')
+    assert get(client, level)['status'] == 'ACTIVE'
+    assert client.get('/signals').json() == []
+
+
+def test_decimal_distance_boundary(client):
+    tick(client, 23200.1)
+    assert create(client, price=23230.1)['status'] == 'ACTIVE'
+    level = create(client, price=23220.1)
+    tick(client, 23250.09)
+    assert get(client, level)['status'] == 'PENDING_ARM'
+    tick(client, 23250.1)
+    assert get(client, level)['status'] == 'ACTIVE'
