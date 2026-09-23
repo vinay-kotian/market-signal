@@ -1,11 +1,12 @@
 import json
 from datetime import datetime, time
+from typing import get_args
 
 from app.trading_date import TRADING_TIMEZONE
 from contextlib import nullcontext
 
 from app.database import connect
-from app.trade_models import Trade, TradeEntry, TradeEntryResult
+from app.trade_models import ExitReason, Trade, TradeEntry, TradeEntryResult
 from app.trade_events import TradeEventRepository
 from decimal import Decimal
 
@@ -58,8 +59,12 @@ class TradeRepository:
             breakeven_activated = ? WHERE trade_id = ? AND status = 'OPEN' AND trade_mode = ?""",
             (highest, stop, activated, trade.trade_id, self.mode))
 
-    def close_at_stop(self, trade, price, timestamp, connection):
-        return self.close(trade, price, timestamp, 'STOP_LOSS', connection)
+    def close_at_stop(self, trade, price, timestamp, connection, *, effective_stop):
+        # The monitor may have advanced protection on this tick; its Trade object
+        # still contains the earlier stop. Use the exact stop that triggered exit.
+        advanced = Decimal(str(effective_stop)) > Decimal(str(trade.initial_stop_loss))
+        reason = 'TRAILING_STOP_LOSS' if advanced else 'STOP_LOSS'
+        return self.close(trade, price, timestamp, reason, connection)
 
     def all_open(self, connection):
         return [Trade(**dict(row)) for row in connection.execute(
@@ -80,7 +85,7 @@ class TradeRepository:
             return {row['symbol']: row['price'] for row in connection.execute('SELECT symbol, price FROM simulated_option_quotes')}
 
     def close(self, trade, price, timestamp, reason, connection):
-        if reason not in ('STOP_LOSS', 'MARKET_CLOSING_EXIT'):
+        if reason not in get_args(ExitReason):
             raise ValueError('Unknown exit reason')
         entry, exit_price = Decimal(str(trade.entry_price)), Decimal(str(price))
         pnl = float((exit_price - entry) * trade.quantity)
@@ -91,9 +96,11 @@ class TradeRepository:
             (price, timestamp.isoformat(), reason, pnl, percentage, trade.trade_id, self.mode))
         if cursor.rowcount:
             events = TradeEventRepository(self.database_path)
-            trigger = 'STOP_LOSS_HIT' if reason == 'STOP_LOSS' else 'MARKET_CLOSING_EXIT_TRIGGERED'
-            for event_type in [trigger, 'POSITION_CLOSED']:
-                events.record(trade.trade_id, event_type, price, timestamp, connection)
+            trigger = {'STOP_LOSS': 'STOP_LOSS_HIT', 'TRAILING_STOP_LOSS': 'STOP_LOSS_HIT',
+                       'MARKET_CLOSING_EXIT': 'MARKET_CLOSING_EXIT_TRIGGERED'}.get(reason)
+            if trigger:
+                events.record(trade.trade_id, trigger, price, timestamp, connection)
+            events.record(trade.trade_id, 'POSITION_CLOSED', price, timestamp, connection)
         return cursor.rowcount > 0
 
     def record_result(self, result: TradeEntryResult, connection):

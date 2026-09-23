@@ -1,6 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatPrice, levelStatus } from './format.js';
+import { formatPrice, formatExitReason, levelStatus } from './format.js';
+
+test('exit reasons have readable labels without reclassifying historical values', () => {
+  assert.equal(formatExitReason('STOP_LOSS'), 'Stop Loss');
+  assert.equal(formatExitReason('TRAILING_STOP_LOSS'), 'Trailing Stop Loss');
+  assert.equal(formatExitReason('MARKET_CLOSING_EXIT'), 'Market Closing Exit');
+  assert.equal(formatExitReason('MANUAL_SQUARE_OFF'), 'Manual Square Off');
+  assert.equal(formatExitReason(null), '—');
+  assert.equal(formatExitReason('LEGACY_REASON'), 'LEGACY REASON');
+});
 
 test('missing distances remain unknown, not zero', () => {
   assert.equal(formatPrice(null), '—');

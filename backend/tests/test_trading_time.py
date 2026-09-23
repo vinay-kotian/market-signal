@@ -50,7 +50,9 @@ def test_positions_still_monitored_after_cutoff(tmp_path):
         publish(client, [105], trade['option_symbol'])
         assert client.get('/trades').json()[0]['status'] == 'OPEN'
         publish(client, [90], trade['option_symbol'])
-        assert client.get('/trades').json()[0]['exit_reason'] == 'STOP_LOSS'
+        closed = client.get('/trades').json()[0]
+        assert closed['current_stop_loss'] == 94.5
+        assert closed['exit_reason'] == 'TRAILING_STOP_LOSS'
 
 
 def test_market_exit_without_tick_pnl_and_duplicates(tmp_path):

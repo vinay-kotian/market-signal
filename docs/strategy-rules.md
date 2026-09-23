@@ -125,7 +125,9 @@ Persist:
 
 Possible exit reasons for this milestone:
 
-`STOP_LOSS` or `MARKET_CLOSING_EXIT`
+`STOP_LOSS`, `TRAILING_STOP_LOSS`, `MARKET_CLOSING_EXIT`, or `MANUAL_SQUARE_OFF`.
+Manual square-off is a supported stored reason; there is currently no manual
+square-off action in this milestone.
 
 ## Trade Events
 
@@ -611,3 +613,41 @@ These are local fixture values, not exchange specifications. Simulation seeds
 option premiums at 200; backtests only use option quotes supplied in historical
 records. SENSEX backtests use local JSON data, the historical clock, isolated
 index settings (default 30 or explicit per-run overrides), and the shared engine.
+
+## Stop Exit Classification
+
+If the trade exits using the original downside stop before the effective stop
+has advanced through trailing or breakeven protection:
+
+exit_reason = STOP_LOSS
+
+If the effective stop has moved forward because of trailing-stop or breakeven
+protection and that protected stop is triggered:
+
+exit_reason = TRAILING_STOP_LOSS
+
+Classification must be based on the effective stop state at the time of exit,
+not only on final realised P&L.
+
+At a stop trigger, compare the effective stop calculated for that tick with
+`initial_stop_loss`. A strictly higher effective stop produces
+`TRAILING_STOP_LOSS`; otherwise use `STOP_LOSS`. The effective stop still uses
+the existing maximum of initial, previous, trailing, and activated breakeven
+protection. No stop formula, activation threshold, or entry rule changes.
+
+Trailing protection that advances the stop while it is still below entry also
+counts as `TRAILING_STOP_LOSS`. Breakeven protection that moves the stop to
+entry or above uses the same reason. A gap/slippage below entry does not turn
+an advanced-stop exit into `STOP_LOSS`; P&L describes the outcome, not the
+protection that triggered it.
+
+Both stop classifications retain `STOP_LOSS_HIT` and `POSITION_CLOSED` events.
+Market-close precedence and its events remain unchanged. Non-stop reasons are
+not inferred from stop state. Historical CLOSED trades retain their saved
+reasons and events, even if their stop fields suggest an advanced stop; there
+is no historical reclassification or backfill.
+
+PAPER and BACKTEST both use `PositionMonitor` and `TradeRepository.close_at_stop`,
+passing the effective stop from the triggering tick. Persisted stop protection
+survives restart. Trades, Report, and Backtest display the four reasons as
+Stop Loss, Trailing Stop Loss, Market Closing Exit, and Manual Square Off.

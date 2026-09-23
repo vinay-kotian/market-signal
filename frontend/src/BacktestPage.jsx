@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { request } from './api';
-import { formatPrice } from './format';
+import { formatPrice, formatExitReason } from './format';
 import { supportedIndices } from './indices';
 
 const defaults = {
@@ -92,7 +92,7 @@ export default function BacktestPage() {
         <p>Wins {result.wins} · Losses {result.losses} · Breakeven {result.breakeven} · Open {result.open_trades}</p>
         <p className="ms-sub">Gross profit {formatPrice(result.gross_profit)} · Gross loss {formatPrice(result.gross_loss)} · {result.ticks_processed} ticks processed. Performance counts closed trades only.</p>
         <div className="ms-tablewrap"><table><thead><tr>{['Instrument / level', 'Option', 'Quantity', 'Entry', 'Exit', 'P&L', 'Status', 'Exit reason'].map(label => <th key={label}>{label}</th>)}</tr></thead>
-          <tbody>{result.trades.map(trade => <tr key={trade.trade_id}><td>{trade.instrument}<small className="ms-time">{formatPrice(trade.trigger_level)}</small></td><td>{trade.option_symbol}</td><td>{trade.quantity}</td><td>{formatPrice(trade.entry_price)}<small className="ms-time">{trade.entry_time}</small></td><td>{formatPrice(trade.exit_price)}<small className="ms-time">{trade.exit_time}</small></td><td>{formatPrice(trade.realised_pnl)}</td><td>{trade.status}<small className="ms-time">BACKTEST</small></td><td>{trade.exit_reason?.replaceAll('_', ' ') ?? '—'}</td></tr>)}{result.trades.length === 0 && <tr><td colSpan="8">No trades created. Check signal and entry results below.</td></tr>}</tbody>
+          <tbody>{result.trades.map(trade => <tr key={trade.trade_id}><td>{trade.instrument}<small className="ms-time">{formatPrice(trade.trigger_level)}</small></td><td>{trade.option_symbol}</td><td>{trade.quantity}</td><td>{formatPrice(trade.entry_price)}<small className="ms-time">{trade.entry_time}</small></td><td>{formatPrice(trade.exit_price)}<small className="ms-time">{trade.exit_time}</small></td><td>{formatPrice(trade.realised_pnl)}</td><td>{trade.status}<small className="ms-time">BACKTEST</small></td><td>{formatExitReason(trade.exit_reason)}</td></tr>)}{result.trades.length === 0 && <tr><td colSpan="8">No trades created. Check signal and entry results below.</td></tr>}</tbody>
         </table></div>
         <details className="ms-backtest-settings"><summary>Signal and entry results</summary>
           <ul>{result.signals.map(signal => <li key={signal.id}>Signal #{signal.id} · Level {signal.level} · {signal.valid ? 'VALID' : `REJECTED: ${signal.rejection_reason}`}</li>)}</ul>

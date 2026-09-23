@@ -47,4 +47,5 @@ class PositionMonitor:
                     events.record(trade.trade_id, 'TRAILING_STOP_UPDATED', tick.price,
                                   timestamp, connection, float(previous), float(effective))
                 if Decimal(str(tick.price)) <= effective:
-                    self.trades.close_at_stop(trade, tick.price, timestamp, connection)
+                    self.trades.close_at_stop(trade, tick.price, timestamp, connection,
+                                              effective_stop=effective)

@@ -106,7 +106,9 @@ def test_restart_keeps_high_stop_activation_and_settings(tmp_path):
         trailing_stop_percentage=50, breakeven_protection_enabled=False))) as client:
         assert send(client, trade, 115) == result
         assert events(client, trade) == history
-        assert send(client, trade, 108)['status'] == 'CLOSED'
+        closed = send(client, trade, 108)
+        assert closed['status'] == 'CLOSED'
+        assert closed['exit_reason'] == 'TRAILING_STOP_LOSS'
     assert TradeRepository(path).recent()[0].highest_price == 120
 
 

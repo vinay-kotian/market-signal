@@ -9,6 +9,7 @@ from app.settings import TradeSettings
 
 ValidityStatus = Literal["VALID", "INVALID_STRATEGY_BUG", "INVALID_DATA_ISSUE",
                          "INVALID_EXECUTION_ISSUE", "MANUAL_REVIEW"]
+ExitReason = Literal['STOP_LOSS', 'TRAILING_STOP_LOSS', 'MARKET_CLOSING_EXIT', 'MANUAL_SQUARE_OFF']
 
 
 class TradeClassification(BaseModel):
@@ -66,7 +67,7 @@ class Trade(TradeEntry):
     status: Literal['OPEN', 'CLOSED'] = 'OPEN'
     exit_price: Optional[float] = None
     exit_time: Optional[datetime] = None
-    exit_reason: Optional[Literal['STOP_LOSS', 'MARKET_CLOSING_EXIT']] = None
+    exit_reason: Optional[ExitReason] = None
     realised_pnl: Optional[float] = None
     realised_pnl_percentage: Optional[float] = None
 

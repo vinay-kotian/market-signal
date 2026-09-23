@@ -2,6 +2,13 @@ export const formatPrice = value => value == null ? '—' : value.toLocaleString
   minimumFractionDigits: 2, maximumFractionDigits: 2,
 });
 
+export const formatExitReason = reason => ({
+  STOP_LOSS: 'Stop Loss',
+  TRAILING_STOP_LOSS: 'Trailing Stop Loss',
+  MARKET_CLOSING_EXIT: 'Market Closing Exit',
+  MANUAL_SQUARE_OFF: 'Manual Square Off',
+})[reason] ?? reason?.replaceAll('_', ' ') ?? '—';
+
 export function levelStatus(level, events) {
   if (level.status === 'EXPIRED') return 'EXPIRED';
   if (level.status === 'PENDING_ARM') return 'PENDING_ARM';

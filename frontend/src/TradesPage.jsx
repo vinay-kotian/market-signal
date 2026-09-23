@@ -1,5 +1,5 @@
 import React from 'react';
-import { formatPrice } from './format';
+import { formatPrice, formatExitReason } from './format';
 
 export default function TradesPage({ trades, results, error, resultsError, onRetry }) {
   const failures = (results ?? []).filter(result => result.status === 'FAILED');
@@ -16,7 +16,7 @@ export default function TradesPage({ trades, results, error, resultsError, onRet
         <td><small className="ms-time">{new Date(trade.entry_time).toLocaleString()}</small></td>
         <td><span className={`ms-status ${trade.status === 'CLOSED' ? 'disabled' : 'triggered'}`}>{trade.status}</span><small className="ms-time">{trade.trade_mode}</small><small className="ms-time">Breakeven: {trade.breakeven_activated ? 'Active' : trade.breakeven_protection_enabled ? 'Waiting' : 'Disabled'}</small></td>
         <td className="ms-num">{formatPrice(trade.exit_price)}<small className="ms-time">P&amp;L {formatPrice(trade.realised_pnl)}{trade.realised_pnl_percentage == null ? '' : ` (${formatPrice(trade.realised_pnl_percentage)}%)`}</small></td>
-        <td title={trade.exit_reason ?? undefined}>{trade.exit_reason === 'MARKET_CLOSING_EXIT' ? 'Market closing exit' : trade.exit_reason?.replaceAll('_', ' ') ?? '—'}</td>
+        <td title={trade.exit_reason ?? undefined}>{formatExitReason(trade.exit_reason)}</td>
       </tr>)}{trades?.length === 0 && <tr><td colSpan="8" className="ms-empty">No paper trades yet. Entries require a successful option selection, a simulated quote, and an active trading window.</td></tr>}</tbody>
     </table></div>}
     {resultsError && <div className="ms-error" role="alert">Entry results unavailable. {resultsError} <button className="ms-link" onClick={onRetry}>Retry</button></div>}

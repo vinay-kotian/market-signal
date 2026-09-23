@@ -584,7 +584,12 @@ remains recorded even after prices fall. With entry 100 and defaults, prices 105
 110, and 120 move the stop to 94.5, 100, and 108. A fall to 115 leaves it at 108;
 a tick at 108 closes. Lock 1% protects 101 instead of 100 after activation.
 The monitor updates protection first, then compares the tick to the effective stop.
-All exits retain `STOP_LOSS` as their reason and use the received price for P&L.
+Stop exits use `STOP_LOSS` while the effective stop equals the initial stop,
+and `TRAILING_STOP_LOSS` once trailing or breakeven protection has advanced it.
+The received price still determines P&L, but not the reason: a gap below entry
+can remain a trailing-stop exit. Existing historical reasons are preserved.
+Trades, Report, and Backtest show readable labels for both stop reasons,
+market-close exits, and stored manual square-offs.
 
 `TRAILING_STOP_UPDATED` records the tick price plus previous/new effective stops,
 only when trailing is strictly stronger than all other candidates. Breakeven-only
