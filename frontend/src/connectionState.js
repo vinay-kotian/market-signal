@@ -5,5 +5,6 @@ export function authenticationStatus(connection, error) {
 
 export function initialPage(pathname) {
   const page = pathname.replace(/^\//, '').replace(/\/$/, '');
-  return ['dashboard', 'levels', 'trades', 'report', 'backtest', 'connection', 'settings'].includes(page) ? page : 'dashboard';
+  if (page === 'connection') return 'settings';
+  return ['dashboard', 'levels', 'trades', 'report', 'backtest', 'settings'].includes(page) ? page : 'dashboard';
 }

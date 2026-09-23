@@ -7,6 +7,7 @@ export default function ConnectionPage({ connection, error, onRefresh, feedStatu
   const [message, setMessage] = useState('');
   const [actionError, setActionError] = useState('');
   const status = authenticationStatus(connection, error);
+  const zerodhaEnabled = connection?.market_data_mode === 'ZERODHA';
 
   async function sync() {
     setBusy(true); setActionError(''); setMessage('');
@@ -37,17 +38,19 @@ export default function ConnectionPage({ connection, error, onRefresh, feedStatu
         <div><dt>Instrument sync</dt><dd>{connection.instrument_sync_status}</dd></div>
         <div><dt>Last successful sync</dt><dd>{connection.last_successful_sync ? new Date(connection.last_successful_sync).toLocaleString() : '—'}</dd></div>
       </dl>
-      {connection.market_data_mode === 'ZERODHA' ? <>
+      {zerodhaEnabled ? <>
         {connection.auth_error && <p className="ms-error" role="alert">{connection.auth_error.message}<small className="ms-time">{connection.auth_error.code}</small></p>}
         {status === 'CONNECTED' ? <p>Zerodha session connected. You can sync instruments.</p>
           : status === 'ERROR' ? <p role="alert">Zerodha login could not be completed. Connect again to retry.</p>
           : <p>Connect your Zerodha session to receive market data.</p>}
-        <div className="ms-actions">
-          <a className="ms-button" href={connection.login_url || '/api/zerodha/login'}>Connect Zerodha</a>
-          <button className="ms-button" disabled={busy || status !== 'CONNECTED'} onClick={sync}>Sync instruments</button>
-        </div>
-        <p className="ms-sub">Complete login on Zerodha. You will return here automatically. Passwords and OTPs stay on Zerodha.</p>
-      </> : <p className="ms-sub">Simulated prices are active. To use Zerodha, configure MARKET_DATA_MODE=ZERODHA and the broker credentials on the backend.</p>}
+      </> : <p id="zerodha-setup" className="ms-sub">Zerodha controls are disabled while simulated prices are active. Set MARKET_DATA_MODE=ZERODHA and configure the broker credentials on the backend, then restart it to enable login.</p>}
+      <div className="ms-actions">
+        {zerodhaEnabled
+          ? <a className="ms-button" href={connection.login_url || '/api/zerodha/login'}>Connect Zerodha</a>
+          : <button className="ms-button" disabled aria-describedby="zerodha-setup">Connect Zerodha</button>}
+        <button className="ms-button" disabled={!zerodhaEnabled || busy || status !== 'CONNECTED'} aria-describedby={!zerodhaEnabled ? 'zerodha-setup' : undefined} onClick={sync}>Sync instruments</button>
+      </div>
+      {zerodhaEnabled && <p className="ms-sub">Complete login on Zerodha, then sync instruments. You will return here automatically. Passwords and OTPs stay on Zerodha.</p>}
     </>}
     <p role="status">{busy ? 'Working…' : message}</p>
   </section>;

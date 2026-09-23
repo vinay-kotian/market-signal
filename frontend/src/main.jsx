@@ -10,7 +10,6 @@ import SettingsPage from './SettingsPage';
 import TradesPage from './TradesPage';
 import PaperReportPage from './PaperReportPage';
 import BacktestPage from './BacktestPage';
-import ConnectionPage from './ConnectionPage';
 import { initialPage } from './connectionState';
 import './styles.css';
 
@@ -87,7 +86,16 @@ function App() {
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
-  function navigate(next) { window.history.pushState({}, '', '/' + next); setPage(next); setEditor(null); setDeleting(null); }
+  useEffect(() => {
+    if (page === 'settings' && (window.location.hash === '#connection' || window.location.pathname.replace(/\/$/, '') === '/connection')) {
+      document.getElementById('connection')?.focus();
+    }
+  }, [page]);
+  function navigate(next, section = '') {
+    window.history.pushState({}, '', '/' + next + (section ? '#' + section : ''));
+    setPage(next); setEditor(null); setDeleting(null);
+    if (section) requestAnimationFrame(() => document.getElementById(section)?.focus());
+  }
   const rows = levelsForDate(levels ?? [], today, page === 'levels' ? levelView : 'TODAY')
     .filter(level => level.instrument === selected);
   const live = connection?.market_data_mode === 'ZERODHA';
@@ -95,7 +103,7 @@ function App() {
   const current = shownPrices[selected]?.price;
 
   return <div id="ms-design">
-    <header><span className="ms-logo" aria-hidden="true">π</span><span className="ms-brand">Market Signal</span><span className="ms-env">PAPER · {connection?.market_data_mode ?? 'LOADING'} DATA</span></header>
+    <header><span className="ms-logo" aria-hidden="true">π</span><span className="ms-brand">Market Signal</span><span className="ms-env">PAPER · {connection?.market_data_mode ?? 'LOADING'} DATA</span><button className="ms-link" disabled={busy} onClick={() => navigate('settings', 'connection')} aria-label="Open connection settings">Connection: {errors.connection ? 'ERROR' : live ? (connection?.connection_status ?? 'LOADING') : feedStatus}</button></header>
     <div className="ms-shell">
       <aside aria-label="Instrument watchlist">
         <div className="ms-sidehead"><span className="ms-label">Watchlist</span><span className="ms-sub">{instruments.length} instruments</span></div>
@@ -107,10 +115,9 @@ function App() {
         <div className="ms-sidefoot">{live ? 'Live Zerodha prices' : 'Simulated prices received by the backend'}<br />{live ? 'Movement since previous received tick' : 'Movement since previous submitted tick'}</div>
       </aside>
       <main>
-        <nav aria-label="Pages">{['dashboard', 'levels', 'trades', 'report', 'backtest', 'connection', 'settings'].map(name => <button className="ms-tab" key={name} aria-pressed={page === name} disabled={busy} onClick={() => navigate(name)}>{name[0].toUpperCase() + name.slice(1)}</button>)}</nav>
+        <nav aria-label="Pages">{['dashboard', 'levels', 'trades', 'report', 'backtest', 'settings'].map(name => <button className="ms-tab" key={name} aria-pressed={page === name} disabled={busy} onClick={() => navigate(name)}>{name[0].toUpperCase() + name.slice(1)}</button>)}</nav>
         <div className="ms-heading"><h2>{page[0].toUpperCase() + page.slice(1)}</h2><div className="ms-actions"><button className="ms-link" disabled={busy} onClick={() => mutate(async () => {})}>Refresh</button>{(page === 'dashboard' || page === 'levels') && <button className="ms-button" disabled={busy} onClick={() => page === 'dashboard' ? navigate('levels') : setEditor({})}>{page === 'dashboard' ? 'Manage levels ↗' : '+ Add level'}</button>}</div></div>
-        {page === 'connection' && <ConnectionPage feedStatus={feedStatus} lastUiEvent={lastUiEvent} connection={connection} error={errors.connection} onRefresh={refresh} />}
-        {page === 'settings' && <SettingsPage indexes={liveState.indexes} error={errors.indexes} onRefresh={refresh} />}
+        {page === 'settings' && <SettingsPage indexes={liveState.indexes} error={errors.indexes} onRefresh={refresh} connection={connection} connectionError={errors.connection} feedStatus={feedStatus} lastUiEvent={lastUiEvent} />}
         {page === 'backtest' && <BacktestPage />}
         {page === 'report' && <PaperReportPage refreshKey={refreshKey} />}
         {page === 'trades' && <TradesPage trades={trades} results={entryResults} error={errors.trades} resultsError={errors.entryResults} onRetry={() => mutate(async () => {})} />}

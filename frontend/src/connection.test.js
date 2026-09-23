@@ -5,8 +5,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
 import { authenticationStatus, initialPage } from './connectionState.js';
 
-test('callback path opens Connection; auth errors are not connected', () => {
-  assert.equal(initialPage('/connection'), 'connection');
+test('callback path opens Settings; auth errors are not connected', () => {
+  assert.equal(initialPage('/connection'), 'settings');
   assert.equal(initialPage('/'), 'dashboard');
   assert.equal(authenticationStatus(null), 'NOT_CONNECTED');
   assert.equal(authenticationStatus({ auth_status: 'AUTH_REQUIRED' }), 'AUTH_REQUIRED');
@@ -26,6 +26,12 @@ test('Connection renders one-click login and enables sync only after authenticat
     assert.doesNotMatch(connected, /request_token|Request token|type="password"/);
     assert.match(render('AUTH_REQUIRED'), /<button[^>]*disabled=""[^>]*>Sync instruments/);
     assert.match(render('ERROR'), /Zerodha login could not be completed/);
+    const simulated = renderToStaticMarkup(React.createElement(ConnectionPage, {
+      connection: { ...base, market_data_mode: 'SIMULATED', auth_status: 'NOT_CONNECTED' }, onRefresh() {},
+    }));
+    assert.match(simulated, /<button[^>]*disabled=""[^>]*>Connect Zerodha/);
+    assert.match(simulated, /<button[^>]*disabled=""[^>]*>Sync instruments/);
+    assert.match(simulated, /Zerodha controls are disabled while simulated prices are active/);
   } finally { await server.close(); }
 });
 
@@ -55,6 +61,8 @@ test('Settings renders separate per-index distance inputs', async () => {
     assert.match(html, /BANKNIFTY Initial Arm Distance/);
     assert.match(html, /value="30"/);
     assert.match(html, /value="50"/);
+    assert.match(html, /id="connection"/);
+    assert.match(html, /Market data connection/);
     assert.equal(initialPage('/settings'), 'settings');
   } finally { await server.close(); }
 });

@@ -76,3 +76,26 @@ html,body{margin:0;background:#f7f9f7}
 #ms-design .ms-bulk-classification{margin:16px 0;padding:16px;border:1px solid #dce4d8;border-radius:8px;background:#fff}
 #ms-design .ms-bulk-classification textarea{display:block;max-width:100%;min-height:60px;border:1px solid #dce3dc;border-radius:6px;padding:8px;font:inherit}
 #ms-design .ms-bulk-classification .ms-report-filters{margin-bottom:0}
+
+#ms-design .ms-settings{display:grid;gap:24px}
+#ms-design .ms-settings > section{min-width:0;padding:24px;background:#fff;border:1px solid #dfe5df;border-radius:10px;scroll-margin-top:24px}
+#ms-design .ms-settings .ms-sectionhead{font-size:15px;font-weight:600;margin-bottom:8px}
+#ms-design .ms-settings .ms-sub{margin:0 0 20px;line-height:1.7}
+#ms-design .ms-index-rules{display:grid;gap:16px;margin-top:24px}
+#ms-design .ms-index-rule{display:grid;grid-template-columns:120px minmax(0,240px) 88px;gap:0 20px;align-items:end}
+#ms-design .ms-index-name{align-self:center;font-weight:600;font-size:12px}
+#ms-design .ms-index-rule label{min-width:0}
+#ms-design .ms-index-rule input,#ms-design .ms-index-rule .ms-button{height:40px}
+#ms-design .ms-index-rule input{font-variant-numeric:tabular-nums}
+#ms-design .ms-index-message{grid-column:2 / -1;font-size:12px;overflow-wrap:anywhere}
+#ms-design .ms-index-message:not(:empty){margin-top:10px}
+#ms-design .ms-settings .ms-report-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin:20px 0;padding-bottom:20px;border-bottom:1px solid #e5eae2}
+#ms-design .ms-settings .ms-report-metrics div{display:block;min-width:0}
+#ms-design .ms-settings .ms-report-metrics dt{color:#68756b;font-size:11px;margin-bottom:6px}
+#ms-design .ms-settings .ms-report-metrics dd{overflow-wrap:anywhere}
+#ms-design .ms-settings .ms-actions{flex-wrap:wrap;margin:16px 0}
+#ms-design .ms-settings .ms-actions .ms-button{display:inline-flex;align-items:center;justify-content:center;min-height:40px;text-decoration:none}
+#ms-design .ms-settings button:disabled{cursor:not-allowed}
+#ms-design .ms-settings a:focus-visible,#ms-design .ms-settings > section:focus-visible{outline:2px solid #367a58;outline-offset:3px}
+@media(max-width:1000px){#ms-design .ms-index-rule{grid-template-columns:minmax(0,1fr) 88px;gap:12px}#ms-design .ms-index-name{grid-column:1 / -1}#ms-design .ms-index-message{grid-column:1 / -1}}
+@media(max-width:650px){#ms-design .ms-settings > section{padding:16px}#ms-design .ms-settings .ms-report-metrics{grid-template-columns:1fr}#ms-design .ms-index-rule{grid-template-columns:minmax(0,1fr);gap:12px}#ms-design .ms-index-rule .ms-button{width:100%}}
