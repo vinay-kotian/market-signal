@@ -28,7 +28,7 @@ def enter(client):
 
 @pytest.mark.parametrize('percentage,stop', [(10, 90), (15, 85), (12.5, 87.5)])
 def test_initial_stop_calculation(tmp_path, percentage, stop):
-    with TestClient(create_app(tmp_path / 'stops.sqlite3', trade_settings=TradeSettings(stop_loss_percentage=percentage))) as client:
+    with TestClient(create_app(tmp_path / 'stops.sqlite3', trade_settings=TradeSettings(initial_stop_loss_pct=percentage))) as client:
         trade = enter(client)
         assert trade['initial_stop_loss'] == stop
         assert trade['stop_loss_percentage'] == percentage

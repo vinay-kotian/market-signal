@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from app.database import connect
 from app.trade_events import TradeEventRepository
+from app.progressive_stop import ProgressiveSettings, progressive_stop
 
 
 class PositionMonitor:
@@ -23,6 +24,9 @@ class PositionMonitor:
             for trade in self.trades.open_for_symbol(tick.instrument, connection):
                 if self.time_rules and self.time_rules.exit_due(trade, timestamp):
                     self.trades.close(trade, tick.price, timestamp, 'MARKET_CLOSING_EXIT', connection)
+                    continue
+                if trade.settings_snapshot.get('stop_strategy') == 'PROGRESSIVE':
+                    self.update_progressive(trade, tick.price, timestamp, connection)
                     continue
                 entry = Decimal(str(trade.entry_price))
                 highest = max(Decimal(str(trade.highest_price)), entry, Decimal(str(tick.price)))
@@ -49,3 +53,30 @@ class PositionMonitor:
                 if Decimal(str(tick.price)) <= effective:
                     self.trades.close_at_stop(trade, tick.price, timestamp, connection,
                                               effective_stop=effective)
+
+    def update_progressive(self, trade, price, timestamp, connection):
+        settings = ProgressiveSettings(**{key: trade.settings_snapshot[key]
+            for key in ProgressiveSettings.model_fields if key in trade.settings_snapshot})
+        protection = progressive_stop(trade.entry_price, trade.highest_price, price,
+                                      trade.current_stop_loss, trade.profit_lock_activated, settings)
+        stop_changed = protection.stop > Decimal(str(trade.current_stop_loss))
+        connection.execute("""UPDATE trades SET highest_price = ?, current_stop_loss = ?,
+            profit_lock_activated = ?, trailing_pct = ?, trailing_step = ?,
+            stop_updated_at = CASE WHEN ? THEN ? ELSE stop_updated_at END
+            WHERE trade_id = ? AND status = 'OPEN' AND trade_mode = ?""",
+            (float(protection.highest), float(protection.stop), protection.activated,
+             float(protection.trailing_pct) if protection.trailing_pct is not None else None,
+             protection.step, stop_changed, timestamp.isoformat(), trade.trade_id, self.trades.mode))
+        events = TradeEventRepository(self.trades.database_path)
+        kinds = []
+        if protection.activated and not trade.profit_lock_activated:
+            kinds.append('PROFIT_LOCK_ACTIVATED')
+        if protection.step != trade.trailing_step:
+            kinds.append('TRAILING_STEP_CHANGED')
+        if stop_changed:
+            kinds.append('TRAILING_STOP_UPDATED')
+        for kind in kinds:
+            events.record(trade.trade_id, kind, price, timestamp, connection,
+                          trade.current_stop_loss, float(protection.stop), protection=protection)
+        if Decimal(str(price)) <= protection.stop:
+            self.trades.close_at_stop(trade, price, timestamp, connection, effective_stop=protection.stop)

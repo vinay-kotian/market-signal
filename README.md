@@ -553,7 +553,10 @@ Historical POSITION_OPENED events reconstructed from entries have
 recalculates stops nor duplicates events. Existing trades, stops, exits, and events
 are SQLite-backed; monitoring does not depend on an in-memory position cache.
 
-## Trailing stop and breakeven protection
+## Legacy trailing stop and breakeven protection
+
+This section describes `stop_strategy=LEGACY`. New configurations use the
+progressive strategy described below. Existing trade snapshots retain their rules.
 
 New trades snapshot these environment settings at entry:
 
@@ -584,9 +587,9 @@ remains recorded even after prices fall. With entry 100 and defaults, prices 105
 110, and 120 move the stop to 94.5, 100, and 108. A fall to 115 leaves it at 108;
 a tick at 108 closes. Lock 1% protects 101 instead of 100 after activation.
 The monitor updates protection first, then compares the tick to the effective stop.
-Stop exits use `STOP_LOSS` while the triggering effective stop is below entry,
-and `TRAILING_STOP_LOSS` when it is at or above entry. A stop that rises from
-90 to 94 or 99 for entry 100 still produces `STOP_LOSS`.
+Stop exits use `STOP_LOSS` when the effective stop has not risen above the
+original initial stop, and `TRAILING_STOP_LOSS` whenever it has. A stop that
+rises from 90 to 94 or 99 for entry 100 therefore produces `TRAILING_STOP_LOSS`.
 The received price still determines P&L, but not the reason: a gap below entry
 can remain a trailing-stop exit. Existing historical reasons are preserved.
 Trades, Report, and Backtest show readable labels for both stop reasons,
@@ -1096,3 +1099,73 @@ optional; status is ACTIVE, PENDING_ARM, DISARMED, or EXPIRED. It does not retur
 the API secret. On local port 8000 use `/external/levels`; Nginx and Vite strip
 `/api` from public requests. Use HTTPS for remote calls. Rotate the shared key
 by updating the backend environment, restarting, and updating the caller.
+
+
+## Progressive trailing stop (strategy 1.3.0)
+
+New configurations default to `stop_strategy=PROGRESSIVE`. PAPER and BACKTEST
+use the same `PositionMonitor` and broker-independent `progressive_stop`
+calculation. There is no fixed profit target. The existing mandatory market-close
+exit still applies; no live execution is added.
+
+Configure **Settings → Progressive trailing stop** or `GET/PUT /settings/protection`
+(public URLs have the `/api` prefix). PUT accepts this JSON object and returns the
+saved values with HTTP 200; invalid settings return 422:
+
+```json
+{
+  "initial_stop_loss_pct": 10,
+  "profit_lock_trigger_pct": 10,
+  "profit_lock_pct": 5,
+  "trailing_start_pct": 10,
+  "trailing_reduction_step_points": 10,
+  "trailing_reduction_pct": 1,
+  "minimum_trailing_pct": 5
+}
+```
+
+All numbers must be finite. Initial loss and trailing percentages must be greater
+than zero and below 100. Trigger, reduction points, and reduction percentage must
+be positive; profit lock must be nonnegative and below its trigger. Minimum trail
+must not exceed the starting trail. The reduction percentage is a percentage-point
+reduction, and step points are absolute option-premium points.
+
+Uppercase environment variables with the same names supply startup defaults.
+Values saved through Settings persist in SQLite, override those defaults after
+restart, and enable progressive protection for **new entries only**. Each trade
+snapshots its settings. Backtest parameters use these same field names; each run
+uses its own configuration and does not read or alter PAPER settings.
+
+The initial stop is `entry × (1 − initial_stop_loss_pct / 100)`. Until the high
+reaches `entry × (1 + profit_lock_trigger_pct / 100)`, there is no trailing.
+That calculated trigger price is the reference, even if the first qualifying tick
+jumps past it. Once activated:
+
+```text
+steps = floor((highest − reference) / trailing_reduction_step_points)
+trail_pct = max(minimum_trailing_pct, trailing_start_pct − steps × trailing_reduction_pct)
+locked_stop = entry × (1 + profit_lock_pct / 100)
+trail_stop = highest × (1 − trail_pct / 100)
+effective_stop = max(initial_stop, previous_stop, locked_stop, trail_stop)
+```
+
+The high includes entry and every observed price; falling prices never lower it
+or the stop. For entry 100, highs 105, 110, 120, 150, and 200 produce stops 90,
+105, 109.20, 141, and 190. Exit occurs on `price <= effective_stop`, at the observed
+price (including gaps). A stop raised above the initial stop is classified as
+`TRAILING_STOP_LOSS`; otherwise it is `STOP_LOSS`.
+
+Trade responses retain `highest_price` and `current_stop_loss` (the effective stop)
+and add `profit_lock_activated`, `trailing_pct` (null until activation),
+`trailing_step`, and `stop_updated_at`. History records `PROFIT_LOCK_ACTIVATED`,
+`TRAILING_STEP_CHANGED`, and `TRAILING_STOP_UPDATED`, including the high, trail
+percentage, step, and previous/new stop. Changes and exits commit atomically.
+Repeated ticks do not duplicate events. The trade timeline displays this metadata.
+
+Compatibility: trades whose saved snapshots predate this strategy continue using
+legacy protection with their existing stops. Historical exit reasons are preserved.
+Configurations containing only old risk-setting names retain `LEGACY` behavior;
+set `STOP_STRATEGY=PROGRESSIVE`, use the new settings, or save the protection form
+to opt in. `STOP_STRATEGY=LEGACY` remains available for comparative backtests.
+Missing progressive values use the defaults above. The default strategy version is
+now 1.3.0; an explicit `STRATEGY_VERSION` still overrides it.

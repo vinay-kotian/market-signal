@@ -7,9 +7,9 @@ const defaults = {
   lookback_minutes: 15, minimum_approach_distance_enabled: false,
   minimum_approach_distance_points: 0, itm_depth: 1, number_of_lots: 1,
   level_rearm_distance_points: 50,
-  stop_loss_percentage: 10, trailing_stop_percentage: 10,
-  breakeven_protection_enabled: true, breakeven_activation_percent: 10,
-  breakeven_lock_percent: 0, trading_start_time: '09:15',
+  initial_stop_loss_pct: 10, profit_lock_trigger_pct: 10, profit_lock_pct: 5,
+  trailing_start_pct: 10, trailing_reduction_step_points: 10,
+  trailing_reduction_pct: 1, minimum_trailing_pct: 5, trading_start_time: '09:15',
   new_trade_cutoff_time: '15:15', mandatory_exit_time: '15:25',
 };
 

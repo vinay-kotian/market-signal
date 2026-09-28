@@ -3,10 +3,12 @@ EVENT_SCHEMA = """CREATE TABLE trade_events (
     trade_id INTEGER NOT NULL,
     event_type TEXT NOT NULL CHECK(event_type IN (
         'POSITION_OPENED', 'STOP_LOSS_HIT', 'POSITION_CLOSED',
-        'TRAILING_STOP_UPDATED', 'BREAKEVEN_PROTECTION_ACTIVATED', 'MARKET_CLOSING_EXIT_TRIGGERED')),
+        'TRAILING_STOP_UPDATED', 'BREAKEVEN_PROTECTION_ACTIVATED',
+        'PROFIT_LOCK_ACTIVATED', 'TRAILING_STEP_CHANGED', 'MARKET_CLOSING_EXIT_TRIGGERED')),
     price REAL NOT NULL, timestamp TEXT NOT NULL,
     reconstructed INTEGER NOT NULL DEFAULT 0,
-    previous_stop REAL, current_stop REAL
+    previous_stop REAL, current_stop REAL,
+    highest_price REAL, trailing_pct REAL, trailing_step INTEGER, profit_lock_activated INTEGER
 )"""
 
 
@@ -34,7 +36,7 @@ def initialize_trailing(connection, settings):
             ))
     event_columns = {row['name'] for row in connection.execute('PRAGMA table_info(trade_events)')}
     event_sql = connection.execute("SELECT sql FROM sqlite_master WHERE name = 'trade_events'").fetchone()['sql']
-    if 'current_stop' not in event_columns or 'MARKET_CLOSING_EXIT_TRIGGERED' not in event_sql:
+    if 'current_stop' not in event_columns or 'PROFIT_LOCK_ACTIVATED' not in event_sql:
         connection.execute('ALTER TABLE trade_events RENAME TO trade_events_before_trailing')
         connection.execute(EVENT_SCHEMA)
         columns_to_copy = 'id, trade_id, event_type, price, timestamp, reconstructed'
@@ -42,7 +44,15 @@ def initialize_trailing(connection, settings):
             columns_to_copy += ', previous_stop, current_stop'
         connection.execute(f'INSERT INTO trade_events ({columns_to_copy}) SELECT {columns_to_copy} FROM trade_events_before_trailing')
         connection.execute('DROP TABLE trade_events_before_trailing')
+    for name, definition in {
+        'profit_lock_activated': 'INTEGER NOT NULL DEFAULT 0',
+        'trailing_pct': 'REAL', 'trailing_step': 'INTEGER NOT NULL DEFAULT 0',
+        'stop_updated_at': 'TEXT',
+    }.items():
+        if name not in columns:
+            connection.execute(f'ALTER TABLE trades ADD COLUMN {name} {definition}')
+    connection.execute('DROP INDEX IF EXISTS once_per_trade_event')
     connection.execute("""CREATE UNIQUE INDEX IF NOT EXISTS once_per_trade_event
-        ON trade_events(trade_id, event_type) WHERE event_type != 'TRAILING_STOP_UPDATED'""")
+        ON trade_events(trade_id, event_type) WHERE event_type NOT IN ('TRAILING_STOP_UPDATED', 'TRAILING_STEP_CHANGED')""")
     connection.execute("""CREATE UNIQUE INDEX IF NOT EXISTS distinct_trailing_stop
         ON trade_events(trade_id, current_stop) WHERE event_type = 'TRAILING_STOP_UPDATED'""")

@@ -89,3 +89,18 @@ test('Backtest and Report include SENSEX among the index choices', async () => {
     }
   } finally { await server.close(); }
 });
+
+test('progressive trades show profit protection without legacy breakeven status', async () => {
+  const server = await createServer({ optimizeDeps: { noDiscovery: true }, server: { middlewareMode: true, hmr: false }, appType: 'custom' });
+  try {
+    const { default: TradesPage } = await server.ssrLoadModule('/src/TradesPage.jsx');
+    const base = { trade_id: 1, status: 'OPEN', entry_time: '2026-09-14T10:00:00+05:30',
+      settings_snapshot: { stop_strategy: 'PROGRESSIVE' }, profit_lock_activated: true,
+      trailing_pct: 9, trailing_step: 1, breakeven_protection_enabled: true };
+    const render = trade => renderToStaticMarkup(React.createElement(TradesPage, { trades: [trade] }));
+    assert.match(render(base), /Profit locked · Trail 9% · Step 1/);
+    assert.doesNotMatch(render(base), /Breakeven:/);
+    assert.match(render({ ...base, profit_lock_activated: false }), /Awaiting profit trigger/);
+    assert.match(render({ ...base, settings_snapshot: {} }), /Breakeven: Waiting/);
+  } finally { await server.close(); }
+});

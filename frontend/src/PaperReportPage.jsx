@@ -117,7 +117,7 @@ export default function PaperReportPage({ refreshKey }) {
         <p>{detail.trade.option_symbol} · {detail.trade.status} · Signal #{detail.trade.signal_id} · Selection #{detail.trade.option_selection_id}</p>
         <TradeClassification key={`${detail.trade.trade_id}-${retry}`} trade={detail.trade} onSaved={() => setRetry(value => value + 1)} />
         <p className="ms-sub">Persisted trade events, in time order. Earlier level/signal/selection events are not recorded in this trade timeline.</p>
-        <ol>{detail.events.map(event => <li key={event.id}><strong>{event.event_type.replaceAll('_', ' ')}</strong><div>{new Date(event.timestamp).toLocaleString()} · Price {formatPrice(event.price)}</div>{event.current_stop != null && <div>Stop: {formatPrice(event.previous_stop)} → {formatPrice(event.current_stop)}</div>}{event.reconstructed && <small>Reconstructed from a legacy trade record</small>}</li>)}</ol>
+        <ol>{detail.events.map(event => <li key={event.id}><strong>{event.event_type.replaceAll('_', ' ')}</strong><div>{new Date(event.timestamp).toLocaleString()} · Price {formatPrice(event.price)}</div>{event.current_stop != null && <div>Stop: {formatPrice(event.previous_stop)} → {formatPrice(event.current_stop)}</div>}{event.trailing_pct != null && <div>High: {formatPrice(event.highest_price)} · Trail: {event.trailing_pct}% · Step: {event.trailing_step}</div>}{event.reconstructed && <small>Reconstructed from a legacy trade record</small>}</li>)}</ol>
         {detail.events.length === 0 && <p>No persisted events.</p>}
       </>}
     </section>}

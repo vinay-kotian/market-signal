@@ -77,7 +77,7 @@ def test_initial_stop(client, price):
 
 def test_trailing_and_breakeven(client):
     result = run(client, dataset([('10:02:00', 105), ('10:03:00', 110),
-                                 ('10:04:00', 120), ('10:05:00', 115), ('10:06:00', 108)]))
+                                 ('10:04:00', 120), ('10:05:00', 115), ('10:06:00', 108)]), stop_strategy='LEGACY')
     trade, = result['trades']
     assert trade['highest_price'] == 120
     assert trade['current_stop_loss'] == 108
@@ -91,7 +91,7 @@ def test_trailing_and_breakeven(client):
 
 
 def test_breakeven_entry_protection(client):
-    result = run(client, dataset([('10:02:00', 110), ('10:03:00', 100)]))
+    result = run(client, dataset([('10:02:00', 110), ('10:03:00', 100)]), stop_strategy='LEGACY')
     assert result['trades'][0]['current_stop_loss'] == 100
     assert result['breakeven'] == 1
     assert result['net_pnl'] == 0

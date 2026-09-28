@@ -9,6 +9,12 @@ from app.settings import TradeSettings
 from app.trade_repository import TradeRepository
 
 
+@pytest.fixture(autouse=True)
+def legacy_strategy(monkeypatch):
+    # Keep regression coverage for positions entered under the previous strategy.
+    monkeypatch.setenv('STOP_STRATEGY', 'LEGACY')
+
+
 def enter(client):
     create_active_level(client, json={'instrument': 'NIFTY', 'price': 25000, 'enabled': True})
     for price in [24900, 25000]:
@@ -50,7 +56,7 @@ def test_complete_example_and_duplicate_ticks(client):
 
 
 def test_initial_stop_wins_until_trailing_exceeds_it(tmp_path):
-    with TestClient(create_app(tmp_path / 'initial.sqlite3', trade_settings=TradeSettings(
+    with TestClient(create_app(tmp_path / 'initial.sqlite3', trade_settings=TradeSettings(stop_strategy="LEGACY",
         trailing_stop_percentage=20, breakeven_protection_enabled=False))) as client:
         trade = enter(client)
         for price in [105, 110, 112.5]:
@@ -63,7 +69,7 @@ def test_initial_stop_wins_until_trailing_exceeds_it(tmp_path):
 
 @pytest.mark.parametrize('lock,stop', [(0, 100), (1, 101)])
 def test_activation_threshold_and_lock(tmp_path, lock, stop):
-    with TestClient(create_app(tmp_path / 'lock.sqlite3', trade_settings=TradeSettings(
+    with TestClient(create_app(tmp_path / 'lock.sqlite3', trade_settings=TradeSettings(stop_strategy="LEGACY",
         breakeven_lock_percent=lock))) as client:
         trade = enter(client)
         assert send(client, trade, 109.99)['breakeven_activated'] is False
@@ -74,7 +80,7 @@ def test_activation_threshold_and_lock(tmp_path, lock, stop):
 
 
 def test_breakeven_disabled(tmp_path):
-    with TestClient(create_app(tmp_path / 'disabled.sqlite3', trade_settings=TradeSettings(
+    with TestClient(create_app(tmp_path / 'disabled.sqlite3', trade_settings=TradeSettings(stop_strategy="LEGACY",
         breakeven_protection_enabled=False))) as client:
         trade = enter(client)
         result = send(client, trade, 110)
@@ -102,7 +108,7 @@ def test_restart_keeps_high_stop_activation_and_settings(tmp_path):
         trade = enter(client)
         result = send(client, trade, 120)
         history = events(client, trade)
-    with TestClient(create_app(path, trade_settings=TradeSettings(
+    with TestClient(create_app(path, trade_settings=TradeSettings(stop_strategy="LEGACY",
         trailing_stop_percentage=50, breakeven_protection_enabled=False))) as client:
         assert send(client, trade, 115) == result
         assert events(client, trade) == history
@@ -158,7 +164,7 @@ def test_initial_only_schema_migration_preserves_events(tmp_path):
 
 
 def test_settings_defaults_and_environment(monkeypatch):
-    default = TradeSettings()
+    default = TradeSettings(stop_strategy="LEGACY", )
     assert (default.trailing_stop_percentage, default.breakeven_protection_enabled,
             default.breakeven_activation_percent, default.breakeven_lock_percent) == (10, True, 10, 0)
     monkeypatch.setenv('TRAILING_STOP_PERCENTAGE', '15')
@@ -171,4 +177,4 @@ def test_settings_defaults_and_environment(monkeypatch):
     for values in [dict(trailing_stop_percentage=0), dict(trailing_stop_percentage=100),
                    dict(breakeven_activation_percent=-1), dict(breakeven_lock_percent=-1)]:
         with pytest.raises(ValidationError):
-            TradeSettings(**values)
+            TradeSettings(stop_strategy="LEGACY", **values)

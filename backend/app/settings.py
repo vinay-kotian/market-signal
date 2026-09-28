@@ -3,6 +3,7 @@ from datetime import time
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
+from app.progressive_stop import ProgressiveSettings
 
 
 class SignalSettings(BaseModel):
@@ -26,8 +27,9 @@ class OptionSettings(BaseModel):
                       if name.upper() in os.environ})
 
 
-class TradeSettings(BaseModel):
-    strategy_version: str = Field(default_factory=lambda: os.getenv("STRATEGY_VERSION", "1.2.0"), min_length=1, pattern=r"\S")
+class TradeSettings(ProgressiveSettings):
+    stop_strategy: Literal["PROGRESSIVE", "LEGACY"] = "PROGRESSIVE"
+    strategy_version: str = Field(default_factory=lambda: os.getenv("STRATEGY_VERSION", "1.3.0"), min_length=1, pattern=r"\S")
     trade_mode: Literal["PAPER", "LIVE", "BACKTEST"] = "PAPER"
     level_rearm_distance_points: float = Field(default=50, gt=0, allow_inf_nan=False)
     number_of_lots: int = Field(default=1, ge=1)
@@ -39,6 +41,16 @@ class TradeSettings(BaseModel):
     trading_start_time: time = time(9, 15)
     new_trade_cutoff_time: time = time(15, 15)
     mandatory_exit_time: time = time(15, 25)
+
+    @model_validator(mode='before')
+    @classmethod
+    def preserve_legacy_configuration(cls, values):
+        legacy = {'stop_loss_percentage', 'trailing_stop_percentage',
+                  'breakeven_protection_enabled', 'breakeven_activation_percent', 'breakeven_lock_percent'}
+        if isinstance(values, dict) and legacy.intersection(values) and not (
+                {'stop_strategy', *ProgressiveSettings.model_fields}.intersection(values)):
+            return {**values, 'stop_strategy': 'LEGACY'}
+        return values
 
     @model_validator(mode='after')
     def validate_times(self):

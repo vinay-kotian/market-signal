@@ -79,6 +79,8 @@ class PaperExecutor:
             if price is None or not isfinite(price) or price <= 0:
                 return fail("OPTION_PRICE_UNAVAILABLE")
             self.repository.record_option_price(contract.symbol, price, timestamp, connection)
+            initial_pct = (self.settings.initial_stop_loss_pct if self.settings.stop_strategy == 'PROGRESSIVE'
+                           else self.settings.stop_loss_percentage)
             trade = self.repository.save(TradeEntry(
                 strategy_version=self.settings.strategy_version,
                 settings_snapshot={**self.signal_settings.model_dump(mode='json'),
@@ -94,10 +96,10 @@ class PaperExecutor:
                 lot_size=contract.lot_size, number_of_lots=self.settings.number_of_lots,
                 quantity=contract.lot_size * self.settings.number_of_lots,
                 entry_price=price, entry_time=timestamp,
-                stop_loss_percentage=self.settings.stop_loss_percentage,
-                initial_stop_loss=stop_price(price, self.settings.stop_loss_percentage),
+                stop_loss_percentage=initial_pct,
+                initial_stop_loss=stop_price(price, initial_pct),
                 highest_price=price,
-                current_stop_loss=stop_price(price, self.settings.stop_loss_percentage),
+                current_stop_loss=stop_price(price, initial_pct),
                 trailing_stop_percentage=self.settings.trailing_stop_percentage,
                 breakeven_protection_enabled=self.settings.breakeven_protection_enabled,
                 breakeven_activation_percent=self.settings.breakeven_activation_percent,

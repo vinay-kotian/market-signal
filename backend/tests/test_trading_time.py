@@ -51,7 +51,7 @@ def test_positions_still_monitored_after_cutoff(tmp_path):
         assert client.get('/trades').json()[0]['status'] == 'OPEN'
         publish(client, [90], trade['option_symbol'])
         closed = client.get('/trades').json()[0]
-        assert closed['current_stop_loss'] == 94.5
+        assert closed['current_stop_loss'] == 90
         assert closed['exit_reason'] == 'STOP_LOSS'
 
 

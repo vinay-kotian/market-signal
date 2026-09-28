@@ -60,7 +60,7 @@ def test_committed_strategy_events_and_stops(client):
         assert trade == client.get('/trades').json()[0]
         tick(client, 120, trade['option_symbol'])
         updated = until_price(socket)
-        assert any(e['type'] == 'STOP_UPDATED' and e['data']['current_stop_loss'] == 108 for e in updated)
+        assert any(e['type'] == 'STOP_UPDATED' and e['data']['current_stop_loss'] == 109.2 for e in updated)
         tick(client, 108, trade['option_symbol'])
         closed = until_price(socket)
         assert any(e['type'] == 'TRADE_CLOSED' and e['data']['status'] == 'CLOSED' for e in closed)

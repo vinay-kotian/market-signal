@@ -11,9 +11,9 @@ from test_trailing_stop import enter, send, events
 @pytest.mark.parametrize('prices,settings,expected,stop', [
     ([90], {}, 'STOP_LOSS', 90),
     ([85], {}, 'STOP_LOSS', 90),
-    ([105, 94.5], {}, 'STOP_LOSS', 94.5),
-    ([117.5, 94], {'trailing_stop_percentage': 20, 'breakeven_protection_enabled': False}, 'STOP_LOSS', 94),
-    ([110, 99], {'breakeven_protection_enabled': False}, 'STOP_LOSS', 99),
+    ([105, 94.5], {}, 'TRAILING_STOP_LOSS', 94.5),
+    ([117.5, 94], {'trailing_stop_percentage': 20, 'breakeven_protection_enabled': False}, 'TRAILING_STOP_LOSS', 94),
+    ([110, 99], {'breakeven_protection_enabled': False}, 'TRAILING_STOP_LOSS', 99),
     ([120, 108], {}, 'TRAILING_STOP_LOSS', 108),
     ([110, 100], {}, 'TRAILING_STOP_LOSS', 100),
     ([110, 101], {'breakeven_lock_percent': 1}, 'TRAILING_STOP_LOSS', 101),
@@ -22,11 +22,11 @@ from test_trailing_stop import enter, send, events
     ([112.5, 90], {'trailing_stop_percentage': 20, 'breakeven_protection_enabled': False}, 'STOP_LOSS', 90),
     # A tighter trailing percentage can advance AND hit protection on the first
     # option tick. The Trade object still has 90, but the triggering stop is 95.
-    ([94], {'trailing_stop_percentage': 5, 'breakeven_protection_enabled': False}, 'STOP_LOSS', 95),
+    ([94], {'trailing_stop_percentage': 5, 'breakeven_protection_enabled': False}, 'TRAILING_STOP_LOSS', 95),
     ([99], {'breakeven_activation_percent': 0}, 'TRAILING_STOP_LOSS', 100),
 ])
 def test_paper_and_backtest_classify_from_triggering_stop(tmp_path, prices, settings, expected, stop):
-    with TestClient(create_app(tmp_path / 'classification.sqlite3', trade_settings=TradeSettings(**settings))) as client:
+    with TestClient(create_app(tmp_path / 'classification.sqlite3', trade_settings=TradeSettings(stop_strategy='LEGACY', **settings))) as client:
         trade = enter(client)
         for price in prices:
             closed = send(client, trade, price)
@@ -43,7 +43,7 @@ def test_paper_and_backtest_classify_from_triggering_stop(tmp_path, prices, sett
         assert send(client, trade, 80) == closed
         assert events(client, trade) == history
 
-        replay = run(client, dataset([(f'10:{i + 2:02d}:00', price) for i, price in enumerate(prices)]), **settings)
+        replay = run(client, dataset([(f'10:{i + 2:02d}:00', price) for i, price in enumerate(prices)]), stop_strategy='LEGACY', **settings)
         backtest_trade, = replay['trades']
         for field in ('exit_reason', 'initial_stop_loss', 'current_stop_loss', 'exit_price', 'realised_pnl'):
             assert backtest_trade[field] == closed[field]
@@ -64,7 +64,7 @@ def test_explicit_non_stop_reason_is_preserved_with_advanced_protection(client, 
         assert not repository.close(current, 98, current.entry_time, reason, connection)
     closed = client.get('/trades').json()[0]
     assert closed['exit_reason'] == reason
-    assert closed['current_stop_loss'] == 108
+    assert closed['current_stop_loss'] == 109.2
     kinds = [event['event_type'] for event in events(client, trade)]
     assert kinds[-len(closing_events):] == closing_events
     assert 'STOP_LOSS_HIT' not in kinds
@@ -78,7 +78,7 @@ def test_explicit_non_stop_reason_is_preserved_with_advanced_protection(client, 
 ])
 def test_restart_keeps_legacy_closed_reasons_and_events(tmp_path, high, exit_price, legacy_reason):
     path = tmp_path / 'legacy.sqlite3'
-    with TestClient(create_app(path)) as client:
+    with TestClient(create_app(path, trade_settings=TradeSettings(stop_strategy='LEGACY'))) as client:
         trade = enter(client)
         send(client, trade, high)
         send(client, trade, exit_price)

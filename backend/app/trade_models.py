@@ -57,6 +57,10 @@ class TradeEntry(BaseModel):
     breakeven_protection_enabled: bool
     breakeven_activation_percent: float
     breakeven_lock_percent: float
+    profit_lock_activated: bool = False
+    trailing_pct: Optional[float] = None
+    trailing_step: int = 0
+    stop_updated_at: Optional[datetime] = None
     breakeven_activated: bool = False
     trade_mode: Literal["PAPER", "BACKTEST"] = "PAPER"
     status: Literal["OPEN"] = "OPEN"

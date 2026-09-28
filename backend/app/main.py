@@ -30,6 +30,7 @@ from app.option_repository import OptionSelectionRepository
 from app.option_routes import router as option_router
 from app.settings import OptionSettings
 from app.settings import TradeSettings
+from app.protection_settings import load_protection_settings, router as protection_settings_router
 from app.option_prices import SimulatedOptionPrices
 from app.paper_executor import PaperExecutor
 from app.trade_repository import TradeRepository
@@ -60,6 +61,7 @@ def create_app(database_path=None, signal_settings=None,
             raise ValueError('ZERODHA market data requires PAPER execution')
         initialize_database(app.state.database_path, execution_settings.stop_loss_percentage,
                             execution_settings.model_dump())
+        execution_settings = load_protection_settings(app.state.database_path, execution_settings)
         levels = LevelRepository(app.state.database_path, current_time)
         app.state.level_repository = levels
         engine = SignalEngine(signal_settings or SignalSettings.from_environment())
@@ -163,6 +165,7 @@ def create_app(database_path=None, signal_settings=None,
     app.include_router(option_router)
     app.include_router(trade_router)
     app.include_router(index_settings_router)
+    app.include_router(protection_settings_router)
     app.include_router(backtest_router)
     app.include_router(connection_router)
     app.include_router(live_router)
