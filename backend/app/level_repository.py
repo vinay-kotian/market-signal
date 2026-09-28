@@ -14,13 +14,16 @@ class LevelRepository:
         self.database_path = database_path
         self.clock = clock
 
-    def create(self, data: LevelInput) -> Level:
-        timestamp = self.clock()
+    def create(self, data: LevelInput, connection=None, timestamp=None) -> Level:
+        timestamp = timestamp or self.clock()
         now = timestamp.isoformat()
         today = trading_date(timestamp)
         level_date = data.level_date or today
-        with connect(self.database_path) as connection:
-            connection.execute('BEGIN IMMEDIATE')
+        owns_transaction = connection is None
+        context = connect(self.database_path) if owns_transaction else nullcontext(connection)
+        with context as connection:
+            if owns_transaction:
+                connection.execute('BEGIN IMMEDIATE')
             current = self._latest_price(connection, data.instrument)
             distance = IndexSettingsRepository(self.database_path).distance(data.instrument, connection)
             status = 'EXPIRED' if level_date < today else self._initial_status(current, data.price, distance)

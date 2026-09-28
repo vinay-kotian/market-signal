@@ -319,3 +319,21 @@ Keep one backend worker. The same Nginx site access restrictions must cover
 `wss://stockpi.vkotian.com/ws/market`. A 200 HTML response means the location
 block is missing; 502 means the backend cannot be reached. See
 [the live data audit](../docs/live-data-flow.md) for event/reconnect verification.
+
+## External levels integration
+
+In `/opt/stockpi/env/stockpi.env`, set `EXTERNAL_LEVELS_API_KEY` to a strong random
+secret, retain mode 600, and restart `stockpi-backend`. Leave it blank to disable
+the external API. This is backend-only configuration; no frontend rebuild or
+`VITE_` environment variable is needed. Both GET and POST
+`https://stockpi.vkotian.com/api/external/levels` require `X-API-Key`.
+Nginx already forwards these headers and strips `/api`; no routing change is
+needed. Existing site-level access controls still apply to external callers.
+
+See [External Levels API usage](../README.md#external-levels-api) for curl
+examples, date validation, filters, duplicate behavior, and safe idempotent
+retries. Share the key only with the calling backend; use HTTPS and a unique
+Idempotency-Key for each batch, retaining it for retries. Rotation requires a
+backend restart and updating that caller. The new key protects only the external
+levels endpoints, not the existing UI/configuration APIs. Request/audit records
+are in the same SQLite database and are included in normal backups.

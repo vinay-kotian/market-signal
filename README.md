@@ -1014,3 +1014,85 @@ The bulk update is transactional and changes only the three classification
 fields. Prices, P&L, execution timestamps, settings snapshots, versions, and
 trade events remain unchanged. No schema migration or strategy-version bump is
 needed for this reporting-only feature.
+
+## External Levels API
+
+Set `EXTERNAL_LEVELS_API_KEY` to a strong random secret in the **backend**
+environment and restart it. An empty/unset key disables these endpoints (503).
+Both endpoints require `X-API-Key`; missing/incorrect keys return 401 using a
+constant-time comparison. The secret is never returned to React or stored in
+level/audit records. Keep it in the calling application's server-side secret
+store, never browser code or a URL.
+
+```bash
+curl --fail-with-body -X POST \
+  https://stockpi.vkotian.com/api/external/levels \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: <key>" \
+  -H "Idempotency-Key: <unique-request-id>" \
+  -d '{
+    "instrument": "NIFTY",
+    "levels": [23231, 23300],
+    "level_date": "2026-09-28",
+    "source": "external-app"
+  }'
+```
+
+Use the intended current/future Asia/Kolkata calendar date, not a timestamp.
+Supported instruments are NIFTY, BANKNIFTY, SENSEX. Submit 1–1000 finite positive
+JSON numbers (not numeric strings), and a nonblank source of at most 200
+characters. Invalid input or past dates return 422; the entire batch is rejected.
+Future levels follow existing date eligibility: they cannot trade before their
+specified date. There is no added holiday calendar.
+
+A successful batch returns HTTP 200:
+
+```json
+{
+  "instrument": "NIFTY",
+  "level_date": "2026-09-28",
+  "results": [
+    {"level": 23231, "status": "CREATED", "level_id": 101, "level_state": "ACTIVE"},
+    {"level": 23300, "status": "DUPLICATE", "level_id": 95, "level_state": "PENDING_ARM"}
+  ]
+}
+```
+
+Results follow input order. Each existing `(instrument, price, level_date)` is
+returned as DUPLICATE, including levels created in the UI, disabled levels, and
+repeated prices within a batch. The oldest matching ID is returned if legacy
+UI duplicates exist. Duplicates retain their state, enabled flag, and provenance.
+External requests do not edit, re-enable, or renew existing levels. The UI's
+existing creation/edit behavior is unchanged.
+
+Use one unique `Idempotency-Key` (1–200 non-whitespace characters) per logical
+batch. Retry network failures with **the same key and body**. A persisted retry
+returns the original response snapshot, even after restart or day rollover;
+use GET for current state. Reusing a key with a different normalized body returns
+409. Requests without a key still prevent existing level duplicates, but will
+return DUPLICATE on retry rather than the original CREATED response. SQLite
+serializes duplicate checks, and commits the whole batch, creation audit, and
+retry response together. There is no automatic expiry of idempotency records.
+
+New levels use the same `LevelRepository.create` as the UI: the latest valid
+underlying quote and index-wise Initial Arm Distance assign ACTIVE/PENDING_ARM;
+no valid quote means PENDING_ARM. The normal monitor handles initial arming,
+subsequent trading, post-trade rearming, and daily expiry. Creating a level never
+places a trade or generates a signal. Committed creations publish the normal
+LEVEL_UPDATED event. No settings or trade mutation operation is exposed here.
+Audit records retain source, EXTERNAL_API creator, request ID, optional
+idempotency reference, and creation time; historical level provenance is not
+invented or overwritten.
+
+```bash
+curl --fail-with-body \
+  'https://stockpi.vkotian.com/api/external/levels?instrument=NIFTY&level_date=2026-09-28&status=PENDING_ARM' \
+  -H 'X-API-Key: <key>'
+```
+
+GET returns matching levels from all sources with their current lifecycle state
+and audit metadata (null provenance for non-external levels). All filters are
+optional; status is ACTIVE, PENDING_ARM, DISARMED, or EXPIRED. It does not return
+the API secret. On local port 8000 use `/external/levels`; Nginx and Vite strip
+`/api` from public requests. Use HTTPS for remote calls. Rotate the shared key
+by updating the backend environment, restarting, and updating the caller.

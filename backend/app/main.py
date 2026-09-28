@@ -16,6 +16,7 @@ from fastapi import FastAPI
 from app.database import DEFAULT_DATABASE_PATH, initialize_database
 from app.level_monitor import LevelMonitor
 from app.level_repository import LevelRepository
+from app.external_levels import ExternalLevelsSettings, router as external_levels_router
 from app.levels import router
 from app.market_data import SimulatedMarketDataProvider
 from app.simulation import router as simulation_router
@@ -49,6 +50,7 @@ def create_app(database_path=None, signal_settings=None,
         current_time = clock or utc_now
         execution_settings = trade_settings or TradeSettings.from_environment()
         data_settings = market_settings or MarketSettings.from_environment()
+        app.state.external_levels_settings = ExternalLevelsSettings.from_environment()
         app.state.market_settings = data_settings
         app.state.zerodha_auth_error = False
         app.state.zerodha_auth_error_detail = None
@@ -155,6 +157,7 @@ def create_app(database_path=None, signal_settings=None,
     app.state.database_path = Path(database_path if database_path is not None else
                                    os.getenv('DATABASE_PATH', str(DEFAULT_DATABASE_PATH)))
     app.include_router(router)
+    app.include_router(external_levels_router)
     app.include_router(simulation_router)
     app.include_router(signals_router)
     app.include_router(option_router)

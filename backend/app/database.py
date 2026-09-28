@@ -112,3 +112,15 @@ def initialize_database(database_path, stop_loss_percentage=10, trade_settings=N
 
         from app.index_settings import initialize_index_settings
         initialize_index_settings(connection)
+
+        connection.execute("""CREATE TABLE IF NOT EXISTS external_level_requests (
+            request_id TEXT PRIMARY KEY, idempotency_key TEXT UNIQUE,
+            payload TEXT NOT NULL, response TEXT NOT NULL, created_at TEXT NOT NULL
+        )""")
+        connection.execute("""CREATE TABLE IF NOT EXISTS external_level_audit (
+            level_id INTEGER PRIMARY KEY, source TEXT NOT NULL,
+            created_by TEXT NOT NULL CHECK(created_by = 'EXTERNAL_API'),
+            request_id TEXT NOT NULL, created_at TEXT NOT NULL
+        )""")
+        connection.execute("""CREATE INDEX IF NOT EXISTS levels_external_lookup
+            ON levels(instrument, price, level_date)""")
