@@ -77,7 +77,7 @@ export function applyLiveEvent(state, event) {
       return { ...state, connection: state.connection ? { ...state.connection,
         last_tick_at: data.last_tick_at, ticks_received: data.ticks_received,
         prices: { ...state.connection.prices, [data.instrument]: data.price } } : null,
-        prices: { ...state.prices, [data.instrument]: { price: data.price, change: data.change } } };
+        prices: { ...state.prices, [data.instrument]: { price: data.price, change: data.change, change_percentage: data.change_percentage ?? null } } };
     case 'ZERODHA_CONNECTION_STATUS':
       return { ...state, connection: { ...state.connection, ...data } };
     case 'INDEX_SETTINGS_UPDATED': return { ...state, indexes: [...(state.indexes ?? []).filter(index => index.instrument !== data.instrument), data] };

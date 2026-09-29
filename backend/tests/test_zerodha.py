@@ -189,6 +189,7 @@ def test_subscriptions_and_resubscribe(live):
     provider.socket = socket
     asyncio.run(provider.refresh_subscriptions())
     assert json.loads(socket.send.call_args_list[0].args[0]) == {'a': 'subscribe', 'v': [256265]}
+    assert json.loads(socket.send.call_args_list[1].args[0]) == {'a': 'mode', 'v': ['quote', [256265]]}
     asyncio.run(provider.refresh_subscriptions())
     assert socket.send.await_count == 2  # subscribe + mode, no redundant calls
     provider.subscribed = set()  # New connection always starts with an empty sent set.
@@ -335,3 +336,33 @@ def test_continuous_socket_prices_do_not_poll_rest_and_expose_metrics(live):
         assert status['data']['connection_status'] == 'DISCONNECTED'
         assert 'api_key' not in json.dumps(status)
         assert 'access_token' not in json.dumps(status)
+
+
+@pytest.mark.parametrize('size,token', [(28, 256265), (32, 256265), (44, 10002), (184, 10002)])
+def test_daily_change_uses_quote_close_not_previous_tick(live, size, token, monkeypatch):
+    client, _ = live
+    provider = client.app.state.market_data_provider
+    record = client.app.state.zerodha_instruments.by_token(token)
+    symbol = record.underlying if record.instrument_type == 'INDEX' else record.trading_symbol
+    provider.subscribed = {token}
+    published = []
+    monkeypatch.setattr(client.app.state.websocket_hub, 'publish', lambda kind, data: published.append((kind, data)))
+
+    def quote(price, close):
+        packet = bytearray(size)
+        struct.pack_into('!II', packet, 0, token, int(price * 100))
+        struct.pack_into('!I', packet, 20 if size in (28, 32) else 40, int(close * 100))
+        return struct.pack('!HH', 1, size) + packet
+
+    for price, close, expected, pct in [(102, 100, 2, 2), (101, 100, 1, 1),
+                                         (98, 100, -2, -2), (100, 100, 0, 0),
+                                         (102, 102, 0, 0), (102, 0, None, None)]:
+        client.portal.call(provider.handle_message, quote(price, close))
+        snapshot = client.get('/connection').json()
+        assert snapshot['price_changes'][symbol] == expected
+        assert snapshot['price_change_percentages'][symbol] == pct
+        kind, update = published[-1]
+        assert kind == 'MARKET_PRICE_UPDATED'
+        assert update['change'] == expected and update['change_percentage'] == pct
+    client.portal.call(provider.handle_message, frame(token, 103))
+    assert client.get('/connection').json()['price_changes'][symbol] is None

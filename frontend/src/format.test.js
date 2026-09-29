@@ -39,3 +39,13 @@ test('trading dates roll over at Kolkata midnight regardless of browser timezone
   assert.deepEqual(levelsForDate(rows, '2026-09-15', 'ALL'), rows);
   assert.equal(levelStatus({ enabled: false, status: 'EXPIRED' }, null), 'EXPIRED');
 });
+
+
+test('watchlist formats daily points and percent with honest missing-close state', async () => {
+  const { formatWatchChange } = await import('./format.js');
+  assert.equal(formatWatchChange({ change: 100, change_percentage: 0.4 }, true), '↗ +100.00 (+0.40%)');
+  assert.equal(formatWatchChange({ change: -50, change_percentage: -0.2 }, true), '↘ -50.00 (-0.20%)');
+  assert.equal(formatWatchChange({ change: 0, change_percentage: 0 }, true), '↗ +0.00 (+0.00%)');
+  assert.equal(formatWatchChange({ change: null }, true), 'Previous close unavailable');
+  assert.equal(formatWatchChange(undefined, false), 'Waiting for next tick');
+});

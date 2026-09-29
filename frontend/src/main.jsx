@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { request } from './api';
 import { createLiveFeed, marketSocketUrl, applyLiveEvent } from './liveFeed';
-import { formatPrice, levelStatus, tradingDate, levelsForDate } from './format';
+import { formatPrice, formatWatchChange, levelStatus, tradingDate, levelsForDate } from './format';
 import SignalsTable from './SignalsTable';
 import OptionSelectionsTable from './OptionSelectionsTable';
 import LevelForm from './LevelForm';
@@ -49,7 +49,7 @@ function App() {
       catch (error) { snapshot[key] = null; failures[key] = error.message; }
     }));
     snapshot.prices = Object.fromEntries(Object.entries(snapshot.connection?.prices ?? {})
-      .map(([symbol, price]) => [symbol, { price, change: snapshot.connection?.price_changes?.[symbol] ?? null }]));
+      .map(([symbol, price]) => [symbol, { price, change: snapshot.connection?.price_changes?.[symbol] ?? null, change_percentage: snapshot.connection?.price_change_percentages?.[symbol] ?? null }]));
     return { snapshot, failures };
   }
   async function refresh() { await feed.current?.refresh(); }
@@ -111,10 +111,10 @@ function App() {
         <div className="ms-search"><input type="search" aria-label="Search instruments" placeholder="Search instruments" value={search} onChange={event => setSearch(event.target.value)} /></div>
         <div className="ms-watchlist">{instruments.filter(symbol => symbol.toLowerCase().includes(search.toLowerCase())).map(symbol => <button className="ms-watch" aria-pressed={symbol === selected} key={symbol} disabled={busy} onClick={() => { setSelected(symbol); setEditor(null); }}>
           <span>{symbol}<small>{visibleLevels.filter(level => level.instrument === symbol).length} levels · {viewingAllDates ? 'all dates' : 'today'}</small></span>
-          <span className="ms-quote">{formatPrice(shownPrices[symbol]?.price)}<small className={shownPrices[symbol]?.change >= 0 ? 'ms-up' : 'ms-down'}>{shownPrices[symbol]?.change == null ? 'Waiting for next tick' : `${shownPrices[symbol].change >= 0 ? '↗ +' : '↘ '}${formatPrice(shownPrices[symbol].change)}`}</small></span>
+          <span className="ms-quote">{formatPrice(shownPrices[symbol]?.price)}<small className={shownPrices[symbol]?.change == null ? '' : shownPrices[symbol].change >= 0 ? 'ms-up' : 'ms-down'}>{formatWatchChange(shownPrices[symbol], live)}</small></span>
         </button>)}</div>
         {levels && !instruments.length && <p className="ms-sidefoot">{viewingAllDates ? 'No saved levels.' : 'No levels for today. Add a daily level in Levels.'}</p>}
-        <div className="ms-sidefoot">{live ? 'Live Zerodha prices' : 'Simulated prices received by the backend'}<br />{live ? 'Movement since previous received tick' : 'Movement since previous submitted tick'}</div>
+        <div className="ms-sidefoot">{live ? 'Live Zerodha prices' : 'Simulated prices received by the backend'}<br />{live ? 'Change from previous trading day’s close' : 'Movement since previous submitted tick'}</div>
       </aside>
       <main>
         <nav aria-label="Pages">{['dashboard', 'levels', 'trades', 'report', 'backtest', 'settings'].map(name => <button className="ms-tab" key={name} aria-pressed={page === name} disabled={busy} onClick={() => navigate(name)}>{name[0].toUpperCase() + name.slice(1)}</button>)}</nav>

@@ -1,4 +1,4 @@
-from typing import Awaitable, Callable, Protocol
+from typing import Awaitable, Callable, Protocol, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -8,6 +8,7 @@ class PriceTick(BaseModel):
 
     instrument: str = Field(min_length=1)
     price: float = Field(allow_inf_nan=False)
+    previous_close: Optional[float] = Field(default=None, gt=0, allow_inf_nan=False)
 
 
 class MarketDataProvider(Protocol):

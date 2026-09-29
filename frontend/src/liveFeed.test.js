@@ -91,7 +91,7 @@ test('silent connection watchdog reconnects, malformed messages ignored', () => 
 test('incremental events update dashboard, level states, trades and connection', () => {
   let state = { connection: { market_data_mode: 'ZERODHA', prices: { NIFTY: 24900 } }, levels: [{ id: 1, status: 'ACTIVE' }] };
   for (const e of [
-    event('MARKET_PRICE_UPDATED', { instrument: 'NIFTY', price: 25000, change: 100, last_tick_at: 'now', ticks_received: 2 }),
+    event('MARKET_PRICE_UPDATED', { instrument: 'NIFTY', price: 25000, change: 100, change_percentage: 0.4, last_tick_at: 'now', ticks_received: 2 }),
     event('LEVEL_DISARMED', { level: { id: 1, status: 'DISARMED' } }),
     event('SIGNAL_CREATED', { id: 1, valid: true }),
     event('TRADE_OPENED', { trade_id: 1, status: 'OPEN' }),
@@ -99,6 +99,7 @@ test('incremental events update dashboard, level states, trades and connection',
     event('ZERODHA_CONNECTION_STATUS', { connection_status: 'DISCONNECTED' }),
   ]) state = applyLiveEvent(state, e);
   assert.equal(state.prices.NIFTY.change, 100);
+  assert.equal(state.prices.NIFTY.change_percentage, 0.4);
   assert.equal(state.connection.prices.NIFTY, 25000);
   assert.equal(state.connection.connection_status, 'DISCONNECTED');
   assert.equal(state.levels[0].status, 'DISARMED');

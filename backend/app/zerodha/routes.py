@@ -49,6 +49,7 @@ def connection_snapshot(state):
                 instrument_sync_status=instruments.status if instruments else 'NOT_APPLICABLE',
                 last_successful_sync=instruments.last_sync if instruments else None,
                 prices=dict(state.live_prices), price_changes=dict(state.live_price_changes),
+                price_change_percentages=dict(state.live_price_change_percentages),
                 subscribed_instrument_count=len(getattr(provider, 'subscribed', set())),
                 ticks_received=getattr(provider, 'ticks_received', 0),
                 last_tick_at=getattr(provider, 'last_tick_at', None),

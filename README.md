@@ -842,7 +842,7 @@ premium outside the write transaction. No synthetic price seed is used in this
 mode; a missing/invalid quote produces the existing entry failure. This avoids
 subscribing to the entire option chain merely to discover an entry price.
 
-The asyncio ZerodhaMarketDataProvider subscribes in LTP mode to enabled index
+The asyncio ZerodhaMarketDataProvider subscribes in quote mode to enabled index
 levels and contracts for OPEN PAPER positions. It converts binary NSE/NFO paise
 quotes into PriceTick, then uses the same SimulationFlow, LevelMonitor,
 SignalEngine, OptionSelector, PaperExecutor and PositionMonitor. Text updates,
@@ -1169,3 +1169,12 @@ set `STOP_STRATEGY=PROGRESSIVE`, use the new settings, or save the protection fo
 to opt in. `STOP_STRATEGY=LEGACY` remains available for comparative backtests.
 Missing progressive values use the defaults above. The default strategy version is
 now 1.3.0; an explicit `STRATEGY_VERSION` still overrides it.
+
+
+The live watchlist shows point and percentage changes from the **previous trading
+day’s close**, using the close field in Zerodha quote packets (index and option
+layouts are decoded separately). Percentage is `(latest − previous_close) /
+previous_close × 100`. Both WebSocket updates and `/connection` snapshots carry
+these values. Missing or zero close values show “Previous close unavailable”;
+they never fall back to tick-to-tick movement. Simulation remains explicitly
+labelled as movement since the previous submitted tick.

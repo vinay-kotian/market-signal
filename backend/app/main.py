@@ -110,6 +110,7 @@ def create_app(database_path=None, signal_settings=None,
         app.state.websocket_hub = WebSocketHub()
         app.state.live_prices = {}
         app.state.live_price_changes = {}
+        app.state.live_price_change_percentages = {}
 
         def publish_expired(changed):
             for level in changed:

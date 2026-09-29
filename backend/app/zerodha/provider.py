@@ -66,21 +66,22 @@ class ZerodhaMarketDataProvider:
             await self.socket.send(json.dumps({'a': 'unsubscribe', 'v': sorted(removed)}))
         if added:
             await self.socket.send(json.dumps({'a': 'subscribe', 'v': sorted(added)}))
-            await self.socket.send(json.dumps({'a': 'mode', 'v': ['ltp', sorted(added)]}))
+            await self.socket.send(json.dumps({'a': 'mode', 'v': ['quote', sorted(added)]}))
         self.subscribed = required
         if added or removed:
             logging.getLogger("uvicorn.error").info("Zerodha subscriptions: count=%s", len(required))
             if self.on_status:
                 self.on_status()
 
-    def normalize_tick(self, token, price):
+    def normalize_tick(self, token, price, previous_close=None):
         if isinstance(token, bool) or not isinstance(token, int):
             return None
         record = self.instruments.by_token(token)
         if (record is None or isinstance(price, bool) or not isinstance(price, (float, int))
                 or not isfinite(price) or price <= 0):
             return None
-        return PriceTick(instrument=record.underlying if record.instrument_type == 'INDEX' else record.trading_symbol, price=price)
+        return PriceTick(instrument=record.underlying if record.instrument_type == 'INDEX' else record.trading_symbol,
+                         price=price, previous_close=previous_close if previous_close and previous_close > 0 else None)
 
     async def handle_message(self, message):
         if not isinstance(message, bytes) or len(message) < 2:
@@ -94,15 +95,20 @@ class ZerodhaMarketDataProvider:
                 if size not in (8, 28, 32, 44, 184) or offset + size > len(message):
                     raise ValueError('Invalid quote frame')
                 token, price = struct.unpack_from('!II', message, offset)
-                packets.append((token, price / 100))  # Supported NSE/BSE indices and NFO/BFO options use paise.
+                # Kite quote/full packets include the previous trading session close.
+                # Index layout differs from tradable instruments; LTP has no close.
+                close_offset = 20 if size in (28, 32) else 40 if size in (44, 184) else None
+                previous_close = (struct.unpack_from('!I', message, offset + close_offset)[0] / 100
+                                  if close_offset is not None else None)
+                packets.append((token, price / 100, previous_close))
                 offset += size
             if offset != len(message):
                 raise ValueError('Trailing quote bytes')
         except (ValueError, struct.error):
             logging.getLogger(__name__).warning('Ignoring malformed Zerodha tick frame')
             return
-        for token, price in packets:
-            tick = self.normalize_tick(token, price)
+        for token, price, previous_close in packets:
+            tick = self.normalize_tick(token, price, previous_close)
             if tick is not None and token in self.subscribed:
                 self.ticks_received += 1
                 self.last_tick_at = datetime.now(timezone.utc).isoformat()

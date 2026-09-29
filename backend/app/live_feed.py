@@ -112,6 +112,7 @@ class LiveEventPublisher:
         data = connection_snapshot(self.state)
         data.pop('prices', None)
         data.pop('price_changes', None)
+        data.pop('price_change_percentages', None)
         self.hub.publish('ZERODHA_CONNECTION_STATUS', data)
 
     def committed(self, instrument=None):
@@ -162,11 +163,15 @@ class LiveEventPublisher:
         await self.state.simulation_flow.on_tick(tick)
         self.committed(tick.instrument)
         provider = self.state.market_data_provider
-        previous = self.state.live_prices.get(tick.instrument)
+        live = self.state.market_settings.market_data_mode == 'ZERODHA'
+        reference = tick.previous_close if live else self.state.live_prices.get(tick.instrument)
+        change = None if reference is None else tick.price - reference
+        percentage = change / reference * 100 if change is not None and reference > 0 else None
         self.state.live_prices[tick.instrument] = tick.price
-        self.state.live_price_changes[tick.instrument] = None if previous is None else tick.price - previous
+        self.state.live_price_changes[tick.instrument] = change
+        self.state.live_price_change_percentages[tick.instrument] = percentage
         self.hub.publish('MARKET_PRICE_UPDATED', dict(
             instrument=tick.instrument, price=tick.price,
-            change=None if previous is None else tick.price - previous,
+            change=change, change_percentage=percentage,
             last_tick_at=getattr(provider, 'last_tick_at', None),
             ticks_received=getattr(provider, 'ticks_received', 0)))

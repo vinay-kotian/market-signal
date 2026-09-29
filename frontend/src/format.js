@@ -31,3 +31,11 @@ export function tradingDate(now = new Date()) {
 export function levelsForDate(levels, today, view = 'TODAY') {
   return levels.filter(level => view === 'ALL' || level.level_date === today);
 }
+
+export function formatWatchChange(quote, live) {
+  if (quote?.change == null) return live ? 'Previous close unavailable' : 'Waiting for next tick';
+  const sign = quote.change >= 0 ? '+' : '';
+  const arrow = quote.change >= 0 ? '↗' : '↘';
+  const pct = quote.change_percentage == null ? '' : ` (${quote.change_percentage >= 0 ? '+' : ''}${formatPrice(quote.change_percentage)}%)`;
+  return `${arrow} ${sign}${formatPrice(quote.change)}${pct}`;
+}
