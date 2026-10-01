@@ -80,7 +80,7 @@ def test_sensex_full_paper_lifecycle_and_reporting(tmp_path):
         update(client, 'SENSEX', 500)
         tick(client, 80049, 'SENSEX')
         assert get(client, level)['status'] == 'DISARMED'
-        tick(client, 80050, 'SENSEX')
+        tick(client, 80500, 'SENSEX')
         assert get(client, level)['status'] == 'ACTIVE'
         assert len(client.get('/signals').json()) == 1
         clock.set('2026-09-15T10:00:00+05:30')

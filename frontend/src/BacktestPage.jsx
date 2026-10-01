@@ -6,7 +6,7 @@ import { supportedIndices } from './indices';
 const defaults = {
   lookback_minutes: 15, minimum_approach_distance_enabled: false,
   minimum_approach_distance_points: 0, itm_depth: 1, number_of_lots: 1,
-  level_rearm_distance_points: 50,
+  initial_arm_distance_points: 30,
   initial_stop_loss_pct: 10, profit_lock_trigger_pct: 10, profit_lock_pct: 5,
   trailing_start_pct: 10, trailing_reduction_step_points: 10,
   trailing_reduction_pct: 1, minimum_trailing_pct: 5, trading_start_time: '09:15',
@@ -36,8 +36,10 @@ export default function BacktestPage() {
     if (source === 'file' && !dataset) { setError('Choose a JSON dataset first.'); return; }
     setBusy(true);
     try {
+      const { initial_arm_distance_points, ...strategySettings } = settings;
       setResult(await request('/backtests/run', { method: 'POST', body: JSON.stringify({
-        instrument, levels: prices, ...settings,
+        instrument, levels: prices, ...strategySettings,
+        index_settings: { [instrument]: { initial_arm_distance_points } },
         ...(source === 'demo' ? { fixture: 'nifty-demo' } : { dataset }),
         ...(start ? { start_time: start } : {}), ...(end ? { end_time: end } : {}),
       }) }));

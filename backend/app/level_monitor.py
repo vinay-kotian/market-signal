@@ -14,7 +14,7 @@ from app.database import connect
 from app.option_instruments import SimulatedOptionInstrumentSource
 from app.option_repository import OptionSelectionRepository
 from app.option_selector import OptionSelector
-from app.settings import OptionSettings, TradeSettings
+from app.settings import OptionSettings
 
 
 def utc_now():
@@ -72,8 +72,6 @@ class LevelMonitor:
             self._expire(timestamp)
             levels = self._repository.list_enabled(tick.instrument, timestamp)
             active_levels = []
-            distance = (self._paper_executor.settings.level_rearm_distance_points
-                        if self._paper_executor else TradeSettings().level_rearm_distance_points)
             initial_distance = IndexSettingsRepository(self._repository.database_path).distance(tick.instrument)
             for level in levels:
                 if level.status == 'PENDING_ARM':
@@ -81,7 +79,7 @@ class LevelMonitor:
                         self.on_armed([self._repository.get(level.id)])
                     # Initial arming is a state transition only, never an entry tick.
                 elif level.status == 'DISARMED':
-                    self._repository.rearm(level, current, distance, timestamp)
+                    self._repository.rearm(level, current, initial_distance, timestamp)
                     # Re-arming is not a trigger: require a later return/crossing.
                 elif level.status == 'ACTIVE':
                     active_levels.append(level)
@@ -142,6 +140,10 @@ class LevelMonitor:
                             if self._paper_executor is not None:
                                 self._paper_executor.execute(signal, stored_selection, self._clock(),
                                                              connection=connection)
+                            # Consume even when paper entry fails, atomically with the signal.
+                            self._repository.change_status(
+                                signal.level_id, 'DISARMED', signal.trigger_price, timestamp,
+                                connection=connection)
             self._events.extend(triggers)
             self._next_event_id += len(triggers)
             self._history.record(tick.instrument, current, timestamp)

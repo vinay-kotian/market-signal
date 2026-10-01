@@ -890,21 +890,18 @@ See [deploy/README.md](deploy/README.md) for Ubuntu, Nginx, systemd, external SQ
 
 ### Level re-arming
 
-`LEVEL_REARM_DISTANCE_POINTS=50` configures the positive underlying-price distance
-needed to re-arm a level (restart the backend after changing its environment).
-Backtests accept the same `level_rearm_distance_points` setting independently.
+The index's `initial_arm_distance_points` controls both initial arming and rearming.
+Backtests accept isolated `index_settings` with the same rule.
 
-Successful trade entry persists `DISARMED` and `LEVEL_DISARMED` together with the
-trade. Rejected signals and failed entries do not disarm. Enabled disarmed levels
-continue observing underlying prices without generating signals. A distance of
-at least the setting persists `ACTIVE` and `LEVEL_REARMED`; only a later return or
-crossing can trigger again. Option quotes and closing trades do not re-arm levels.
+Every valid signal persists `DISARMED` and clears `armed_from`, including when
+paper entry fails. A new underlying observation at or beyond level ± distance
+persists `ACTIVE` and `armed_from` ABOVE/BELOW. Only a later touch/cross can signal.
+Option quotes and closing trades never re-arm levels.
 
-`GET /levels` includes `status`; `GET /levels/{id}/events` returns ordered persisted
-state events with the underlying price, timestamp and entry trade ID where applicable.
-Each level ID is independent. Restarting, editing, or toggling enabled does not
-reset its state. Legacy levels migrate as ACTIVE without changing existing saved
-states. The dashboard and Levels page display state separately from enabled status.
+`GET /levels` includes `status`, `armed`, and `armed_from`;
+`GET /levels/{id}/events` returns persisted state events. Arm state survives restart.
+Legacy ACTIVE levels without an arming side migrate to PENDING_ARM to require a
+fresh qualifying observation. Create/edit evaluates the current underlying quote.
 
 
 ### Live browser feed

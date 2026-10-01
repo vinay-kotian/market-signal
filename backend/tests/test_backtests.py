@@ -178,5 +178,5 @@ def test_backtest_reuses_level_rearming(client):
     assert len(result['signals']) == len(result['trades']) == 2
     assert result['trades'][0]['entry_time'].startswith('2026-09-14T10:05:00')
     # A different distance applies to this isolated run only.
-    result = run(client, rows, level_rearm_distance_points=75)
+    result = run(client, rows, index_settings={'NIFTY': {'initial_arm_distance_points': 75}})
     assert len(result['signals']) == len(result['trades']) == 1

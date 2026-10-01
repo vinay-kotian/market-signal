@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 
 class LevelInput(BaseModel):
@@ -17,6 +17,13 @@ class Level(LevelInput):
     id: int
     level_date: date
     status: Literal["ACTIVE", "DISARMED", "EXPIRED", "PENDING_ARM"] = "ACTIVE"
+    armed_from: Optional[Literal['ABOVE', 'BELOW']] = None
+
+    @computed_field
+    @property
+    def armed(self) -> bool:
+        return self.status == 'ACTIVE'
+
     activation_reference_price: Optional[float] = None
     created_at: datetime
     updated_at: datetime

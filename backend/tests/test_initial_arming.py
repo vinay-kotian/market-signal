@@ -196,7 +196,7 @@ def test_zero_distance_arms_on_create_or_first_valid_tick(client):
     assert create(client, price=23200)['status'] == 'ACTIVE'
 
 
-def test_setting_change_does_not_touch_any_level_or_post_trade_rearm(client):
+def test_setting_change_applies_on_next_rearm_tick(client):
     tick(client, 24900)
     level = create(client, price=25000)
     tick(client, 24930)
@@ -208,7 +208,7 @@ def test_setting_change_does_not_touch_any_level_or_post_trade_rearm(client):
     assert client.get('/levels').json() == before
     tick(client, 25049)
     assert get(client, level)['status'] == 'DISARMED'
-    tick(client, 25050)
+    tick(client, 25500)
     assert get(client, level)['status'] == 'ACTIVE'
     assert get(client, expired)['status'] == 'EXPIRED'
 
@@ -310,3 +310,57 @@ def test_decimal_distance_boundary(client):
     assert get(client, level)['status'] == 'PENDING_ARM'
     tick(client, 23250.1)
     assert get(client, level)['status'] == 'ACTIVE'
+
+
+@pytest.mark.parametrize('instrument,level_price', [('BANKNIFTY', 54664), ('NIFTY', 25000), ('SENSEX', 80000)])
+@pytest.mark.parametrize('side', [-1, 1])
+def test_new_arm_cycle_required_after_closed_trade(client, instrument, level_price, side):
+    # Extend synthetic contracts to the user's BANKNIFTY example range.
+    if instrument == 'BANKNIFTY':
+        from dataclasses import replace
+        source = client.app.state.paper_executor.instruments
+        for contract in list(source.contracts(instrument)):
+            shifted = replace(contract, strike=contract.strike + 3700,
+                              symbol=contract.symbol + '-SHIFTED')
+            source._contracts.append(shifted)
+            client.app.state.option_prices.set_price(shifted.symbol, 100)
+    update(client, instrument, 80)
+    tick(client, level_price + side * 86, instrument)
+    level = create(client, instrument, level_price)
+    assert level['armed'] is True
+    assert level['armed_from'] == ('ABOVE' if side == 1 else 'BELOW')
+    tick(client, level_price, instrument)
+    assert get(client, level)['armed'] is False
+    assert get(client, level)['armed_from'] is None
+    trade, = client.get('/trades').json()
+    tick(client, 1, trade['option_symbol'])
+    assert client.get('/trades').json()[0]['status'] == 'CLOSED'
+    for price in [level_price - 4, level_price + 6, level_price - 14, level_price,
+                  level_price + side * 79, level_price]:
+        tick(client, price, instrument)
+        assert get(client, level)['armed'] is False
+    assert len(client.get('/signals').json()) == 1
+    assert len(client.get('/trades').json()) == 1
+    tick(client, level_price + side * 80, instrument)
+    assert get(client, level)['armed_from'] == ('ABOVE' if side == 1 else 'BELOW')
+    assert len(client.get('/signals').json()) == 1
+    tick(client, level_price, instrument)
+    assert len(client.get('/trades').json()) == 2
+    assert get(client, level)['armed_from'] is None
+
+
+def test_arming_side_survives_restart_and_legacy_active_requires_new_observation(client):
+    tick(client, 24900)
+    level = create(client, price=25000)
+    with TestClient(create_app(client.app.state.database_path)) as restarted:
+        assert get(restarted, level)['armed_from'] == 'BELOW'
+    with connect(client.app.state.database_path) as connection:
+        connection.execute('ALTER TABLE levels DROP COLUMN armed_from')
+    initialize_database(client.app.state.database_path)
+    initialize_database(client.app.state.database_path)
+    assert get(client, level)['status'] == 'PENDING_ARM'
+    assert get(client, level)['armed_from'] is None
+    tick(client, 25000)
+    assert client.get('/signals').json() == []
+    tick(client, 25030)
+    assert get(client, level)['armed_from'] == 'ABOVE'

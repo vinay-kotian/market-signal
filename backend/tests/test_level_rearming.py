@@ -27,8 +27,8 @@ def events(client, id):
     return client.get(f'/levels/{id}/events').json()
 
 
-@pytest.mark.parametrize('offset,expected', [(49, 'DISARMED'), (-49, 'DISARMED'),
-    (50, 'ACTIVE'), (-50, 'ACTIVE'), (51, 'ACTIVE'), (-51, 'ACTIVE')])
+@pytest.mark.parametrize('offset,expected', [(29, 'DISARMED'), (-29, 'DISARMED'),
+    (30, 'ACTIVE'), (-30, 'ACTIVE'), (31, 'ACTIVE'), (-31, 'ACTIVE')])
 def test_entry_and_rearm_boundary(client, offset, expected):
     id = level(client)
     ticks(client, 24900, 25000)
@@ -50,7 +50,7 @@ def test_disarmed_suppresses_signals_and_trades(client):
     assert len(events(client, id)) == 1
 
 
-def test_rejected_and_failed_entry_do_not_disarm(tmp_path):
+def test_only_valid_signal_consumes_arm_even_when_entry_fails(tmp_path):
     with TestClient(create_app(tmp_path / 'test.db', option_prices=SimulatedOptionPrices())) as client:
         id = level(client)
         ticks(client, 25000)  # Insufficient history.
@@ -59,8 +59,10 @@ def test_rejected_and_failed_entry_do_not_disarm(tmp_path):
         ticks(client, 24900, 25000)  # Valid signal, missing option quote.
         assert client.get('/signals').json()[0]['valid']
         assert client.get('/trade-entry-results').json()[0]['failure_reason'] == 'OPTION_PRICE_UNAVAILABLE'
-        assert state(client, id) == 'ACTIVE'
-        assert events(client, id) == []
+        assert state(client, id) == 'DISARMED'
+        assert events(client, id)[0]['event_type'] == 'LEVEL_DISARMED'
+        ticks(client, 25001, 24999, 25000)
+        assert len(client.get('/signals').json()) == 2
 
 
 def test_distance_rejection_does_not_disarm(tmp_path):
@@ -109,13 +111,13 @@ def test_restart_preserves_disarmed_and_edit_resets_initial_arm(tmp_path):
         assert state(client, id) == 'ACTIVE'
 
 
-def test_setting_from_environment(tmp_path, monkeypatch):
+def test_legacy_rearm_environment_does_not_override_index_distance(tmp_path, monkeypatch):
     monkeypatch.setenv('LEVEL_REARM_DISTANCE_POINTS', '75')
     with TestClient(create_app(tmp_path / 'test.db')) as client:
         id = level(client)
-        ticks(client, 24900, 25000, 25050)
+        ticks(client, 24900, 25000, 25029)
         assert state(client, id) == 'DISARMED'
-        ticks(client, 25075)
+        ticks(client, 25030)
         assert state(client, id) == 'ACTIVE'
 
 
@@ -126,7 +128,7 @@ def test_legacy_migration(tmp_path):
         c.execute("INSERT INTO levels VALUES (1, 'NIFTY', 25000, 1, '2026-09-14', '2026-09-14')")
     initialize_database(path)
     with connect(path) as c:
-        assert c.execute('SELECT status FROM levels').fetchone()[0] == 'ACTIVE'
+        assert c.execute('SELECT status FROM levels').fetchone()[0] == 'PENDING_ARM'
         c.execute("UPDATE levels SET status = 'DISARMED'")
     initialize_database(path)
     with connect(path) as c:

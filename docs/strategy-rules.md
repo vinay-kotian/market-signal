@@ -396,7 +396,7 @@ strategy/risk rule.
 
 ## Level Rearming
 
-After a trade is successfully entered for a configured level,
+After a valid signal is generated for a configured level,
 that level becomes DISARMED.
 
 A DISARMED level cannot generate another trade.
@@ -406,11 +406,11 @@ moves at least the configured distance away from the level.
 
 Setting:
 
-level_rearm_distance_points = 50
+initial_arm_distance_points = 50  (per index)
 
 Rearm condition:
 
-abs(current_price - level) >= level_rearm_distance_points
+abs(current_underlying_price - level) >= initial_arm_distance_points
 
 Example:
 
@@ -438,15 +438,15 @@ ACTIVE
 DISARMED
 EXPIRED
 
-A successful trade entry changes the level to DISARMED.
+A valid signal changes the level to DISARMED and clears armed_from.
 
-Rejected signals or failed trade entries do not disarm the level.
+Rejected signals do not disarm the level. Valid signals consume the arm even when entry fails.
 
 A DISARMED level continues to receive underlying price updates but cannot generate a new signal.
 
 The level becomes ACTIVE again when:
 
-abs(current_price - level) >= level_rearm_distance_points
+abs(current_underlying_price - level) >= initial_arm_distance_points
 
 The re-arming tick only changes the level back to ACTIVE.
 A later touch/cross is required for another trade.
@@ -564,24 +564,24 @@ Settings → Index Rules manages separate persistent values in SQLite:
 - SENSEX = 30 points by default
 
 There is no per-level distance override. Changing a setting affects subsequent
-PENDING_ARM evaluations for that index; it does not reset ACTIVE, DISARMED,
+PENDING_ARM and DISARMED evaluations for that index; it does not reset ACTIVE, DISARMED,
 or EXPIRED levels or affect other indices. Edits re-evaluate immediately and
 can produce either ACTIVE or PENDING_ARM, rather than always resetting pending.
 
 Stored states, settings, and informational reference prices survive restart.
-Existing ACTIVE/DISARMED levels are not reset by this rule change. Existing
+Legacy ACTIVE levels without an arming side migrate to PENDING_ARM; DISARMED levels remain disarmed. Existing
 PENDING_ARM levels use the corrected condition on their next valid tick.
 Daily expiry and disabled/future-day monitoring restrictions remain unchanged.
 
-### Difference From Post-Trade Rearming
+### Signal Consumption and Rearming
 
-Both distances are measured from the configured level, but apply at different
-lifecycle stages and use separate settings:
-
-- initial arming after create/edit uses the index's `initial_arm_distance_points`
-- rearming after successful entry uses `level_rearm_distance_points`
-
-Post-trade rearming and its no-same-tick-trigger behavior remain unchanged.
+Every valid signal consumes the arm atomically with signal persistence, even if
+paper entry fails. The level becomes DISARMED (`armed = false`, `armed_from = null`).
+Closing a trade does not re-arm it. A fresh underlying tick at or beyond
+`level + initial_arm_distance_points` or `level - initial_arm_distance_points`
+re-arms it from ABOVE or BELOW respectively. The arming tick cannot also signal.
+Option premiums never establish arm eligibility. The legacy
+`level_rearm_distance_points` setting no longer controls rearming.
 PENDING_ARM, ACTIVE, and DISARMED daily levels expire at trading-day rollover.
 
 Backtests use the same repository and LevelMonitor logic with isolated settings

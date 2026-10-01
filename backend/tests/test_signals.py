@@ -92,24 +92,22 @@ def test_insufficient_history(client):
 
 
 def test_latest_approach_stops_at_opposite_side(client):
-    # Test signal/trigger semantics without a successful entry disarming the level.
+    # Missing option quotes prevent entry; valid signals still consume the arm.
     client.app.state.paper_executor.prices = SimulatedOptionPrices()
     add_level(client)
     signals = ticks(client, [24900, 25010, 25030, 24990, 25000])
-    assert len(signals) == 3
-    assert signals[0]["direction"] == "FROM_BELOW"
-    assert signals[0]["approach_distance"] == 10
-    assert signals[1]["direction"] == "FROM_ABOVE"
-    assert signals[1]["approach_distance"] == 30
+    assert len(signals) == 2
+    assert signals[0]["direction"] == "FROM_ABOVE"
+    assert signals[0]["approach_distance"] == 30
 
 
 def test_previous_touch_resets_segment_and_duplicate_ticks_do_not_signal(client):
-    # Test signal/trigger semantics without a successful entry disarming the level.
+    # Missing option quotes prevent entry; valid signals still consume the arm.
     client.app.state.paper_executor.prices = SimulatedOptionPrices()
     add_level(client)
-    signals = ticks(client, [24900, 25000, 25000, 24990, 25000, 25000])
+    signals = ticks(client, [24900, 25000, 25000, 24970, 25000, 25000])
     assert len(signals) == 2
-    assert signals[0]["approach_distance"] == 10
+    assert signals[0]["approach_distance"] == 30
 
 
 @pytest.mark.parametrize("gap,expected_distance", [(15, 100), (16, None)])
@@ -156,13 +154,14 @@ def test_signals_persist_and_recent_limit_does_not_delete_history(tmp_path):
     with TestClient(create_app(path, option_prices=SimulatedOptionPrices())) as client:
         assert client.get("/signals").json() == []
         add_level(client)
-        signals = ticks(client, [24990] + [25010 if i % 2 == 0 else 24990 for i in range(105)])
+        signals = ticks(client, [price for _ in range(105) for price in (24970, 25000)])
         assert len(signals) == 100
         assert [s["id"] for s in signals] == list(range(105, 5, -1))
     with TestClient(create_app(path)) as client:
         assert client.get("/signals").json() == signals
         assert len(SignalRepository(path).recent(limit=200)) == 105
+        ticks(client, [24970])
         new_signals = ticks(client, [25000])
         assert new_signals[0]["id"] == 106
-        assert new_signals[0]["rejection_reason"] == "INSUFFICIENT_PRICE_HISTORY"
+        assert new_signals[0]["valid"]
         assert new_signals[1] == signals[0]

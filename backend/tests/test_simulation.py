@@ -100,7 +100,7 @@ def test_initial_exact_touch(client):
 
 
 def test_duplicates_are_suppressed_but_later_recross_triggers(client):
-    # Test signal/trigger semantics without a successful entry disarming the level.
+    # Missing option quotes prevent entry; valid signals still consume the arm.
     client.app.state.paper_executor.prices = SimulatedOptionPrices()
     add_level(client)
     for price in [24990, 25000, 25000, 25000, 25005]:
@@ -108,7 +108,7 @@ def test_duplicates_are_suppressed_but_later_recross_triggers(client):
     assert len(events(client)) == 1
     publish(client, 24990)
     publish(client, 25000)
-    assert len(events(client)) == 3
+    assert len(events(client)) == 1
 
 
 def test_levels_are_reloaded_and_prices_tracked_without_levels(client):
@@ -148,12 +148,13 @@ def test_invalid_tick_does_not_advance_previous_price(client, payload):
 
 
 def test_recent_events_are_bounded_and_newest_first(client):
-    # Test signal/trigger semantics without a successful entry disarming the level.
+    # Missing option quotes prevent entry; valid signals still consume the arm.
     client.app.state.paper_executor.prices = SimulatedOptionPrices()
     add_level(client)
     publish(client, 24990)
     for index in range(105):
-        publish(client, 25005 if index % 2 == 0 else 24990)
+        publish(client, 24970)
+        publish(client, 25000)
     result = events(client)
     assert len(result) == 100
     assert [event["id"] for event in result] == list(range(105, 5, -1))

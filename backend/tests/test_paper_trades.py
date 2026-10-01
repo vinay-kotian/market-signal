@@ -110,7 +110,7 @@ def test_live_mode_cannot_create_trade(tmp_path):
         assert client.get('/trade-entry-results').json()[0]['failure_reason'] == 'LIVE_MODE_NOT_SUPPORTED'
 
 
-def test_quote_can_be_updated_and_failed_entry_retried(tmp_path):
+def test_failed_entry_requires_new_arm_cycle_after_quote_update(tmp_path):
     prices = SimulatedOptionPrices()
     app = create_app(tmp_path / 'retry.sqlite3', option_prices=prices)
     with TestClient(app) as client:
@@ -120,7 +120,9 @@ def test_quote_can_be_updated_and_failed_entry_retried(tmp_path):
         selection = StoredOptionSelection(**client.get('/option-selections').json()[0])
         prices.set_price(selection.option_symbol, 123.45)
         result = app.state.paper_executor.execute(signal, selection, signal.timestamp)
-        assert result.status == 'OPEN'
+        assert result.status == 'FAILED'
+        assert result.failure_reason == 'LEVEL_DISARMED'
+        publish(client, [24900, 25000])
         assert client.get('/trades').json()[0]['entry_price'] == 123.45
         assert client.get('/trade-entry-results').json()[0]['failure_reason'] is None
 
