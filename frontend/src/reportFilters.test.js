@@ -49,3 +49,39 @@ test('Summary, history and bulk IDs share range/view on refresh, pagination and 
     }
   }
 });
+
+test('Trades uses RAW backend history for single-day and multi-day ranges across refresh and pages', async () => {
+  const { loadTradeHistory } = await import('./reportFilters.js');
+  for (const range of [today, { ...today, fromDate: '2026-09-30' }]) {
+    for (const page of [1, 1, 2]) {
+      const rows = { items: [], total: 25, page, page_size: 20 };
+      let calls = 0;
+      const result = await loadTradeHistory({ ...range, page, instrument: 'NIFTY', status: 'CLOSED' }, {
+        send: async path => {
+          calls++;
+          const url = new URL(path, 'http://test');
+          assert.equal(url.pathname, '/trades/history');
+          assert.deepEqual(Object.fromEntries(url.searchParams), {
+            view: 'RAW', from_date: range.fromDate, to_date: range.toDate,
+            instrument: 'NIFTY', status: 'CLOSED', page: String(page), page_size: '20',
+          });
+          return rows;
+        },
+      });
+      assert.equal(calls, 1);
+      assert.equal(result, rows);
+    }
+  }
+});
+
+test('Trades sends no history request for reversed or incomplete ranges', async () => {
+  const { loadTradeHistory } = await import('./reportFilters.js');
+  for (const range of [{ fromDate: '2026-10-04', toDate: '2026-10-03' },
+    { fromDate: '', toDate: '2026-10-03' }, { fromDate: '2026-10-03', toDate: '' }]) {
+    let calls = 0;
+    await assert.rejects(loadTradeHistory({ ...range, page: 1 }, {
+      send: async () => { calls++; },
+    }), /From Date|To Date/);
+    assert.equal(calls, 0);
+  }
+});

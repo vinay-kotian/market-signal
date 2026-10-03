@@ -93,11 +93,11 @@ test('Backtest and Report include SENSEX among the index choices', async () => {
 test('progressive trades show profit protection without legacy breakeven status', async () => {
   const server = await createServer({ optimizeDeps: { noDiscovery: true }, server: { middlewareMode: true, hmr: false }, appType: 'custom' });
   try {
-    const { default: TradesPage } = await server.ssrLoadModule('/src/TradesPage.jsx');
+    const { TradesTable } = await server.ssrLoadModule('/src/TradesPage.jsx');
     const base = { trade_id: 1, status: 'OPEN', entry_time: '2026-09-14T10:00:00+05:30',
       settings_snapshot: { stop_strategy: 'PROGRESSIVE' }, profit_lock_activated: true,
       trailing_pct: 9, trailing_step: 1, breakeven_protection_enabled: true };
-    const render = trade => renderToStaticMarkup(React.createElement(TradesPage, { trades: [trade] }));
+    const render = trade => renderToStaticMarkup(React.createElement(TradesTable, { trades: [trade] }));
     assert.match(render(base), /Profit locked · Trail 9% · Step 1/);
     assert.doesNotMatch(render(base), /Breakeven:/);
     assert.match(render({ ...base, profit_lock_activated: false }), /Awaiting profit trigger/);
@@ -117,5 +117,24 @@ test('Report renders today’s Kolkata date range above the performance summary'
     assert.ok(html.indexOf('To Date') < html.indexOf('Performance Summary'));
     assert.match(html, /selected report view and date range/);
     assert.doesNotMatch(html, /Summary metrics cover all dates/);
+  } finally { t.mock.timers.reset(); await server.close(); }
+});
+
+test('Trades defaults to today in Kolkata and places shared date controls above the list', async t => {
+  const server = await createServer({ optimizeDeps: { noDiscovery: true }, server: { middlewareMode: true, hmr: false }, appType: 'custom' });
+  try {
+    const { default: Trades } = await server.ssrLoadModule('/src/TradesPage.jsx');
+    const { default: DateRangeFields } = await server.ssrLoadModule('/src/DateRangeFields.jsx');
+    t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-02T19:00:00Z') });
+    const html = renderToStaticMarkup(React.createElement(Trades));
+    assert.match(html, /From Date<input[^>]+value="2026-10-03"/);
+    assert.match(html, /To Date<input[^>]+value="2026-10-03"/);
+    assert.ok(html.indexOf('From Date') < html.indexOf('Loading trades'));
+    assert.doesNotMatch(html, /latest 100/);
+    const invalid = renderToStaticMarkup(React.createElement(DateRangeFields, {
+      range: { fromDate: '2026-10-04', toDate: '2026-10-03' }, onChange() {},
+    }));
+    assert.match(invalid, /role="alert">From Date cannot be after To Date/);
+    assert.match(invalid, /aria-invalid="true"/);
   } finally { t.mock.timers.reset(); await server.close(); }
 });

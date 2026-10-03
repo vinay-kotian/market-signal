@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supportedIndices } from './indices';
 import { request } from './api';
 import { formatPrice, formatExitReason } from './format';
+import DateRangeFields from './DateRangeFields';
 import BulkTradeClassification from './BulkTradeClassification';
 import { validityStatuses } from './bulkClassification';
 import { defaultReportRange, reportRangeError, loadReport } from './reportFilters';
@@ -60,14 +61,7 @@ export default function PaperReportPage({ refreshKey }) {
 
   return <section aria-label="Paper trading report">
     <label className="ms-report-view">Report view <select disabled={bulkBusy} value={view} onChange={event => { setView(event.target.value); setPage(1); setSelected(null); setNotice(''); }}><option value="STRATEGY">STRATEGY · included trades</option><option value="RAW">RAW · all PAPER trades</option></select></label>
-    <fieldset className="ms-trade-filters ms-report-date-range" disabled={bulkBusy}>
-      <legend>Date range · Asia/Kolkata</legend>
-      <div className="ms-report-filters">
-        <label>From Date<input type="date" required value={fromDate} aria-invalid={Boolean(validation)} aria-describedby={validation ? 'report-date-error' : undefined} onChange={event => changeRange('fromDate', event.target.value)} /></label>
-        <label>To Date<input type="date" required value={toDate} aria-invalid={Boolean(validation)} aria-describedby={validation ? 'report-date-error' : undefined} onChange={event => changeRange('toDate', event.target.value)} /></label>
-      </div>
-      {validation && <p id="report-date-error" className="ms-error" role="alert">{validation}</p>}
-    </fieldset>
+    <DateRangeFields range={range} onChange={changeRange} disabled={bulkBusy} />
     <p className="ms-sub">Performance and trade history are calculated for the selected report view and date range, using trade entry time in Asia/Kolkata. Status and instrument filters apply to both sections.</p>
     <div className="ms-sectionhead">Performance Summary</div>
     {error && <p className="ms-error" role="alert">{error} <button onClick={() => setRetry(value => value + 1)}>Retry</button></p>}

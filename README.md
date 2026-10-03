@@ -654,6 +654,17 @@ npm test
 npm run build
 ```
 
+## Trades date filtering
+
+The **Trades** tab defaults From Date and To Date to today in Asia/Kolkata.
+It shares date controls and inclusive entry-date filtering with Report, using
+`GET /trades/history?view=RAW&from_date=2026-10-03&to_date=2026-10-03&page=1&page_size=20`.
+All matching PAPER trades remain visible, including strategy-excluded trades.
+Pagination counts only matching records and is not capped at the latest 100.
+Refresh, retry, and live trade updates preserve dates and pagination; changing
+range resets page 1. Invalid/incomplete ranges show validation without a history
+request. Entry failures remain a separate list of recent execution results.
+
 ## Paper trading report and history
 
 Open the **Report** tab for PAPER performance, trade history, and persisted event

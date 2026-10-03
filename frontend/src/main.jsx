@@ -122,7 +122,7 @@ function App() {
         {page === 'settings' && <SettingsPage indexes={liveState.indexes} error={errors.indexes} onRefresh={refresh} connection={connection} connectionError={errors.connection} feedStatus={feedStatus} lastUiEvent={lastUiEvent} />}
         {page === 'backtest' && <BacktestPage />}
         {page === 'report' && <PaperReportPage refreshKey={refreshKey} />}
-        {page === 'trades' && <TradesPage trades={trades} results={entryResults} error={errors.trades} resultsError={errors.entryResults} onRetry={() => mutate(async () => {})} />}
+        {page === 'trades' && <TradesPage refreshKey={refreshKey} tradeUpdates={trades} results={entryResults} resultsError={errors.entryResults} onRetry={() => mutate(async () => {})} />}
         {(page === 'dashboard' || page === 'levels') && <>
         {(errors.levels || errors.events || errors.action) && <div className="ms-error" role="alert">{errors.action || errors.levels || `Trigger status unavailable: ${errors.events}`} <button className="ms-link" disabled={busy} onClick={() => mutate(async () => {})}>Retry refresh</button></div>}
         {page === 'dashboard' && <div className="ms-pricebar"><div className="ms-instrument">{selected || 'No instrument selected'}</div><div><div className="ms-current">{formatPrice(current)}</div><div className="ms-sub">{live ? 'Latest received Zerodha price' : 'Latest simulated price'}</div></div></div>}

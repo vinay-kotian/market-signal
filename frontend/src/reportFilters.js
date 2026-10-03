@@ -12,7 +12,7 @@ export function reportRangeError({ fromDate, toDate }) {
   return '';
 }
 
-export async function loadReport(filters, { signal, send = request } = {}) {
+function reportQuery(filters) {
   const error = reportRangeError(filters);
   if (error) throw new Error(error);
   const query = new URLSearchParams({
@@ -20,9 +20,25 @@ export async function loadReport(filters, { signal, send = request } = {}) {
   });
   if (filters.status) query.set('status', filters.status);
   if (filters.instrument) query.set('instrument', filters.instrument);
+  return query;
+}
+
+function paginatedQuery(query, page) {
   const historyQuery = new URLSearchParams(query);
-  historyQuery.set('page', filters.page);
+  historyQuery.set('page', page);
   historyQuery.set('page_size', 20);
+  return historyQuery;
+}
+
+export async function loadTradeHistory(filters, { signal, send = request } = {}) {
+  // Trades includes all PAPER positions, including excluded strategy trades.
+  const query = reportQuery({ ...filters, view: 'RAW' });
+  return send(`/trades/history?${paginatedQuery(query, filters.page)}`, { signal });
+}
+
+export async function loadReport(filters, { signal, send = request } = {}) {
+  const query = reportQuery(filters);
+  const historyQuery = paginatedQuery(query, filters.page);
   const [report, history, matchingIds] = await Promise.all([
     send(`/reports/paper-trading?${query}`, { signal }),
     send(`/trades/history?${historyQuery}`, { signal }),

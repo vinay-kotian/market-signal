@@ -17,8 +17,8 @@ def add(client, index, timestamp, pnl=10, excluded=False, instrument='NIFTY'):
     return trade.trade_id
 
 
-def query(client, start, end, **filters):
-    params = dict(from_date=start, to_date=end, view='STRATEGY', **filters)
+def query(client, start, end, view='STRATEGY', **filters):
+    params = dict(from_date=start, to_date=end, view=view, **filters)
     responses = [client.get(endpoint, params=params) for endpoint in ENDPOINTS]
     assert all(response.status_code == 200 for response in responses)
     return [response.json() for response in responses]
@@ -61,7 +61,8 @@ def test_multiday_range_includes_both_days_and_filters_before_pagination(client)
     assert {row['trade_id'] for row in first['items'] + second['items']} == set(ids)
 
 
-def test_kolkata_boundaries_preserve_microseconds_and_use_entry_not_exit(client):
+@pytest.mark.parametrize('view', ['STRATEGY', 'RAW'])
+def test_kolkata_boundaries_preserve_microseconds_and_use_entry_not_exit(client, view):
     times = [
         '2026-10-02T18:29:59.999999+00:00',  # Before selected start.
         '2026-10-02T18:30:00+00:00',         # Exactly local midnight.
@@ -72,7 +73,7 @@ def test_kolkata_boundaries_preserve_microseconds_and_use_entry_not_exit(client)
     ]
     ids = [add(client, i, timestamp) for i, timestamp in enumerate(times, 1)]
     # add_trade's exit timestamps are in September; report must use October entry.
-    report, history, matching = query(client, '2026-10-03', '2026-10-03')
+    report, history, matching = query(client, '2026-10-03', '2026-10-03', view=view)
     assert report['net_pnl'] == 40
     assert report['total_trades'] == history['total'] == 4
     assert set(matching) == {row['trade_id'] for row in history['items']} == set(ids[1:5])
@@ -110,3 +111,22 @@ def test_default_view_is_consistent_for_all_endpoints(client):
     report, history, ids = [client.get(endpoint, params=params).json() for endpoint in ENDPOINTS]
     assert report['total_trades'] == history['total'] == 1
     assert ids == [included]
+
+
+def test_trades_raw_history_paginates_filtered_25_of_120_and_combines_filters(client):
+    for index in range(1, 121):
+        add(client, index, '2026-10-03T10:00:00+05:30' if index <= 25 else '2026-09-29T10:00:00+05:30',
+            pnl=10 if index % 2 else None, excluded=index == 1,
+            instrument='NIFTY' if index <= 10 else 'BANKNIFTY')
+    params = dict(from_date='2026-10-03', to_date='2026-10-03', view='RAW')
+    first = client.get('/trades/history', params=params).json()
+    second = client.get('/trades/history', params={**params, 'page': 2}).json()
+    assert first['total'] == second['total'] == 25
+    assert len(first['items']) == 20 and len(second['items']) == 5
+    assert len({row['trade_id'] for row in first['items'] + second['items']}) == 25
+    assert any(row['exclude_from_strategy_metrics'] for row in second['items'])
+    combined = client.get('/trades/history', params={**params, 'instrument': 'NIFTY', 'status': 'CLOSED'}).json()
+    assert combined['total'] == len(combined['items']) == 5
+    assert all(row['instrument'] == 'NIFTY' and row['status'] == 'CLOSED' for row in combined['items'])
+    expanded = client.get('/trades/history', params={**params, 'from_date': '2026-09-29'}).json()
+    assert expanded['total'] == 120
