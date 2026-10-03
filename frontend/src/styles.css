@@ -99,3 +99,17 @@ html,body{margin:0;background:#f7f9f7}
 #ms-design .ms-settings a:focus-visible,#ms-design .ms-settings > section:focus-visible{outline:2px solid #367a58;outline-offset:3px}
 @media(max-width:1000px){#ms-design .ms-index-rule{grid-template-columns:minmax(0,1fr) 88px;gap:12px}#ms-design .ms-index-name{grid-column:1 / -1}#ms-design .ms-index-message{grid-column:1 / -1}}
 @media(max-width:650px){#ms-design .ms-settings > section{padding:16px}#ms-design .ms-settings .ms-report-metrics{grid-template-columns:1fr}#ms-design .ms-index-rule{grid-template-columns:minmax(0,1fr);gap:12px}#ms-design .ms-index-rule .ms-button{width:100%}}
+
+/* Reports use the available content area while preserving a consistent gutter. */
+#ms-design main.ms-report-main{max-width:1600px;margin-inline:auto;padding-inline:24px}
+#ms-design .ms-report-table{width:100%;table-layout:auto}
+#ms-design .ms-report-table th,#ms-design .ms-report-table td{padding:10px 12px;vertical-align:middle}
+#ms-design .ms-report-table .ms-time{margin-top:3px;max-width:none;white-space:nowrap;font-size:10px}
+#ms-design .ms-report-trade{min-width:172px}
+#ms-design .ms-report-trade>div{display:flex;align-items:center;gap:8px}
+#ms-design .ms-report-trade .ms-link{padding:0;font-size:12px}
+#ms-design .ms-report-option{min-width:210px}
+#ms-design .ms-report-pnl{min-width:185px;white-space:nowrap}
+#ms-design .ms-report-exit{width:150px;min-width:150px;max-width:150px;white-space:normal;overflow-wrap:break-word}
+#ms-design .ms-report-main .ms-tablewrap:focus-visible{outline:2px solid #367a58;outline-offset:3px}
+@media(max-width:650px){#ms-design main.ms-report-main{padding-inline:16px}}

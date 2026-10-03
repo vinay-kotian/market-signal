@@ -98,14 +98,21 @@ export default function PaperReportPage({ refreshKey }) {
     </>}
     {!history && !error && <p role="status">Loading history…</p>}
     {history && <>
-      <div className="ms-tablewrap"><table>
-        <thead><tr>{date && <th>Select</th>}{['Date / trade', 'Instrument', 'Trigger level', 'Option', 'Quantity', 'Entry', 'Exit', 'P&L', 'P&L %', 'Status', 'Exit reason'].map(label => <th key={label}>{label}</th>)}</tr></thead>
+      <div className="ms-tablewrap" tabIndex={0} role="region" aria-label="Trade history table"><table className="ms-report-table">
+        <thead><tr>{date && <th scope="col">Select</th>}<th scope="col">Trade / time (IST)</th><th scope="col">Instrument / level</th><th scope="col" className="ms-report-option">Option</th>{['Qty', 'Entry', 'High', 'Exit', 'P&L'].map(label => <th scope="col" className="ms-num" key={label}>{label}</th>)}<th scope="col">Status</th><th scope="col" className="ms-report-exit">Exit reason</th></tr></thead>
         <tbody>{history.items.map(trade => <tr key={trade.trade_id} onClick={() => setSelected(trade.trade_id)} className="ms-history-row" aria-selected={selected === trade.trade_id}>
           {date && <td onClick={event => event.stopPropagation()}><input className="ms-checkbox" type="checkbox" aria-label={`Select trade ${trade.trade_id}`} checked={checked.includes(trade.trade_id)} disabled={bulkBusy} onChange={event => setChecked(ids => event.target.checked ? [...ids, trade.trade_id] : ids.filter(id => id !== trade.trade_id))} /></td>}
-          <td><button className="ms-link" onClick={() => setSelected(trade.trade_id)} aria-label={`View trade ${trade.trade_id} timeline`}>#{trade.trade_id}</button><small className="ms-time">{new Date(trade.entry_time).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</small></td>
-          <td>{trade.instrument}</td><td>{formatPrice(trade.trigger_level)}</td><td>{trade.option_symbol}</td><td>{trade.quantity}</td>
-          <td>{formatPrice(trade.entry_price)}</td><td>{formatPrice(trade.exit_price)}</td><td>{formatPrice(trade.realised_pnl)}</td><td>{formatPrice(trade.realised_pnl_percentage)}</td><td>{trade.status}<small className="ms-time">{trade.validity_status} · {trade.exclude_from_strategy_metrics ? 'Excluded' : 'Included'}</small></td><td>{formatExitReason(trade.exit_reason)}</td>
-        </tr>)}{history.items.length === 0 && <tr><td colSpan={date ? 12 : 11}>No matching trades.</td></tr>}</tbody>
+          <td className="ms-report-trade"><div><button className="ms-link" onClick={() => setSelected(trade.trade_id)} aria-label={`View trade ${trade.trade_id} timeline`}>#{trade.trade_id}</button><time dateTime={trade.entry_time}>{new Date(trade.entry_time).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}</time></div><small className="ms-time">{new Date(trade.entry_time).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' })}</small></td>
+          <td>{trade.instrument}<small className="ms-time">Level {formatPrice(trade.trigger_level)}</small></td>
+          <td className="ms-report-option">{trade.option_symbol}</td>
+          <td className="ms-num">{trade.quantity}</td>
+          <td className="ms-num">{formatPrice(trade.entry_price)}</td>
+          <td className="ms-num">{formatPrice(trade.highest_price)}</td>
+          <td className="ms-num">{formatPrice(trade.exit_price)}</td>
+          <td className={`ms-num ms-report-pnl ${trade.realised_pnl > 0 ? 'ms-up' : trade.realised_pnl < 0 ? 'ms-down' : ''}`}>{formatPrice(trade.realised_pnl)}{trade.realised_pnl_percentage == null ? '' : ` (${formatPrice(trade.realised_pnl_percentage)}%)`}</td>
+          <td><span className={`ms-status ${trade.status === 'OPEN' ? 'triggered' : 'disabled'}`}>{trade.status}</span><small className="ms-time">{trade.validity_status} · {trade.exclude_from_strategy_metrics ? 'Excluded' : 'Included'}</small></td>
+          <td className="ms-report-exit">{formatExitReason(trade.exit_reason)}</td>
+        </tr>)}{history.items.length === 0 && <tr><td colSpan={date ? 11 : 10}>No matching trades.</td></tr>}</tbody>
       </table></div>
       <div className="ms-report-pagination"><button className="ms-button" disabled={bulkBusy || page === 1} onClick={() => { setPage(page - 1); setSelected(null); }}>Previous</button><span>Page {page} · {history.total} trades</span><button className="ms-button" disabled={bulkBusy || page * history.page_size >= history.total} onClick={() => { setPage(page + 1); setSelected(null); }}>Next</button></div>
     </>}
