@@ -4,13 +4,15 @@ import { request } from './api';
 import { formatPrice, formatExitReason } from './format';
 import BulkTradeClassification from './BulkTradeClassification';
 import { validityStatuses } from './bulkClassification';
+import { defaultReportRange, reportRangeError, loadReport } from './reportFilters';
 
 export default function PaperReportPage({ refreshKey }) {
   const [view, setView] = useState('STRATEGY');
-  const [reports, setReports] = useState(null);
-  const report = reports?.[view];
-  const [date, setDate] = useState('');
-  const [dayTrades, setDayTrades] = useState(null);
+  const [report, setReport] = useState(null);
+  const [range, setRange] = useState(defaultReportRange);
+  const { fromDate, toDate } = range;
+  const validation = reportRangeError(range);
+  const [matchingIds, setMatchingIds] = useState([]);
   const [checked, setChecked] = useState([]);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [notice, setNotice] = useState('');
@@ -27,26 +29,18 @@ export default function PaperReportPage({ refreshKey }) {
 
   useEffect(() => {
     const controller = new AbortController();
-    setHistory(null); setDayTrades(null); setError(''); setReports(null);
-    const query = new URLSearchParams({ page, page_size: 20 });
-    if (status) query.set('status', status);
-    if (instrument) query.set('instrument', instrument);
-    Promise.all([
-      request('/reports/paper-trading?view=RAW', { signal: controller.signal }),
-      request('/reports/paper-trading?view=STRATEGY', { signal: controller.signal }),
-      request(date ? `/trades/by-date?date=${date}` : `/trades/history?${query}`, { signal: controller.signal }),
-    ]).then(([raw, strategy, rows]) => {
-      if (controller.signal.aborted) return;
-      setReports({ RAW: raw, STRATEGY: strategy });
-      if (date) {
-        setDayTrades(rows);
-        const filtered = rows.filter(trade => (!status || trade.status === status) && (!instrument || trade.instrument.toUpperCase() === instrument));
-        setHistory({ items: filtered.slice((page - 1) * 20, page * 20), total: filtered.length, page_size: 20 });
-      } else setHistory(rows);
-    })
+    setHistory(null); setMatchingIds([]); setError(''); setReport(null);
+    if (validation) return () => controller.abort();
+    loadReport({ view, fromDate, toDate, status, instrument, page }, { signal: controller.signal })
+      .then(({ report, history, matchingIds }) => {
+        if (controller.signal.aborted) return;
+        const lastPage = Math.max(1, Math.ceil(history.total / history.page_size));
+        if (page > lastPage) { setPage(lastPage); return; }
+        setReport(report); setHistory(history); setMatchingIds(matchingIds);
+      })
       .catch(error => { if (!controller.signal.aborted) setError(error.message); });
     return () => controller.abort();
-  }, [page, status, instrument, refreshKey, retry, date]);
+  }, [page, status, instrument, refreshKey, retry, view, fromDate, toDate, validation]);
 
   useEffect(() => {
     setDetail(null); setDetailError('');
@@ -57,16 +51,28 @@ export default function PaperReportPage({ refreshKey }) {
     return () => controller.abort();
   }, [selected, refreshKey, retry]);
 
-  useEffect(() => { setChecked([]); }, [date, status, instrument, refreshKey, retry]);
-  const matching = (dayTrades ?? []).filter(trade => (!status || trade.status === status) && (!instrument || trade.instrument.toUpperCase() === instrument));
-  const allChecked = matching.length > 0 && matching.every(trade => checked.includes(trade.trade_id));
+  useEffect(() => { setChecked([]); }, [fromDate, toDate, view, status, instrument, refreshKey, retry]);
+  const allChecked = matchingIds.length > 0 && matchingIds.every(id => checked.includes(id));
+  function changeRange(key, value) {
+    setRange(previous => ({ ...previous, [key]: value }));
+    setPage(1); setSelected(null); setChecked([]); setNotice('');
+  }
 
   return <section aria-label="Paper trading report">
-    <label className="ms-report-view">Report view <select value={view} onChange={event => setView(event.target.value)}><option value="STRATEGY">STRATEGY · included trades</option><option value="RAW">RAW · all PAPER trades</option></select></label>
-    <p className="ms-sub">Performance uses closed trades in the selected view. History always preserves all PAPER trades. Summary metrics cover all dates; the filters below affect only the trade table and bulk selection.</p>
+    <label className="ms-report-view">Report view <select disabled={bulkBusy} value={view} onChange={event => { setView(event.target.value); setPage(1); setSelected(null); setNotice(''); }}><option value="STRATEGY">STRATEGY · included trades</option><option value="RAW">RAW · all PAPER trades</option></select></label>
+    <fieldset className="ms-trade-filters ms-report-date-range" disabled={bulkBusy}>
+      <legend>Date range · Asia/Kolkata</legend>
+      <div className="ms-report-filters">
+        <label>From Date<input type="date" required value={fromDate} aria-invalid={Boolean(validation)} aria-describedby={validation ? 'report-date-error' : undefined} onChange={event => changeRange('fromDate', event.target.value)} /></label>
+        <label>To Date<input type="date" required value={toDate} aria-invalid={Boolean(validation)} aria-describedby={validation ? 'report-date-error' : undefined} onChange={event => changeRange('toDate', event.target.value)} /></label>
+      </div>
+      {validation && <p id="report-date-error" className="ms-error" role="alert">{validation}</p>}
+    </fieldset>
+    <p className="ms-sub">Performance and trade history are calculated for the selected report view and date range, using trade entry time in Asia/Kolkata. Status and instrument filters apply to both sections.</p>
+    <div className="ms-sectionhead">Performance Summary</div>
     {error && <p className="ms-error" role="alert">{error} <button onClick={() => setRetry(value => value + 1)}>Retry</button></p>}
-    {!report && !error && <p role="status">Loading report…</p>}
-    {report && <>
+    {!report && !error && !validation && <p role="status">Loading report…</p>}
+    {report && !validation && <>
       <dl className="ms-report-summary">{[
         ['Total Trades', report.total_trades], ['Win Rate', `${formatPrice(report.win_rate)}%`],
         ['Net P&L', formatPrice(report.net_pnl)], ['Profit Factor', report.profit_factor === null ? 'N/A' : formatPrice(report.profit_factor)],
@@ -83,25 +89,23 @@ export default function PaperReportPage({ refreshKey }) {
     </>}
     <div className="ms-sectionhead">Trade history</div>
     {notice && <p role="status">{notice}</p>}
-    <fieldset className="ms-trade-filters" disabled={bulkBusy}>
+    <fieldset className="ms-trade-filters" disabled={bulkBusy || Boolean(validation)}>
     <form className="ms-report-filters" onSubmit={event => { event.preventDefault(); setChecked([]); setInstrument(draft.trim().toUpperCase()); setPage(1); setSelected(null); }}>
-      <label>Trading date (Asia/Kolkata)<input type="date" value={date} onChange={event => { setDate(event.target.value); setPage(1); setSelected(null); setChecked([]); setNotice(''); }} /></label>
       <label>Status<select value={status} onChange={event => { setStatus(event.target.value); setChecked([]); setPage(1); setSelected(null); }}><option value="">All statuses</option><option>OPEN</option><option>CLOSED</option></select></label>
       <label>Instrument<input list="report-instruments" value={draft} onChange={event => setDraft(event.target.value)} placeholder="All indices" /><datalist id="report-instruments">{supportedIndices.map(symbol => <option key={symbol} value={symbol} />)}</datalist></label>
       <button className="ms-button">Apply filter</button>
     </form>
     </fieldset>
-    {!date && <p className="ms-sub">Choose a trading date to select and classify trades in bulk.</p>}
-    {date && <>
-      <label className="ms-check"><input type="checkbox" checked={allChecked} disabled={bulkBusy || !matching.length} onChange={event => setChecked(event.target.checked ? matching.map(trade => trade.trade_id) : [])} />Select All · {matching.length} matching trades across all pages</label>
-      <BulkTradeClassification key={date} tradeIds={checked} ready={Boolean(history)} busy={bulkBusy} onBusy={setBulkBusy} onSaved={count => { setChecked([]); setNotice(`Classification saved for ${count} trades.`); setRetry(value => value + 1); }} />
+    {!validation && <>
+      <label className="ms-check"><input type="checkbox" checked={allChecked} disabled={bulkBusy || !matchingIds.length} onChange={event => setChecked(event.target.checked ? matchingIds : [])} />Select All · {matchingIds.length} matching trades across all pages</label>
+      <BulkTradeClassification key={`${fromDate}-${toDate}-${view}`} tradeIds={checked} ready={Boolean(history)} busy={bulkBusy} onBusy={setBulkBusy} onSaved={count => { setChecked([]); setNotice(`Classification saved for ${count} trades.`); setRetry(value => value + 1); }} />
     </>}
-    {!history && !error && <p role="status">Loading history…</p>}
-    {history && <>
+    {!history && !error && !validation && <p role="status">Loading history…</p>}
+    {history && !validation && <>
       <div className="ms-tablewrap" tabIndex={0} role="region" aria-label="Trade history table"><table className="ms-report-table">
-        <thead><tr>{date && <th scope="col">Select</th>}<th scope="col">Trade / time (IST)</th><th scope="col">Instrument / level</th><th scope="col" className="ms-report-option">Option</th>{['Qty', 'Entry', 'High', 'Exit', 'P&L'].map(label => <th scope="col" className="ms-num" key={label}>{label}</th>)}<th scope="col">Status</th><th scope="col" className="ms-report-exit">Exit reason</th></tr></thead>
+        <thead><tr><th scope="col">Select</th><th scope="col">Trade / time (IST)</th><th scope="col">Instrument / level</th><th scope="col" className="ms-report-option">Option</th>{['Qty', 'Entry', 'High', 'Exit', 'P&L'].map(label => <th scope="col" className="ms-num" key={label}>{label}</th>)}<th scope="col">Status</th><th scope="col" className="ms-report-exit">Exit reason</th></tr></thead>
         <tbody>{history.items.map(trade => <tr key={trade.trade_id} onClick={() => setSelected(trade.trade_id)} className="ms-history-row" aria-selected={selected === trade.trade_id}>
-          {date && <td onClick={event => event.stopPropagation()}><input className="ms-checkbox" type="checkbox" aria-label={`Select trade ${trade.trade_id}`} checked={checked.includes(trade.trade_id)} disabled={bulkBusy} onChange={event => setChecked(ids => event.target.checked ? [...ids, trade.trade_id] : ids.filter(id => id !== trade.trade_id))} /></td>}
+          <td onClick={event => event.stopPropagation()}><input className="ms-checkbox" type="checkbox" aria-label={`Select trade ${trade.trade_id}`} checked={checked.includes(trade.trade_id)} disabled={bulkBusy} onChange={event => setChecked(ids => event.target.checked ? [...ids, trade.trade_id] : ids.filter(id => id !== trade.trade_id))} /></td>
           <td className="ms-report-trade"><div><button className="ms-link" onClick={() => setSelected(trade.trade_id)} aria-label={`View trade ${trade.trade_id} timeline`}>#{trade.trade_id}</button><time dateTime={trade.entry_time}>{new Date(trade.entry_time).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}</time></div><small className="ms-time">{new Date(trade.entry_time).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' })}</small></td>
           <td>{trade.instrument}<small className="ms-time">Level {formatPrice(trade.trigger_level)}</small></td>
           <td className="ms-report-option">{trade.option_symbol}</td>
@@ -112,7 +116,7 @@ export default function PaperReportPage({ refreshKey }) {
           <td className={`ms-num ms-report-pnl ${trade.realised_pnl > 0 ? 'ms-up' : trade.realised_pnl < 0 ? 'ms-down' : ''}`}>{formatPrice(trade.realised_pnl)}{trade.realised_pnl_percentage == null ? '' : ` (${formatPrice(trade.realised_pnl_percentage)}%)`}</td>
           <td><span className={`ms-status ${trade.status === 'OPEN' ? 'triggered' : 'disabled'}`}>{trade.status}</span><small className="ms-time">{trade.validity_status} · {trade.exclude_from_strategy_metrics ? 'Excluded' : 'Included'}</small></td>
           <td className="ms-report-exit">{formatExitReason(trade.exit_reason)}</td>
-        </tr>)}{history.items.length === 0 && <tr><td colSpan={date ? 11 : 10}>No matching trades.</td></tr>}</tbody>
+        </tr>)}{history.items.length === 0 && <tr><td colSpan={11}>No matching trades.</td></tr>}</tbody>
       </table></div>
       <div className="ms-report-pagination"><button className="ms-button" disabled={bulkBusy || page === 1} onClick={() => { setPage(page - 1); setSelected(null); }}>Previous</button><span>Page {page} · {history.total} trades</span><button className="ms-button" disabled={bulkBusy || page * history.page_size >= history.total} onClick={() => { setPage(page + 1); setSelected(null); }}>Next</button></div>
     </>}

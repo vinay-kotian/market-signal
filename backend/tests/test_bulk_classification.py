@@ -45,7 +45,7 @@ def test_bulk_persists_only_metadata_and_can_be_reversed(client):
     assert raw['total_trades'] == 3 and raw['net_pnl'] == 250
     assert strategy['total_trades'] == 1 and strategy['net_pnl'] == 100
     assert strategy['recorded_trades'] == 3 and strategy['excluded_trades'] == 2
-    assert client.get('/trades/history').json()['total'] == 3
+    assert client.get('/trades/history?view=RAW').json()['total'] == 3
     assert len(client.get('/trades/by-date?date=2026-09-14').json()) == 3
     with TestClient(create_app(client.app.state.database_path)) as restarted:
         assert snapshot(restarted) == after

@@ -31,8 +31,8 @@ class PaperReportingService:
     def __init__(self, trades):
         self.trades = trades
 
-    def report(self, view="STRATEGY"):
-        rows = self.trades.paper_results()
+    def report(self, view="STRATEGY", **filters):
+        rows = self.trades.paper_results(**filters)
         return calculate_report(rows, view)
 
 

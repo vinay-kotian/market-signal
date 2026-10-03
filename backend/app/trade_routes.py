@@ -1,7 +1,7 @@
 from datetime import date as TradingDate
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Request, Query, HTTPException
+from fastapi import APIRouter, Request, Query, HTTPException, Depends
 from pydantic import BaseModel
 from app.paper_report import PaperReportingService, PaperTradingReport
 
@@ -39,17 +39,33 @@ class TradeDetail(BaseModel):
     events: list[TradeEvent]
 
 
+def report_filters(from_date: Optional[TradingDate] = None,
+                   to_date: Optional[TradingDate] = None,
+                   status: Optional[Literal['OPEN', 'CLOSED']] = None,
+                   instrument: Optional[str] = Query(None, min_length=1, max_length=100)):
+    if from_date and to_date and from_date > to_date:
+        raise HTTPException(status_code=422, detail='From Date cannot be after To Date')
+    return dict(from_date=from_date, to_date=to_date, status=status, instrument=instrument)
+
+
 @router.get('/reports/paper-trading', response_model=PaperTradingReport)
-def paper_report(request: Request, view: Literal["RAW", "STRATEGY"] = "STRATEGY"):
-    return PaperReportingService(request.app.state.trade_repository).report(view)
+def paper_report(request: Request, view: Literal["RAW", "STRATEGY"] = "STRATEGY",
+                 filters: dict = Depends(report_filters)):
+    return PaperReportingService(request.app.state.trade_repository).report(view, **filters)
 
 
 @router.get('/trades/history', response_model=TradeHistory)
 def trade_history(request: Request, page: int = Query(1, ge=1),
                   page_size: int = Query(20, ge=1, le=100),
-                  status: Optional[Literal['OPEN', 'CLOSED']] = None,
-                  instrument: Optional[str] = Query(None, min_length=1, max_length=100)):
-    return request.app.state.trade_repository.history(page, page_size, status, instrument)
+                  view: Literal["RAW", "STRATEGY"] = "STRATEGY",
+                  filters: dict = Depends(report_filters)):
+    return request.app.state.trade_repository.history(page, page_size, view=view, **filters)
+
+
+@router.get('/trades/history/ids', response_model=list[int])
+def matching_trade_ids(request: Request, view: Literal["RAW", "STRATEGY"] = "STRATEGY",
+                       filters: dict = Depends(report_filters)):
+    return request.app.state.trade_repository.matching_ids(view=view, **filters)
 
 
 @router.get('/trades/by-date', response_model=list[Trade])

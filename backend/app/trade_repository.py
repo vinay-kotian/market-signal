@@ -1,8 +1,7 @@
 import json
-from datetime import datetime, time
 from typing import get_args
 
-from app.trading_date import TRADING_TIMEZONE
+from app.report_filters import paper_scope
 from contextlib import nullcontext
 
 from app.database import connect
@@ -129,22 +128,18 @@ class TradeRepository:
                 "SELECT status, realised_pnl, exclude_from_strategy_metrics FROM trades WHERE trade_mode = ?", (self.mode,)
             ).fetchall()
 
-    def paper_results(self):
+    def paper_results(self, **filters):
         with connect(self.database_path) as connection:
+            where, values = paper_scope(connection, **filters)
             return connection.execute(
-                "SELECT status, realised_pnl, exclude_from_strategy_metrics FROM trades WHERE trade_mode = 'PAPER'"
+                f"SELECT status, realised_pnl, exclude_from_strategy_metrics FROM trades WHERE {where}", values,
             ).fetchall()
 
-    def history(self, page=1, page_size=20, status=None, instrument=None):
-        clauses, values = ["trade_mode = 'PAPER'"], []
-        if status is not None:
-            clauses.append('status = ?')
-            values.append(status)
-        if instrument is not None:
-            clauses.append('instrument = ?')
-            values.append(instrument.strip().upper())
-        where = ' AND '.join(clauses)
+    def history(self, page=1, page_size=20, status=None, instrument=None,
+                from_date=None, to_date=None, view='STRATEGY'):
         with connect(self.database_path) as connection:
+            where, values = paper_scope(connection, from_date=from_date, to_date=to_date,
+                                        status=status, instrument=instrument, view=view)
             connection.execute('BEGIN')
             total = connection.execute(f'SELECT COUNT(*) FROM trades WHERE {where}', values).fetchone()[0]
             rows = connection.execute(
@@ -155,14 +150,18 @@ class TradeRepository:
             return dict(items=[Trade(**dict(row)) for row in rows], total=total,
                         page=page, page_size=page_size)
 
-    def by_date(self, date):
-        start = datetime.combine(date, time.min, TRADING_TIMEZONE)
+    def matching_ids(self, **filters):
         with connect(self.database_path) as connection:
+            where, values = paper_scope(connection, **filters)
+            return [row['trade_id'] for row in connection.execute(
+                f'SELECT trade_id FROM trades WHERE {where} ORDER BY trade_id', values)]
+
+    def by_date(self, date):
+        with connect(self.database_path) as connection:
+            where, values = paper_scope(connection, from_date=date, to_date=date)
             rows = connection.execute(
-                """SELECT * FROM trades WHERE trade_mode = 'PAPER'
-                AND julianday(entry_time) >= julianday(?) AND julianday(entry_time) < julianday(?) + 1
-                ORDER BY julianday(entry_time) DESC, trade_id DESC""",
-                (start.isoformat(), start.isoformat()),
+                f'SELECT * FROM trades WHERE {where} '
+                'ORDER BY julianday(entry_time) DESC, trade_id DESC', values,
             ).fetchall()
             return [Trade(**dict(row)) for row in rows]
 

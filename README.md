@@ -656,9 +656,20 @@ npm run build
 
 ## Paper trading report and history
 
-Open the **Report** tab for all-time PAPER performance, filtered trade history,
-and a trade's persisted event timeline. Use Refresh to reload results; history
-filters apply only to the history table, not the all-time report.
+Open the **Report** tab for PAPER performance, trade history, and persisted event
+timelines. From Date and To Date default to today in Asia/Kolkata. Both endpoints
+filter by the inclusive local entry-date range before calculating metrics or
+paginating history. View, status, and instrument apply to both sections. Refresh
+and pagination preserve the selected range; changing range or view resets page 1.
+Invalid or incomplete date ranges show a message without sending a query.
+
+Pass `from_date=2026-09-30&to_date=2026-10-03&view=STRATEGY` to both
+`/reports/paper-trading` and `/trades/history`. Both default to STRATEGY; RAW also
+includes excluded trades. API clients can omit date bounds for unbounded history,
+while the Report page always sends both dates. Reversed ranges return 422.
+Recorded/included/excluded counts describe the date/status/instrument scope;
+performance and history use the selected view within that scope. Summary metrics
+cover every matching trade, independently of history pagination.
 
 - `GET /reports/paper-trading`: total/open/closed trades, wins, losses,
   breakeven count, win rate, gross profit/loss, net P&L, average and maximum
@@ -986,23 +997,25 @@ against the application default.
 
 ### Bulk classification by trading date
 
-In **Paper Report**, choose a trading date (entry date in Asia/Kolkata). Check
+In **Paper Report**, choose a date range (entry dates in Asia/Kolkata). Check
 individual trades or **Select All** to select every matching trade across pages.
-Leave Status and Instrument unfiltered to select the whole day. Choose the
+Leave Status and Instrument unfiltered to select the whole range in the selected view. Choose the
 classification, enter a reason, and set **Exclude from strategy metrics**.
 **Apply Classification** asks for confirmation of the exact count, status, and
 inclusion choice before saving. Cancelling changes nothing.
 
 RAW continues to include those trades and their original outcomes. STRATEGY
 excludes trades with the exclusion flag enabled. Both summaries and the table
-reload after a successful change. Summary metrics still cover all dates; the
-date/status/instrument filters affect the table and selection only.
+reload after a successful change, preserving the selected date range. All filters
+apply to the summary, table, and selection.
 
-To restore trades, select them again, choose VALID, uncheck the exclusion box,
+To restore excluded trades, switch to RAW, select them, choose VALID, uncheck the exclusion box,
 and confirm. Changing the status alone does not change the exclusion flag.
 
 API:
 
+- `GET /trades/history/ids` accepts the same filters and view as history and
+  returns every matching trade ID for selection across pages.
 - `GET /trades/by-date?date=2026-09-17` returns all PAPER trades entered on that
   Kolkata date, newest first, including OPEN and excluded trades.
 - `PATCH /trades/classification/bulk` accepts `trade_ids`, `validity_status`,

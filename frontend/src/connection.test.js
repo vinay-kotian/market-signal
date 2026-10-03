@@ -104,3 +104,18 @@ test('progressive trades show profit protection without legacy breakeven status'
     assert.match(render({ ...base, settings_snapshot: {} }), /Breakeven: Waiting/);
   } finally { await server.close(); }
 });
+
+test('Report renders today’s Kolkata date range above the performance summary', async t => {
+  const server = await createServer({ optimizeDeps: { noDiscovery: true }, server: { middlewareMode: true, hmr: false }, appType: 'custom' });
+  try {
+    const { default: Report } = await server.ssrLoadModule('/src/PaperReportPage.jsx');
+    t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-02T19:00:00Z') });
+    const html = renderToStaticMarkup(React.createElement(Report));
+    assert.match(html, /From Date<input[^>]+value="2026-10-03"/);
+    assert.match(html, /To Date<input[^>]+value="2026-10-03"/);
+    assert.ok(html.indexOf('Report view') < html.indexOf('From Date'));
+    assert.ok(html.indexOf('To Date') < html.indexOf('Performance Summary'));
+    assert.match(html, /selected report view and date range/);
+    assert.doesNotMatch(html, /Summary metrics cover all dates/);
+  } finally { t.mock.timers.reset(); await server.close(); }
+});

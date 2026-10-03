@@ -26,7 +26,7 @@ def test_classification_reports_history_and_restart(client):
     for key, value in before['trade'].items():
         if key not in ('validity_status', 'validity_reason', 'exclude_from_strategy_metrics'):
             assert after['trade'][key] == value
-    assert client.get('/trades/history').json()['total'] == 2
+    assert client.get('/trades/history?view=RAW').json()['total'] == 2
     assert len(client.get('/trades').json()) == 2
     strategy = client.get('/reports/paper-trading').json()
     assert (strategy['recorded_trades'], strategy['included_trades'], strategy['excluded_trades']) == (2, 1, 1)
