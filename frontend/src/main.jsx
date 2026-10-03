@@ -116,7 +116,7 @@ function App() {
         {levels && !instruments.length && <p className="ms-sidefoot">{viewingAllDates ? 'No saved levels.' : 'No levels for today. Add a daily level in Levels.'}</p>}
         <div className="ms-sidefoot">{live ? 'Live Zerodha prices' : 'Simulated prices received by the backend'}<br />{live ? 'Change from previous trading day’s close' : 'Movement since previous submitted tick'}</div>
       </aside>
-      <main className={page === 'report' ? 'ms-report-main' : undefined}>
+      <main className={page === 'report' || page === 'trades' ? 'ms-report-main' : undefined}>
         <nav aria-label="Pages">{['dashboard', 'levels', 'trades', 'report', 'backtest', 'settings'].map(name => <button className="ms-tab" key={name} aria-pressed={page === name} disabled={busy} onClick={() => navigate(name)}>{name[0].toUpperCase() + name.slice(1)}</button>)}</nav>
         <div className="ms-heading"><h2>{page[0].toUpperCase() + page.slice(1)}</h2><div className="ms-actions"><button className="ms-link" disabled={busy} onClick={() => mutate(async () => {})}>Refresh</button>{(page === 'dashboard' || page === 'levels') && <button className="ms-button" disabled={busy} onClick={() => page === 'dashboard' ? navigate('levels') : setEditor({})}>{page === 'dashboard' ? 'Manage levels ↗' : '+ Add level'}</button>}</div></div>
         {page === 'settings' && <SettingsPage indexes={liveState.indexes} error={errors.indexes} onRefresh={refresh} connection={connection} connectionError={errors.connection} feedStatus={feedStatus} lastUiEvent={lastUiEvent} />}
