@@ -106,6 +106,8 @@ class LiveEventPublisher:
             self.cursors = {table: c.execute(f'SELECT COALESCE(MAX(id), 0) FROM {table}').fetchone()[0]
                             for table in self.tables}
         self.trade_states = {}
+        self.watchlist_states = {item.option_symbol: item.model_dump(mode='json')
+                                 for item in state.option_watchlist.list()}
 
     def connection(self):
         from app.zerodha.routes import connection_snapshot
@@ -158,6 +160,14 @@ class LiveEventPublisher:
             for table in self.tables:
                 if rows[table]:
                     self.cursors[table] = rows[table][-1]['id']
+        current = {item.option_symbol: item.model_dump(mode='json')
+                   for item in self.state.option_watchlist.list()}
+        for symbol, item in current.items():
+            if self.watchlist_states.get(symbol) != item:
+                self.hub.publish('OPTION_WATCHLIST_UPDATED', item)
+        for symbol in self.watchlist_states.keys() - current.keys():
+            self.hub.publish('OPTION_WATCHLIST_REMOVED', dict(option_symbol=symbol))
+        self.watchlist_states = current
 
     async def on_tick(self, tick):
         await self.state.simulation_flow.on_tick(tick)

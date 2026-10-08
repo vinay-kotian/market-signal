@@ -18,3 +18,11 @@ algorithm. `BacktestTimeline` audits the resulting state transitions.
 
 See [backtesting.md](backtesting.md) for interfaces, storage, source requirements,
 execution ordering and regression considerations.
+
+
+Traded option watchlist membership is stored by `TradeRepository` in the trade
+transaction. `OptionWatchlistRepository` reuses trade metadata and persisted
+quotes; `LiveEventPublisher` supplies changes through the existing browser
+feed. Zerodha unions watchlist tokens with indices and open positions on its
+single socket. This feature does not modify strategy decisions or enable LIVE
+orders. See the watchlist section in [README.md](../README.md).

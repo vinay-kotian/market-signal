@@ -107,3 +107,37 @@ test('incremental events update dashboard, level states, trades and connection',
   assert.equal(state.trades[0].status, 'CLOSED');
   assert.equal(state.signals[0].valid, true);
 });
+
+
+test('option watchlist updates deduplicate by contract, retain closed rows, and remove without changing trades', () => {
+  const trade = { trade_id: 1, status: 'OPEN' };
+  const active = { option_symbol: 'NIFTY-PE', trade_id: 1, status: 'ACTIVE', current_ltp: 100 };
+  let state = { optionWatchlist: [], trades: [trade] };
+  state = applyLiveEvent(state, event('OPTION_WATCHLIST_UPDATED', active));
+  state = applyLiveEvent(state, event('OPTION_WATCHLIST_UPDATED', { ...active, current_ltp: 120, unrealized_pnl_percentage: 20 }));
+  assert.equal(state.optionWatchlist.length, 1);
+  assert.equal(state.optionWatchlist[0].current_ltp, 120);
+  state = applyLiveEvent(state, event('OPTION_WATCHLIST_UPDATED', { ...active, status: 'CLOSED' }));
+  assert.equal(state.optionWatchlist[0].status, 'CLOSED');
+  state = applyLiveEvent(state, event('OPTION_WATCHLIST_REMOVED', { option_symbol: 'NIFTY-PE' }));
+  assert.deepEqual(state.optionWatchlist, []);
+  assert.deepEqual(state.trades, [trade]);
+  state = applyLiveEvent(state, event('TRADE_OPENED', { trade_id: 2, trade_mode: 'BACKTEST' }));
+  assert.deepEqual(state.optionWatchlist, []); // Membership only comes from the watchlist service.
+});
+
+test('watchlist deltas are applied after the reconnect REST snapshot without another socket or fetch', async () => {
+  let resolve;
+  const h = harness(() => new Promise(done => { resolve = done; }));
+  h.client.start(); h.sockets[0].onopen();
+  h.sockets[0].message(event('OPTION_WATCHLIST_UPDATED', { option_symbol: 'NIFTY-PE', trade_id: 1, status: 'ACTIVE', current_ltp: 120 }));
+  resolve({ optionWatchlist: [{ option_symbol: 'NIFTY-PE', trade_id: 1, status: 'ACTIVE', current_ltp: 100 }] });
+  await flush();
+  let state = h.snapshots[0];
+  for (const update of h.events) state = applyLiveEvent(state, update);
+  assert.equal(state.optionWatchlist.length, 1);
+  assert.equal(state.optionWatchlist[0].current_ltp, 120);
+  assert.equal(h.sockets.length, 1);
+  assert.equal(h.snapshots.length, 1);
+  h.client.stop();
+});

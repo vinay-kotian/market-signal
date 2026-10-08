@@ -10,6 +10,7 @@ import SettingsPage from './SettingsPage';
 import TradesPage from './TradesPage';
 import PaperReportPage from './PaperReportPage';
 import BacktestPage from './BacktestPage';
+import OptionWatchlist, { visibleOptionWatchlist } from './OptionWatchlist';
 import { initialPage } from './connectionState';
 import './styles.css';
 
@@ -22,8 +23,8 @@ function App() {
   }, []);
   const [page, setPage] = useState(() => initialPage(window.location.pathname));
   const [liveState, setLiveState] = useState({ connection: null, levels: null, events: null,
-    signals: null, selections: null, trades: null, entryResults: null, prices: {} });
-  const { connection, levels, events, signals, selections, trades, entryResults, prices } = liveState;
+    signals: null, selections: null, trades: null, entryResults: null, optionWatchlist: null, prices: {} });
+  const { connection, levels, events, signals, selections, trades, entryResults, prices, optionWatchlist } = liveState;
   const [refreshKey, setRefreshKey] = useState(0);
   const [feedStatus, setFeedStatus] = useState('DISCONNECTED');
   const [lastUiEvent, setLastUiEvent] = useState(null);
@@ -44,6 +45,7 @@ function App() {
       ['/settings/indexes', 'indexes'], ['/connection', 'connection'], ['/levels', 'levels'], ['/simulation/events', 'events'],
       ['/signals', 'signals'], ['/option-selections', 'selections'],
       ['/trades', 'trades'], ['/trade-entry-results', 'entryResults'],
+      ['/watchlist/options', 'optionWatchlist'],
     ].map(async ([path, key]) => {
       try { snapshot[key] = await request(path); failures[key] = null; }
       catch (error) { snapshot[key] = null; failures[key] = error.message; }
@@ -107,13 +109,16 @@ function App() {
     <header><span className="ms-logo" aria-hidden="true">π</span><span className="ms-brand">Market Signal</span><span className="ms-env">PAPER · {connection?.market_data_mode ?? 'LOADING'} DATA</span><button className="ms-link" disabled={busy} onClick={() => navigate('settings', 'connection')} aria-label="Open connection settings">Connection: {errors.connection ? 'ERROR' : live ? (connection?.connection_status ?? 'LOADING') : feedStatus}</button></header>
     <div className="ms-shell">
       <aside aria-label="Instrument watchlist">
-        <div className="ms-sidehead"><span className="ms-label">Watchlist</span><span className="ms-sub">{instruments.length} instruments</span></div>
+        <div className="ms-sidehead"><span className="ms-label">Watchlist</span><span className="ms-sub">{instruments.length} indices · {visibleOptionWatchlist(optionWatchlist, today).length} options</span></div>
         <div className="ms-search"><input type="search" aria-label="Search instruments" placeholder="Search instruments" value={search} onChange={event => setSearch(event.target.value)} /></div>
         <div className="ms-watchlist">{instruments.filter(symbol => symbol.toLowerCase().includes(search.toLowerCase())).map(symbol => <button className="ms-watch" aria-pressed={symbol === selected} key={symbol} disabled={busy} onClick={() => { setSelected(symbol); setEditor(null); }}>
           <span>{symbol}<small>{visibleLevels.filter(level => level.instrument === symbol).length} levels · {viewingAllDates ? 'all dates' : 'today'}</small></span>
           <span className="ms-quote">{formatPrice(shownPrices[symbol]?.price)}<small className={shownPrices[symbol]?.change == null ? '' : shownPrices[symbol].change >= 0 ? 'ms-up' : 'ms-down'}>{formatWatchChange(shownPrices[symbol], live)}</small></span>
         </button>)}</div>
         {levels && !instruments.length && <p className="ms-sidefoot">{viewingAllDates ? 'No saved levels.' : 'No levels for today. Add a daily level in Levels.'}</p>}
+        <OptionWatchlist items={optionWatchlist} today={today} search={search} busy={busy} error={errors.optionWatchlist}
+          onRemove={symbol => mutate(() => request(`/watchlist/options/${encodeURIComponent(symbol)}`, { method: 'DELETE' }))} />
+        {errors.action && <p className="ms-sidefoot ms-error" role="alert">{errors.action}</p>}
         <div className="ms-sidefoot">{live ? 'Live Zerodha prices' : 'Simulated prices received by the backend'}<br />{live ? 'Change from previous trading day’s close' : 'Movement since previous submitted tick'}</div>
       </aside>
       <main className={page === 'report' || page === 'trades' ? 'ms-report-main' : undefined}>

@@ -5,7 +5,7 @@
 `KiteConnector.websocket_url()` builds `wss://ws.kite.trade` with backend-only
 credentials. `ZerodhaMarketDataProvider.run()` uses the existing asynchronous
 `websockets` library directly, not the threaded KiteTicker SDK. It sends
-`subscribe` and `mode: ltp` messages with normalized instrument-master tokens.
+`subscribe` and `mode: quote` messages with normalized instrument-master tokens.
 Binary frames are decoded, validated, mapped to application instrument names,
 and passed as `PriceTick` into the existing `SimulationFlow`:
 
@@ -14,10 +14,12 @@ PaperExecutor. Option-symbol ticks go to PositionMonitor. Neither path submits
 broker orders. The browser is an observer, never a strategy clock or executor.
 
 Required tokens are enabled configured indices (including DISARMED levels that
-need re-arming observations) plus contracts for OPEN PAPER trades. Subscription
+need re-arming observations), contracts for OPEN PAPER trades, and persisted
+traded options retained in today's watchlist. Tokens are unioned in one set. Subscription
 reconciliation runs after frames and during one-second receive timeouts. It
 reads local state and sends socket subscription changes; it does not fetch
-prices by HTTP. Closed positions are unsubscribed when no longer needed.
+prices by HTTP. Closed options remain subscribed until day expiry or manual
+removal; open positions always keep their monitoring subscription.
 Reconnect clears the sent-token set and subscribes the complete required set.
 The existing reconnect delay is 1–30 seconds, reset on a successful connection.
 
@@ -113,3 +115,25 @@ Do not log broker connection URLs, which contain credentials.
 
 Automated tests use mocked broker sockets/HTTP only. Actual broker/network and
 production Nginx validation must be performed after deployment.
+
+
+## Persisted traded-option watchlist
+
+`TradeRepository.save/close` update watchlist membership in the same SQLite
+transaction as the trade and its events. BACKTEST trades are excluded.
+`OptionWatchlistRepository` joins membership to existing trade metadata and
+stored option quotes, exposes ACTIVE/CLOSED and percentage returns, and filters
+closed rows by the Asia/Kolkata closing date. Removal is a persisted tombstone
+so startup backfill cannot resurrect a removed closed option. Re-entry in the
+same symbol replaces the trade reference and clears the tombstone.
+
+`LiveEventPublisher.committed` compares committed watchlist rows and publishes
+only changes on the existing `/ws/market` feed. React's snapshot includes
+`/watchlist/options`; socket deltas merge by symbol while the existing transport
+buffers updates during refresh/reconnect. The watchlist component owns no
+socket or polling loop and hides previous-day closed rows at midnight.
+
+The shared Zerodha provider includes visible watchlist contracts in its existing
+required token set. Closed ticks still update stored quotes through the shared
+PositionMonitor, which finds no open position and performs no new trading
+activity. Contract-to-token mapping uses the existing instrument service.

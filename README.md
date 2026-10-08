@@ -873,15 +873,16 @@ mode; a missing/invalid quote produces the existing entry failure. This avoids
 subscribing to the entire option chain merely to discover an entry price.
 
 The asyncio ZerodhaMarketDataProvider subscribes in quote mode to enabled index
-levels and contracts for OPEN PAPER positions. It converts binary NSE/NFO paise
+levels, contracts for OPEN PAPER positions, and retained traded-option watchlist rows. It converts binary NSE/NFO paise
 quotes into PriceTick, then uses the same SimulationFlow, LevelMonitor,
 SignalEngine, OptionSelector, PaperExecutor and PositionMonitor. Text updates,
 heartbeats, malformed frames, unknown/unsubscribed tokens, and invalid prices
 are not treated as strategy ticks. PriceTick uses receipt time as before.
 
 Subscription differences are sent after ticks and at one-second idle checks.
-New positions gain an option subscription; closed positions and disabled levels
-lose it when no longer required. Reconnect uses delays from one to thirty
+New positions gain an option subscription. Closed traded options retain it for
+the rest of the Asia/Kolkata trading day, unless manually removed. Disabled
+levels lose their index subscription when no longer required. Reconnect uses delays from one to thirty
 seconds and sends the entire current subscription set on a fresh socket.
 Disconnect gaps are not filled in V1; the strategy resumes with the next received
 price. Existing mandatory-exit rules still use the latest stored observation.
@@ -1206,3 +1207,43 @@ previous_close × 100`. Both WebSocket updates and `/connection` snapshots carry
 these values. Missing or zero close values show “Previous close unavailable”;
 they never fall back to tick-to-tick movement. Simulation remains explicitly
 labelled as movement since the previous submitted tick.
+
+
+## Automatically watched traded options
+
+Successful PAPER entries automatically add their CE/PE option beside the index
+watchlist. The compact cards show underlying, symbol, strike, expiry, entry price,
+last received LTP, percentage movement from entry and ACTIVE/CLOSED status.
+Active cards are highlighted and show unrealized P&L as a percentage of entry
+premium. Closed cards show the frozen realised trade return; their LTP and
+movement from entry continue updating independently.
+
+One row exists per contract symbol, linked to the latest successful trade in
+that contract. Re-entry updates that row and resets its entry reference. Failed
+entries and BACKTEST trades never create a live/PAPER watchlist entry. Existing
+PAPER trades are backfilled on startup. LIVE execution remains unsupported;
+the watchlist membership helper also accepts LIVE when that execution mode is
+implemented separately.
+
+Membership is persisted in SQLite's `option_watchlist` table within the entry
+and close transactions. Metadata comes from existing trades and LTP from the
+existing stored option quotes. Refresh and restart preserve membership and
+last-observed LTP; the quote time is available in the LTP tooltip. Quote data is
+not fabricated or fetched by an additional polling loop.
+
+Closed options remain until Asia/Kolkata midnight on their closing day. Active
+positions remain visible regardless of date until the normal strategy closes
+them. Use the × button to remove a closed option. Active options cannot be
+removed. Removal persists across restarts; a new successful trade in that
+contract adds it again. This changes no entries, exits, stops or broker orders.
+
+`GET /watchlist/options` supplies the refresh/reconnect snapshot.
+`DELETE /watchlist/options/{option_symbol}` removes a closed row (204), rejects
+active removal (409), and returns 404 for absent/hidden rows. Membership/quote
+updates use `OPTION_WATCHLIST_UPDATED` and `OPTION_WATCHLIST_REMOVED` on the
+existing browser feed. The existing Zerodha socket subscribes to the union of
+required indices, open positions and visible watched options, deduplicated by
+token. Manual removal or day expiry drops a token only when nothing else needs
+it, at the existing subscription reconciliation interval. No second WebSocket
+or ongoing quote REST polling is introduced. Synthetic PAPER contracts continue
+to receive simulation quotes; they have no Zerodha token.

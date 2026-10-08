@@ -171,3 +171,60 @@ test('Backtest renders saved summary, actual fill times, and a selected trade ti
     assert.match(html, /Costs are not modelled/);
   } finally { await server.close(); }
 });
+
+
+const active = { instrument: 'NIFTY', option_symbol: 'NIFTY-25050-PE', strike: 25050,
+  expiry: '2026-09-21', option_type: 'PE', status: 'ACTIVE', trade_id: 1, trade_mode: 'PAPER',
+  watchlist_date: '2026-09-14', entry_price: 100, current_ltp: 120,
+  change_from_entry_percentage: 20, unrealized_pnl_percentage: 20, realised_pnl_percentage: null };
+
+async function withModule(run) {
+  const server = await createServer({ configFile: false, optimizeDeps: { noDiscovery: true }, server: { middlewareMode: true, hmr: false }, appType: 'custom' });
+  try { await run(await server.ssrLoadModule('/src/OptionWatchlist.jsx')); }
+  finally { await server.close(); }
+}
+
+test('active option renders metadata, entry/LTP, percentages and highlight without removal', async () => {
+  await withModule(({ default: Options }) => {
+    const html = renderToStaticMarkup(React.createElement(Options, { items: [active], today: '2026-09-14' }));
+    for (const text of ['NIFTY PE', 'NIFTY-25050-PE', '25,050.00', '2026-09-21', 'Entry', 'LTP', 'Change from entry', 'Unrealized P&amp;L', '+20.00%', 'ACTIVE']) assert.ok(html.includes(text), text);
+    assert.match(html, /ms-option-active/);
+    assert.doesNotMatch(html, /Remove closed option/);
+  });
+});
+
+test('closed option renders final realised return separately from changing LTP and allows removal', async () => {
+  await withModule(({ default: Options }) => {
+    const closed = { ...active, status: 'CLOSED', current_ltp: 130, change_from_entry_percentage: 30,
+      unrealized_pnl_percentage: null, realised_pnl_percentage: 8 };
+    const html = renderToStaticMarkup(React.createElement(Options, { items: [closed], today: '2026-09-14', onRemove() {} }));
+    assert.match(html, /Realized P&amp;L/);
+    assert.match(html, /\+8.00%/);
+    assert.match(html, /\+30.00%/);
+    assert.match(html, /Remove closed option NIFTY-25050-PE/);
+    assert.doesNotMatch(html, /ms-option-active/);
+  });
+});
+
+test('day rollover hides previous closed rows, retains active rows, and search uses contract metadata', async () => {
+  await withModule(({ visibleOptionWatchlist }) => {
+    const closed = { ...active, option_symbol: 'BANKNIFTY-59900-CE', instrument: 'BANKNIFTY',
+      strike: 59900, option_type: 'CE', status: 'CLOSED' };
+    assert.equal(visibleOptionWatchlist([active, closed], '2026-09-14').length, 2);
+    assert.deepEqual(visibleOptionWatchlist([active, closed], '2026-09-15'), [active]);
+    assert.deepEqual(visibleOptionWatchlist([active, closed], '2026-09-14', '59900'), [closed]);
+    assert.deepEqual(visibleOptionWatchlist([active, closed], '2026-09-14', 'banknifty'), [closed]);
+    assert.deepEqual(visibleOptionWatchlist(null, '2026-09-14'), []);
+  });
+});
+
+test('missing LTP remains unknown and loading/errors are visible', async () => {
+  await withModule(({ default: Options }) => {
+    const render = props => renderToStaticMarkup(React.createElement(Options, { today: '2026-09-14', ...props }));
+    const html = render({ items: [{ ...active, current_ltp: null, change_from_entry_percentage: null, unrealized_pnl_percentage: null }] });
+    assert.match(html, /—/);
+    assert.doesNotMatch(html, /\+20.00%/);
+    assert.match(render({ items: null }), /Loading options/);
+    assert.match(render({ items: null, error: 'Watchlist unavailable' }), /role="alert"/);
+  });
+});

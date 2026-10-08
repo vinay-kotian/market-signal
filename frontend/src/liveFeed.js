@@ -80,6 +80,14 @@ export function applyLiveEvent(state, event) {
         prices: { ...state.prices, [data.instrument]: { price: data.price, change: data.change, change_percentage: data.change_percentage ?? null } } };
     case 'ZERODHA_CONNECTION_STATUS':
       return { ...state, connection: { ...state.connection, ...data } };
+    case 'OPTION_WATCHLIST_UPDATED':
+      return { ...state, optionWatchlist: [data, ...(state.optionWatchlist ?? [])
+        .filter(item => item.option_symbol !== data.option_symbol)]
+        .sort((a, b) => (a.status === 'ACTIVE' ? 0 : 1) - (b.status === 'ACTIVE' ? 0 : 1)
+          || b.trade_id - a.trade_id) };
+    case 'OPTION_WATCHLIST_REMOVED':
+      return { ...state, optionWatchlist: (state.optionWatchlist ?? [])
+        .filter(item => item.option_symbol !== data.option_symbol) };
     case 'INDEX_SETTINGS_UPDATED': return { ...state, indexes: [...(state.indexes ?? []).filter(index => index.instrument !== data.instrument), data] };
     case 'LEVEL_TRIGGERED': return { ...state, events: upsert(state.events, data) };
     case 'LEVEL_DISARMED':

@@ -39,6 +39,8 @@ class TradeRepository:
                 "ON CONFLICT(option_selection_id) DO NOTHING", tuple(values.values()),
             )
             trade = self.get_by_selection(entry.option_selection_id, connection)
+            from app.option_watchlist import watch_trade_entry
+            watch_trade_entry(trade, connection)
             TradeEventRepository(self.database_path).record(
                 trade.trade_id, 'POSITION_OPENED', trade.entry_price, trade.entry_time, connection,
             )
@@ -97,6 +99,8 @@ class TradeRepository:
             WHERE trade_id = ? AND trade_mode = ? AND status = 'OPEN'""",
             (price, timestamp.isoformat(), reason, pnl, percentage, trade.trade_id, self.mode))
         if cursor.rowcount:
+            from app.option_watchlist import watch_trade_closed
+            watch_trade_closed(trade, timestamp, connection)
             events = TradeEventRepository(self.database_path)
             trigger = {'STOP_LOSS': 'STOP_LOSS_HIT', 'TRAILING_STOP_LOSS': 'STOP_LOSS_HIT',
                        'MARKET_CLOSING_EXIT': 'MARKET_CLOSING_EXIT_TRIGGERED'}.get(reason)

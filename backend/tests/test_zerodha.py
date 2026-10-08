@@ -143,6 +143,8 @@ def test_sensex_live_ticks_open_paper_trade_with_bfo_quote(live):
     provider.subscribed = provider.required_tokens()
     client.portal.call(provider.handle_message, frame(20005, 100))
     assert client.get('/trades').json()[0]['exit_reason'] == 'STOP_LOSS'
+    assert provider.required_tokens() == {265, 20005}  # Retain closed option for today's watchlist.
+    assert client.delete('/watchlist/options/' + trade['option_symbol']).status_code == 204
     assert provider.required_tokens() == {265}
 
 
@@ -176,6 +178,8 @@ def test_normalized_ticks_and_shared_pipeline(live):
     provider.subscribed = provider.required_tokens()
     asyncio.run(provider.handle_message(frame(10002, 100)))
     assert client.get('/trades').json()[0]['exit_reason'] == 'STOP_LOSS'
+    assert provider.required_tokens() == {256265, 10002}
+    assert client.delete('/watchlist/options/' + trade['option_symbol']).status_code == 204
     assert provider.required_tokens() == {256265}
     broker.ltp.assert_awaited_once()  # Ongoing option ticks never REST-poll.
 

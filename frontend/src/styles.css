@@ -120,3 +120,14 @@ html,body{margin:0;background:#f7f9f7}
 #ms-design .ms-backtest-fields textarea{display:block;width:100%;margin-top:8px;border:1px solid #dce3dc;border-radius:6px;background:#fff;padding:9px 10px;color:#26332e;font:inherit;resize:vertical}
 #ms-design .ms-backtest-fields textarea:focus-visible{outline:2px solid #367a58;outline-offset:3px}
 #ms-design .ms-report-timeline pre{max-width:480px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px}
+#ms-design .ms-option-watchlist-section{margin-top:20px}
+#ms-design .ms-option-watch{padding:12px 14px;border-bottom:1px solid #eef0ec;background:#fff;font-size:11px}
+#ms-design .ms-option-active{background:#edf4ee;box-shadow:inset 3px 0 #367a58}
+#ms-design .ms-option-head{display:flex;align-items:center;gap:6px;min-width:0}
+#ms-design .ms-option-head strong{flex:1;font-size:12px;font-weight:500}
+#ms-design .ms-option-remove{font-size:18px;padding:0 3px;line-height:1}
+#ms-design .ms-option-symbol{overflow-wrap:anywhere;margin:6px 0;color:#526658;line-height:1.4}
+#ms-design .ms-option-quotes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0 0}
+#ms-design .ms-option-quotes dt{color:#7b857c;font-size:9px}
+#ms-design .ms-option-quotes dd{margin:3px 0 0;font-variant-numeric:tabular-nums;font-size:12px}
+@media(max-width:760px){#ms-design .ms-option-watchlist{display:flex;overflow-x:auto}#ms-design .ms-option-watch{flex:0 0 230px}#ms-design .ms-option-watchlist-section{margin-top:12px}}

@@ -35,6 +35,7 @@ from app.protection_settings import load_protection_settings, router as protecti
 from app.option_prices import SimulatedOptionPrices
 from app.paper_executor import PaperExecutor
 from app.trade_repository import TradeRepository
+from app.option_watchlist import OptionWatchlistRepository, router as watchlist_router
 from app.trade_routes import router as trade_router
 from app.index_settings import router as index_settings_router
 from app.position_monitor import PositionMonitor
@@ -71,6 +72,8 @@ def create_app(database_path=None, signal_settings=None,
         signal_repository = SignalRepository(app.state.database_path)
         option_repository = OptionSelectionRepository(app.state.database_path)
         trade_repository = TradeRepository(app.state.database_path)
+        app.state.option_watchlist = OptionWatchlistRepository(app.state.database_path, current_time)
+        app.state.option_watchlist.backfill()
         app.state.kite = None
         app.state.zerodha_instruments = None
         if is_zerodha:
@@ -127,7 +130,8 @@ def create_app(database_path=None, signal_settings=None,
         market_close.on_change = publisher.committed
         app.state.market_data_provider = (
             ZerodhaMarketDataProvider(publisher.on_tick, instruments, app.state.kite,
-                                      levels, trade_repository, socket_factory, on_status=publisher.connection)
+                                      levels, trade_repository, socket_factory, on_status=publisher.connection,
+                                      watchlist=app.state.option_watchlist)
             if is_zerodha else SimulatedMarketDataProvider(publisher.on_tick))
         app.state.connection_lock = asyncio.Lock()
         app.state.zerodha_task = None
@@ -168,6 +172,7 @@ def create_app(database_path=None, signal_settings=None,
     app.include_router(signals_router)
     app.include_router(option_router)
     app.include_router(trade_router)
+    app.include_router(watchlist_router)
     app.include_router(index_settings_router)
     app.include_router(protection_settings_router)
     app.include_router(backtest_router)

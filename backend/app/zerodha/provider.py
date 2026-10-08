@@ -30,9 +30,11 @@ class ZerodhaOptionPrices(SimulatedOptionPrices):
 
 
 class ZerodhaMarketDataProvider:
-    def __init__(self, consumer, instruments, connector, levels, trades, socket_factory=None, on_status=None):
+    def __init__(self, consumer, instruments, connector, levels, trades, socket_factory=None, on_status=None,
+                 watchlist=None):
         self.consumer, self.instruments, self.connector = consumer, instruments, connector
         self.levels, self.trades = levels, trades
+        self.watchlist = watchlist
         if socket_factory is None:
             from websockets.asyncio.client import connect as socket_factory
         self.socket_factory = socket_factory
@@ -55,6 +57,8 @@ class ZerodhaMarketDataProvider:
                    if level.enabled and level.status in ('ACTIVE', 'DISARMED', 'PENDING_ARM') and level.level_date == today]
         with connect(self.trades.database_path) as connection:
             records.extend(self.instruments.option(trade.option_symbol) for trade in self.trades.all_open(connection))
+        if self.watchlist is not None:
+            records.extend(self.instruments.option(item.option_symbol) for item in self.watchlist.list())
         return {r.instrument_token for r in records if r is not None}
 
     async def refresh_subscriptions(self):
