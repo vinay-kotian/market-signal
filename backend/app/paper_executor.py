@@ -31,7 +31,7 @@ class PaperExecutor:
         if selection.status == 'SELECTED' and prepare is not None:
             await prepare(selection.option_symbol)
 
-    def execute(self, signal, selection, timestamp, connection=None):
+    def execute(self, signal, selection, timestamp, connection=None, *, level_reserved=False):
         if not signal.valid or selection.status != "SELECTED":
             return None
         if selection.signal_id != signal.id:
@@ -58,7 +58,8 @@ class PaperExecutor:
                     return fail('LEVEL_EXPIRED')
                 if level_state['level_date'] != trading_date(timestamp).isoformat():
                     return fail('LEVEL_NOT_CURRENT')
-            if level_state is not None and level_state['status'] == 'DISARMED':
+            reserved = level_reserved and self.repository.mode == 'BACKTEST'
+            if level_state is not None and level_state['status'] == 'DISARMED' and not reserved:
                 return fail('LEVEL_DISARMED')
             if self.settings.trade_mode not in ("PAPER", "BACKTEST"):
                 return fail("LIVE_MODE_NOT_SUPPORTED")
@@ -67,6 +68,8 @@ class PaperExecutor:
             time_rejection = self.time_rules.entry_rejection(timestamp)
             if time_rejection:
                 return fail(time_rejection)
+            if any(trade.instrument == selection.instrument for trade in self.repository.all_open(connection)):
+                return fail('ACTIVE_TRADE_EXISTS')
             contract = next((c for c in self.instruments.contracts(selection.instrument)
                              if c.symbol == selection.option_symbol and c.expiry == selection.expiry
                              and c.strike == selection.itm_strike and c.option_type == selection.option_type), None)

@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from app.live_feed import WebSocketHub, LiveEventPublisher, router as live_router
 from app.backtests import BacktestRunner, router as backtest_router
+from app.historical_market_data import LocalHistoricalDataSource
 
 from app.zerodha.session_store import SessionStore
 from app.zerodha.connector import MarketSettings, KiteConnector
@@ -47,7 +48,9 @@ def create_app(database_path=None, signal_settings=None,
                clock=None, market_settings=None, kite_connector=None, socket_factory=None):
     @asynccontextmanager
     async def lifespan(app):
-        app.state.backtest_runner = BacktestRunner(Path(app.state.database_path).parent / "backtests")
+        app.state.backtest_runner = BacktestRunner(Path(app.state.database_path).parent / "backtests",
+            LocalHistoricalDataSource(os.getenv('HISTORICAL_DATA_DIRECTORY',
+                str(Path(app.state.database_path).parent / 'historical-data'))))
         current_time = clock or utc_now
         execution_settings = trade_settings or TradeSettings.from_environment()
         data_settings = market_settings or MarketSettings.from_environment()

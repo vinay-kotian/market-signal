@@ -144,7 +144,7 @@ def test_rollback_emits_no_trade_or_level_event(client, monkeypatch):
 def test_backtest_does_not_broadcast_live_events(client):
     queue = asyncio.Queue(maxsize=256)
     client.app.state.websocket_hub.clients.add(queue)
-    result = client.post('/backtests/run', json=dict(instrument='NIFTY', levels=[25000], fixture='nifty-demo'))
+    result = client.post('/backtests/run', json=dict(trading_date='2026-09-14', instrument='NIFTY', levels=[25000], fixture='nifty-demo'))
     assert result.status_code == 201
     assert result.json()['status'] == 'COMPLETED'
     assert queue.empty()

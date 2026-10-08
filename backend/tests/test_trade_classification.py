@@ -112,7 +112,7 @@ def test_existing_trades_migrate_without_changing_execution(client):
 
 def test_backtest_version_and_snapshot_persist(client, monkeypatch):
     monkeypatch.setenv('STRATEGY_VERSION', '3.1.0')
-    result = run(client, lookback_minutes=8, itm_depth=1)
+    result = run(client, lookback_minutes=8, itm_depth=1, strategy_version='3.1.0')
     assert result['strategy_version'] == '3.1.0'
     trade, = result['trades']
     assert trade['strategy_version'] == '3.1.0'

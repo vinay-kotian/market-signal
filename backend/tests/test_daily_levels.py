@@ -13,7 +13,7 @@ from app.option_prices import SimulatedOptionPrices
 from app.option_models import StoredOptionSelection
 from app.signal_models import SignalResult
 from app.trading_date import trading_date
-from test_backtests import run, dataset
+from test_backtests import run, dataset, post
 from test_paper_trades import publish
 
 PAYLOAD = dict(instrument='NIFTY', price=25000, enabled=True)
@@ -197,15 +197,12 @@ def test_migration_preserves_ids_events_sequence_and_derives_local_date(tmp_path
     assert create_active_record(repository, LevelInput(**PAYLOAD)).id == 100
 
 
-def test_backtest_levels_use_replay_date_and_expire_on_rollover(client):
+def test_backtest_levels_use_selected_date_and_reject_rollover(client):
     result = run(client)
     assert result['levels'][0]['level_date'] == '2026-09-14'
     assert result['levels'][0]['status'] == 'DISARMED'
     rows = dataset() + [dict(timestamp='2026-09-15T10:00:00+05:30', instrument='NIFTY', price=24900),
                         dict(timestamp='2026-09-15T10:01:00+05:30', instrument='NIFTY', price=25000)]
-    result = run(client, rows)
-    assert result['levels'][0]['status'] == 'EXPIRED'
-    assert len(result['signals']) == len(result['trades']) == 1
-    result = run(client, end_time='2026-09-15T00:00:00+05:30')
-    assert result['levels'][0]['status'] == 'EXPIRED'
+    assert post(client, rows).status_code == 422
+    assert post(client, end_time='2026-09-15T00:00:00+05:30').status_code == 422
     assert client.get('/backtests/' + result['id']).json() == result

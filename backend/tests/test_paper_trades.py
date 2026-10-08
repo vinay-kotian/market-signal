@@ -162,3 +162,12 @@ def test_unknown_lot_size_cannot_create_trade(tmp_path):
         publish(client, [24900, 25000])
         assert client.get('/trades').json() == []
         assert client.get('/trade-entry-results').json()[0]['failure_reason'] == 'INVALID_LOT_SIZE'
+
+
+def test_single_active_trade_per_instrument_rejects_competing_signal(client):
+    create_active_level(client, json=dict(instrument='NIFTY', price=25000, enabled=True))
+    publish(client, [24900, 25000])
+    first = client.get('/trades').json()[0]
+    publish(client, [25100, 25000])
+    assert client.get('/trades').json() == [first]
+    assert client.get('/trade-entry-results').json()[0]['failure_reason'] == 'ACTIVE_TRADE_EXISTS'

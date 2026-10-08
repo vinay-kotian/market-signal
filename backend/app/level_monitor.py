@@ -115,7 +115,7 @@ class LevelMonitor:
                 if signal.valid:
                     selection = self._option_selector.select(
                         signal.instrument, signal.trigger_price, signal.direction,
-                        self._option_settings.itm_depth, signal.timestamp.date())
+                        self._option_settings.itm_depth, trading_date(signal.timestamp))
                     selections[index] = selection
                     if self._paper_executor is not None:
                         await self._paper_executor.prepare(selection)

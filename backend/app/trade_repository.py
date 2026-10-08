@@ -16,6 +16,7 @@ class TradeRepository:
             raise ValueError("Only simulated execution modes are supported")
         self.database_path = database_path
         self.mode = mode
+        self.execution_model = None
 
     def get_by_selection(self, selection_id, connection):
         row = connection.execute(
@@ -86,6 +87,8 @@ class TradeRepository:
     def close(self, trade, price, timestamp, reason, connection):
         if reason not in get_args(ExitReason):
             raise ValueError('Unknown exit reason')
+        if self.execution_model is not None:
+            price = self.execution_model.exit_price(trade, price, timestamp, reason)
         entry, exit_price = Decimal(str(trade.entry_price)), Decimal(str(price))
         pnl = float((exit_price - entry) * trade.quantity)
         percentage = float((exit_price - entry) / entry * 100)

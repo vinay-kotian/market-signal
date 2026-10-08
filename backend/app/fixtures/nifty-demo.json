@@ -1,47 +1,65 @@
-[
-  {
-    "timestamp": "2026-09-14T09:59:00+05:30",
-    "instrument": "SIM-NIFTY-2026-09-21-25050-PE",
-    "price": 100
-  },
-  {
-    "timestamp": "2026-09-14T09:59:30+05:30",
-    "instrument": "NIFTY",
-    "price": 24930
-  },
-  {
-    "timestamp": "2026-09-14T10:00:00+05:30",
-    "instrument": "NIFTY",
-    "price": 24900
-  },
-  {
-    "timestamp": "2026-09-14T10:01:00+05:30",
-    "instrument": "NIFTY",
-    "price": 25000
-  },
-  {
-    "timestamp": "2026-09-14T10:02:00+05:30",
-    "instrument": "SIM-NIFTY-2026-09-21-25050-PE",
-    "price": 105
-  },
-  {
-    "timestamp": "2026-09-14T10:03:00+05:30",
-    "instrument": "SIM-NIFTY-2026-09-21-25050-PE",
-    "price": 110
-  },
-  {
-    "timestamp": "2026-09-14T10:04:00+05:30",
-    "instrument": "SIM-NIFTY-2026-09-21-25050-PE",
-    "price": 120
-  },
-  {
-    "timestamp": "2026-09-14T10:05:00+05:30",
-    "instrument": "SIM-NIFTY-2026-09-21-25050-PE",
-    "price": 108
-  },
-  {
-    "timestamp": "2026-09-14T15:26:00+05:30",
-    "instrument": "NIFTY",
-    "price": 25005
-  }
-]
+{
+  "source": "SYNTHETIC_DEMO",
+  "contracts": [
+    {
+      "instrument": "NIFTY",
+      "expiry": "2026-09-21",
+      "strike": 25050,
+      "option_type": "PE",
+      "symbol": "SIM-NIFTY-2026-09-21-25050-PE",
+      "lot_size": 10
+    }
+  ],
+  "ticks": [
+    {
+      "timestamp": "2026-09-14T10:01:00+05:30",
+      "instrument": "SIM-NIFTY-2026-09-21-25050-PE",
+      "price": 100
+    },
+    {
+      "timestamp": "2026-09-14T09:59:30+05:30",
+      "instrument": "NIFTY",
+      "price": 24930
+    },
+    {
+      "timestamp": "2026-09-14T10:00:00+05:30",
+      "instrument": "NIFTY",
+      "price": 24900
+    },
+    {
+      "timestamp": "2026-09-14T10:01:00+05:30",
+      "instrument": "NIFTY",
+      "price": 25000
+    },
+    {
+      "timestamp": "2026-09-14T10:02:00+05:30",
+      "instrument": "SIM-NIFTY-2026-09-21-25050-PE",
+      "price": 105
+    },
+    {
+      "timestamp": "2026-09-14T10:03:00+05:30",
+      "instrument": "SIM-NIFTY-2026-09-21-25050-PE",
+      "price": 110
+    },
+    {
+      "timestamp": "2026-09-14T10:04:00+05:30",
+      "instrument": "SIM-NIFTY-2026-09-21-25050-PE",
+      "price": 120
+    },
+    {
+      "timestamp": "2026-09-14T10:05:00+05:30",
+      "instrument": "SIM-NIFTY-2026-09-21-25050-PE",
+      "price": 108
+    },
+    {
+      "timestamp": "2026-09-14T15:26:00+05:30",
+      "instrument": "NIFTY",
+      "price": 25005
+    },
+    {
+      "timestamp": "2026-09-14T15:25:00+05:30",
+      "instrument": "SIM-NIFTY-2026-09-21-25050-PE",
+      "price": 110
+    }
+  ]
+}

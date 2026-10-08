@@ -117,3 +117,6 @@ html,body{margin:0;background:#f7f9f7}
 #ms-design .ms-report-date-range{margin-top:20px}
 #ms-design .ms-report-date-range legend{font-size:12px;color:#68756b;margin-bottom:10px}
 #ms-design .ms-report-date-range .ms-report-filters{margin-bottom:0}
+#ms-design .ms-backtest-fields textarea{display:block;width:100%;margin-top:8px;border:1px solid #dce3dc;border-radius:6px;background:#fff;padding:9px 10px;color:#26332e;font:inherit;resize:vertical}
+#ms-design .ms-backtest-fields textarea:focus-visible{outline:2px solid #367a58;outline-offset:3px}
+#ms-design .ms-report-timeline pre{max-width:480px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px}

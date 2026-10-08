@@ -9,6 +9,23 @@ settings snapshots are never rewritten when the default changes.
 
 See [strategy-rules.md](strategy-rules.md) for the current rules.
 
+## Unreleased — 2026-10-07 — Historical replay and instrument position guard
+
+Single-day BACKTEST now uses a dated contract catalogue and recorded option
+quotes. Historical entries and mandatory exits fill at the first eligible
+observation at or after their trigger, with separate trigger and fill times.
+Runs snapshot current application settings and preserve their audit timeline.
+See [backtesting.md](backtesting.md) for data format and execution details.
+
+The requested single active position per underlying is enforced in the shared
+PAPER/BACKTEST executor. Previously a later signal could open an additional
+position on the same instrument. It now records `ACTIVE_TRADE_EXISTS` until the
+existing position closes; different instruments remain independent. Historical
+pending entries reserve that instrument while waiting for a quote. This guard
+is the only deliberate PAPER entry behavior change; protection and exit rules
+are reused unchanged. The deployment's explicit strategy-version setting
+continues to label new trades and snapshots.
+
 ## 1.1.0 — 2026-09-18 — Daily-expiring levels
 
 Implementation: [03c1da9](https://github.com/vinay-kotian/market-signal/commit/03c1da9ddea492d0478b1bcc1e04b19d48c00f88).

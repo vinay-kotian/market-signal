@@ -710,69 +710,77 @@ as trade events and are not fabricated for this view; signal and selection IDs
 are shown for reference. Reporting introduces no changes to execution rules.
 
 
-## Backtesting V1
+## Single-day historical backtesting
 
-Open **Backtest** in React. Select NIFTY and level 25000 to run the bundled
-**NIFTY demo · 14 Sep 2026**, or upload a local JSON array. Expand settings to
-configure lookback/distance, ITM depth, lots, stops, breakeven protection,
-trading times, and an optional timestamp range. Input timestamps must include
-an offset; trading-window times use Asia/Kolkata.
+Open **Backtest**, choose the trading date and instrument, enter multiple levels
+(one per line or comma separated), and select **Historical archive** or upload
+historical JSON. NIFTY and BANKNIFTY are supported; existing SENSEX support is
+retained. The bundled **Synthetic NIFTY demo · 14 Sep 2026** is a test fixture,
+not exchange data. Choose date 2026-09-14 and level 25000 for that demo.
 
 ```http
 POST /backtests/run
 Content-Type: application/json
 
-{"instrument":"NIFTY","levels":[25000],"fixture":"nifty-demo"}
+{"trading_date":"2026-09-14","instrument":"NIFTY","levels":[25000],"fixture":"nifty-demo"}
 ```
 
-Alternatively provide `dataset` instead of `fixture`:
+The API snapshots current application signal, option, protection, trading-time,
+lot-count, strategy-version and per-index arm settings. Explicit top-level
+settings and `index_settings` override that snapshot for this run only. Lot size
+comes from the historical contract catalogue, not today's instruments. No
+subsequent application settings update changes a persisted run or its trades.
+`GET /backtests/settings` shows current defaults, `GET /backtests` lists saved
+runs, and `GET /backtests/{id}` returns a saved result.
 
-```json
-{
-  "instrument": "NIFTY",
-  "levels": [25000],
-  "dataset": [
-    {"timestamp":"2026-09-14T09:59:00+05:30","instrument":"SIM-NIFTY-2026-09-21-25050-PE","price":100},
-    {"timestamp":"2026-09-14T10:00:00+05:30","instrument":"NIFTY","price":24900},
-    {"timestamp":"2026-09-14T10:01:00+05:30","instrument":"NIFTY","price":25000},
-    {"timestamp":"2026-09-14T10:02:00+05:30","instrument":"SIM-NIFTY-2026-09-21-25050-PE","price":90}
-  ]
-}
-```
+There is **no external historical-data archive connected**. For a real date,
+supply recorded spot/option ticks plus an archived catalogue of that day's
+contracts (including the nearest expiry even when a required strike is absent).
+Today's Zerodha instrument dump and current quotes are not substitutes for this
+archive. See [historical data format and adapter](docs/backtesting.md).
+No historical premiums or expiry dates are generated from spot movements.
 
-The POST runs replay and returns its UUID, status, performance metrics, trades,
-signals, option selections, entry results, and trade events. Read the saved
-result later with `GET /backtests/{id}`. Runs use separate
-`backend/backtests/{id}/results.sqlite3` files, including the input/settings and
-result snapshot. There is no shared PAPER price cache, history, trade state,
-or background wall-clock scheduler inside replay. Results survive app restart;
-interrupted RUNNING runs are not automatically resumed in V1.
+Uploads and local archive files use an object with `contracts` and `ticks`.
+For API uploads send its `ticks` as `dataset` and its `contracts` as `contracts`.
+Without a dataset/fixture the adapter reads
+`HISTORICAL_DATA_DIRECTORY/YYYY-MM-DD-INSTRUMENT.json`; the default directory
+is `historical-data` beside the application database. An unavailable archive
+returns a descriptive 422. Invalid catalogue/date/symbol data also returns 422.
 
-`HistoricalMarketDataProvider` sorts ticks by timestamp (stable source order
-for ties), and `BacktestRunner` injects historical time into the existing
-services. It advances through mandatory-exit deadlines before later ticks, so
-future option quotes cannot affect earlier exits. A quote at exactly a deadline
-is processed after that deadline's timer event. An explicit `end_time` can
-advance past the final tick to exercise the normal mandatory exit. Otherwise,
-OPEN positions stay OPEN if the dataset ends early, and are excluded from
-realised performance. Range filtering is inclusive and does not preload
-quotes or strategy history from before `start_time`.
+Replay is chronological, using a historical Asia/Kolkata clock and the shared
+`LevelMonitor`, `SignalEngine`, `OptionSelector`, PAPER entry construction,
+`TradingTimeRules`, `PositionMonitor` and progressive/legacy protection logic.
+Equal-time observations preserve source order. Only 09:15–15:30 ticks from the
+selected date are replayed. `BacktestExecutor` reserves an instrument until the
+first valid positive option quote at or after the signal. The shared executor
+now enforces the requested single active trade per instrument in both PAPER and
+BACKTEST. Pending historical entries also respect this restriction and cutoff.
 
-V1 supports 1–10,000 records and up to 100 level inputs for one underlying
-(NIFTY, BANKNIFTY, or SENSEX). Duplicate level inputs are collapsed. Local data is JSON;
-CSV ingestion is not included. The option universe is synthetic, seeded from
-the first included tick's Asia/Kolkata date, with expiries +7/+14 days and the
-existing fixed strike ranges and test lot sizes. These are not real exchange
-contracts. Include matching synthetic option symbols and quotes in the data;
-underlying-only data can create signals/selections but cannot create trades.
-No premiums are derived from the underlying. Expired/unavailable contracts
-retain the shared selector's failure behavior; V1 does not roll the universe
-forward or integrate an exchange calendar.
+Mandatory exit triggers at the configured deadline and fills at the first
+valid option observation at or after it; an old quote cannot fill a historical
+entry or mandatory exit. Stops execute on the observation that triggers the
+shared PositionMonitor. Zero option observations cannot fill entries but can
+close positions, matching PAPER semantics. A missing entry/mandatory-exit quote
+marks the run FAILED, retaining
+partial trades and audit events. Explicit same-date `start_time`/`end_time`
+ranges remain available through the API; ending before mandatory exit can leave
+OPEN trades. No quotes/history are preloaded before the range.
 
-Settings use the same defaults and validation as paper trading, with
-`trade_mode` fixed to `BACKTEST`. This is deterministic replay of supplied
-observations, not a model of historical spreads, liquidity, fees, or fills.
-There are no charts, sweeps, live orders, or broker historical-data calls.
+Every run has an isolated `backtests/{id}/results.sqlite3` database. It stores
+run metadata, input/settings, the exact catalogue, a dataset hash, BACKTEST
+trades, and session/level/signal/selection/protection/exit events. Runs survive
+application restart. Interrupted RUNNING runs are retained but not resumed.
+The UI shows saved runs, summary, trade table, and chronological session or
+selected-trade events. PAPER reports, dashboard state and live broadcasts are
+isolated from replay.
+
+Metrics use this run's closed trades. Win rate includes breakeven trades in its
+denominator; total return is total realised P&L divided by the sum of closed
+trade entry premiums. Drawdown is the largest fall from a prior peak in
+cumulative realised P&L, ordered by exit timestamp then trade ID. Profit factor
+is null when there are no losses. Costs/slippage are not modelled, so gross and
+net P&L agree. This is a deterministic execution model over supplied
+observations, not a spread/liquidity model. Multi-day optimization is excluded.
 
 
 ## Zerodha Integration V1 — market data, PAPER execution
@@ -896,7 +904,7 @@ Protocol references: [Kite authentication](https://kite.trade/docs/connect/v3/us
 [instruments and quotes](https://kite.trade/docs/connect/v3/market-quotes/),
 [WebSocket framing and subscriptions](https://kite.trade/docs/connect/v3/websocket/).
 Tests use fake connectors/sockets and HTTP mocks; automated tests never log in
-or connect to Zerodha. Backtests continue to use their isolated synthetic inputs.
+or connect to Zerodha. Backtests use isolated recorded datasets or the explicitly synthetic demo.
 
 
 If login returns ERROR, the Connection page now reports a fixed diagnostic code
@@ -997,9 +1005,8 @@ if no tick has arrived. Expiry does not change monitoring or exits of existing
 positions. The migration preserves records/events and derives legacy dates from
 `created_at` in Asia/Kolkata; it does not renew old levels.
 
-Backtest levels are assigned the first replay date and expire if replay advances
-to a later date. There is no automatic daily renewal; run separate daily level
-sets for subsequent dates. Saved backtest results include the dated levels and
+Backtest levels are assigned the selected trading date. Multi-date datasets
+are rejected; run separate daily level sets for subsequent dates. Saved backtest results include the dated levels and
 their final state.
 
 This change is strategy version **1.1.0**. Set the server's explicit

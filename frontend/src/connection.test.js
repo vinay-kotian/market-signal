@@ -77,13 +77,18 @@ test('Settings renders separate per-index distance inputs', async () => {
   } finally { await server.close(); }
 });
 
-test('Backtest and Report include SENSEX among the index choices', async () => {
+test('Backtest keeps index choices and adds historical date and multiple levels', async () => {
   const server = await createServer({ optimizeDeps: { noDiscovery: true }, server: { middlewareMode: true, hmr: false }, appType: 'custom' });
   try {
     for (const file of ['BacktestPage', 'PaperReportPage']) {
       const { default: Page } = await server.ssrLoadModule(`/src/${file}.jsx`);
       const html = renderToStaticMarkup(React.createElement(Page));
       assert.match(html, /<option[^>]*>SENSEX<\/option>|<option value="SENSEX"/);
+      if (file === 'BacktestPage') {
+        assert.match(html, /type="date"/);
+        assert.match(html, /<textarea/);
+        assert.match(html, /Historical archive/);
+      }
       assert.match(html, /NIFTY/);
       assert.match(html, /BANKNIFTY/);
     }
@@ -137,4 +142,32 @@ test('Trades defaults to today in Kolkata and places shared date controls above 
     assert.match(invalid, /role="alert">From Date cannot be after To Date/);
     assert.match(invalid, /aria-invalid="true"/);
   } finally { t.mock.timers.reset(); await server.close(); }
+});
+
+
+test('Backtest renders saved summary, actual fill times, and a selected trade timeline', async () => {
+  const server = await createServer({ optimizeDeps: { noDiscovery: true }, server: { middlewareMode: true, hmr: false }, appType: 'custom' });
+  try {
+    const { BacktestResults } = await server.ssrLoadModule('/src/BacktestPage.jsx');
+    const result = { id: 'test-run', status: 'COMPLETED', instrument: 'BANKNIFTY', trading_date: '2026-09-14',
+      data_source: 'TEST_ARCHIVE', total_trades: 1, wins: 1, losses: 0, win_rate: 100,
+      gross_pnl: 300, profit_factor: null, max_drawdown: 0, trades: [{ trade_id: 1,
+        trigger_level: 60000, direction: 'FROM_ABOVE', option_symbol: 'TEST-OPTION',
+        entry_price: 200, exit_price: 210, quantity: 30, realised_pnl: 300,
+        realised_pnl_percentage: 5, signal_timestamp: '2026-09-14T04:31:00Z',
+        entry_time: '2026-09-14T04:31:01Z', exit_reason: 'MARKET_CLOSING_EXIT' }],
+      signals: [], option_selections: [], entry_results: [], timeline: [
+        { id: 1, event_type: 'MANDATORY_EXIT', timestamp: '2026-09-14T15:25:00+05:30', trade_id: 1,
+          payload: { reason: 'Awaiting option quote', level: 60000 } },
+        { id: 2, event_type: 'UNRELATED_EVENT', timestamp: '2026-09-14T15:26:00+05:30', trade_id: 2, payload: {} }],
+    };
+    const html = renderToStaticMarkup(React.createElement(BacktestResults, { result, selectedTrade: '1', setSelectedTrade() {} }));
+    assert.match(html, /Max Drawdown/);
+    assert.match(html, /Profit Factor/);
+    assert.match(html, /10:01:00/);
+    assert.match(html, /10:01:01/);
+    assert.match(html, /MANDATORY_EXIT/);
+    assert.doesNotMatch(html, /UNRELATED_EVENT/);
+    assert.match(html, /Costs are not modelled/);
+  } finally { await server.close(); }
 });

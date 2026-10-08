@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 
 from app.database import connect, initialize_database
 from app.main import create_app
-from test_backtests import run, tick as historical_tick
+from test_backtests import run, tick as historical_tick, SYMBOL
 
 
 def tick(client, price, instrument='NIFTY'):
@@ -216,7 +216,9 @@ def test_setting_change_applies_on_next_rearm_tick(client):
 def test_backtest_index_settings_are_isolated(client):
     update(client, 'NIFTY', 500)
     result = run(client)
-    assert len(result['trades']) == 1  # Isolated default 30.
+    assert len(result['trades']) == 0  # Current 500 is snapshotted into isolated replay.
+    result = run(client, index_settings={'NIFTY': {'initial_arm_distance_points': 30}})
+    assert len(result['trades']) == 1
     result = run(client, index_settings={'NIFTY': {'initial_arm_distance_points': 200}})
     assert len(result['trades']) == 0
     assert result['levels'][0]['status'] == 'PENDING_ARM'
@@ -268,13 +270,14 @@ def test_backtest_first_historical_tick_arms_then_return_can_trade(client):
     # No PAPER price/settings should leak into replay, and no future tick is needed to arm.
     tick(client, 25000)
     update(client, 'NIFTY', 500)
-    rows = [historical_tick('09:59:00', 'SIM-NIFTY-2026-09-21-25050-PE', 100),
-            historical_tick('10:00:00', 'NIFTY', 24970),
-            historical_tick('10:01:00', 'NIFTY', 25000)]
-    partial = run(client, rows[:2])
+    rows = [historical_tick('10:00:00', 'NIFTY', 24970),
+            historical_tick('10:01:00', 'NIFTY', 25000),
+            historical_tick('10:01:00', SYMBOL, 100), historical_tick('10:02:00', SYMBOL, 90)]
+    overrides = {'index_settings': {'NIFTY': {'initial_arm_distance_points': 30}}}
+    partial = run(client, rows[:1], **overrides)
     assert partial['levels'][0]['status'] == 'ACTIVE'
     assert partial['signals'] == []
-    full = run(client, rows)
+    full = run(client, rows, **overrides)
     assert len(full['trades']) == 1
     assert full['trades'][0]['entry_time'] == '2026-09-14T10:01:00+05:30'
     assert full['levels'][0]['status'] == 'DISARMED'

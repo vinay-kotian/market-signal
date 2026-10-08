@@ -93,8 +93,9 @@ def test_reload_preserves_stop_exit_and_events(tmp_path):
 
 def test_multiple_positions_only_matching_symbol_closes(client):
     first = enter(client)
-    tick(client, 'NIFTY', 25100)
-    tick(client, 'NIFTY', 24900)  # Opposite direction creates CE instead of PE.
+    create_active_level(client, json={'instrument': 'BANKNIFTY', 'price': 51000, 'enabled': True})
+    tick(client, 'BANKNIFTY', 51100)
+    tick(client, 'BANKNIFTY', 51000)
     second = client.get('/trades').json()[0]
     assert first['option_symbol'] != second['option_symbol']
     tick(client, first['option_symbol'], 90)
@@ -145,6 +146,11 @@ def test_option_tick_updates_quote_and_negative_price_is_rejected(client):
     assert client.post('/simulation/tick', json={'instrument': trade['option_symbol'], 'price': -1}).status_code == 422
     assert client.get('/trades').json()[0]['status'] == 'OPEN'
     tick(client, trade['option_symbol'], 110)
+    # The next entry must wait for the existing instrument position to close.
+    repository = client.app.state.trade_repository
+    with connect(repository.database_path) as connection:
+        repository.close(repository.recent()[0], 110, repository.recent()[0].entry_time,
+                         'MANUAL_SQUARE_OFF', connection)
     tick(client, 'NIFTY', 24950)  # Re-arm before testing the next entry quote.
     tick(client, 'NIFTY', 25000)
     assert client.get('/trades').json()[0]['entry_price'] == 110

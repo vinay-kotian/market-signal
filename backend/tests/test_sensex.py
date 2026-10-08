@@ -96,10 +96,12 @@ def test_sensex_backtest_uses_level_distance_and_isolated_settings(client, dista
             historical_tick('09:59:30', 'SENSEX', 79900),
             historical_tick('10:00:00', 'SENSEX', 79930),
             historical_tick('10:01:00', 'SENSEX', 80000),
+            historical_tick('10:01:00', symbol, 100),
             historical_tick('10:02:00', symbol, 90)]
     tick(client, 90000, 'SENSEX')
     update(client, 'SENSEX', 500)
-    response = client.post('/backtests/run', json=dict(instrument='SENSEX', levels=[80000], dataset=rows,
+    response = client.post('/backtests/run', json=dict(trading_date='2026-09-14', instrument='SENSEX', levels=[80000], dataset=rows,
+        contracts=[dict(instrument='SENSEX', expiry='2026-09-21', strike=80100, option_type='PE', symbol=symbol, lot_size=20)],
         index_settings={'SENSEX': {'initial_arm_distance_points': distance}}))
     assert response.status_code == 201
     result = response.json()
