@@ -228,3 +228,30 @@ test('missing LTP remains unknown and loading/errors are visible', async () => {
     assert.match(render({ items: null, error: 'Watchlist unavailable' }), /role="alert"/);
   });
 });
+
+test('Instrument Details stays under Dashboard with Kolkata date, filters and exact execution tooltip', async t => {
+  const server = await createServer({ optimizeDeps: { noDiscovery: true }, server: { middlewareMode: true, hmr: false }, appType: 'custom' });
+  try {
+    const { default: Details, EventDetails } = await server.ssrLoadModule('/src/InstrumentDetails.jsx');
+    t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-02T19:00:00Z') });
+    const html = renderToStaticMarkup(React.createElement(Details, { symbol: 'SENSEX', onBack() {} }));
+    assert.match(html, /Back to Dashboard/);
+    assert.match(html, /SENSEX · Instrument Details/);
+    assert.match(html, /value="2026-10-03"/);
+    assert.match(html, /Loading chart data/);
+    assert.match(html, /Level touch \/ cross/);
+    assert.match(html, /Trailing stop updated/);
+    assert.match(html, /checked=""/);
+    const execution = renderToStaticMarkup(React.createElement(EventDetails, { tooltip: true, event: {
+      id: 'exit-2', event_type: 'TRADE_EXIT', timestamp: '2026-09-14T04:31:37.123Z',
+      entry_time: '2026-09-14T04:30:03Z', price: 108, trade_id: 2, signal_id: 3,
+      direction: 'FROM_BELOW', level: 25000, index_price: 25001,
+      option_symbol: 'NIFTY-25050-PE', option_type: 'PE', strike: 25050, expiry: '2026-09-21',
+      quantity: 10, realised_pnl: 80, realised_pnl_percentage: 8,
+      duration_seconds: 94.123, exit_reason: 'TRAILING_STOP_LOSS', previous_stop: 100, current_stop: 108,
+    } }));
+    for (const text of ['role="tooltip"', '10:01:37', 'NIFTY-25050-PE', 'TRAILING_STOP_LOSS', 'Realized P&amp;L (₹)', 'Previous stop', 'Updated stop', 'Signal ID']) assert.ok(execution.includes(text), text);
+    const { default: Options } = await server.ssrLoadModule('/src/OptionWatchlist.jsx');
+    assert.match(renderToStaticMarkup(React.createElement(Options, { items: [active], today: '2026-09-14', onOpen() {} })), /Open NIFTY-25050-PE Instrument Details/);
+  } finally { t.mock.timers.reset(); await server.close(); }
+});

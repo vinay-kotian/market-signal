@@ -7,6 +7,7 @@ from app.database import connect
 from app.index_settings import IndexSettingsRepository
 from app.models import Level, LevelInput, LevelEvent
 from app.trading_date import trading_date, utc_now
+from app.chart_data import record_arm
 
 
 class LevelRepository:
@@ -33,6 +34,8 @@ class LevelRepository:
                 (data.instrument, data.price, data.enabled, now, now, level_date.isoformat(), status, current, self._arm_side(status, current, data.price)),
             )
             row = connection.execute('SELECT * FROM levels WHERE id = ?', (cursor.lastrowid,)).fetchone()
+            if level_date == today:
+                record_arm(connection, row, current, timestamp)
             return Level(**dict(row))
 
     def list(self, level_date=None) -> List[Level]:
@@ -75,7 +78,10 @@ class LevelRepository:
                 """UPDATE levels SET instrument = ?, price = ?, enabled = ?, updated_at = ?, status = ?, activation_reference_price = ?, armed_from = ? WHERE id = ?""",
                 (data.instrument, data.price, data.enabled, timestamp.isoformat(), status, current, self._arm_side(status, current, data.price), level_id),
             )
-            return Level(**dict(connection.execute('SELECT * FROM levels WHERE id = ?', (level_id,)).fetchone()))
+            updated = connection.execute('SELECT * FROM levels WHERE id = ?', (level_id,)).fetchone()
+            if row['status'] != 'ACTIVE' or not row['enabled'] or row['price'] != updated['price'] or row['instrument'] != updated['instrument']:
+                record_arm(connection, updated, current, timestamp)
+            return Level(**dict(updated))
 
     def delete(self, level_id: int) -> bool:
         with connect(self.database_path) as connection:
@@ -120,6 +126,8 @@ class LevelRepository:
                  'DISARMED' if status == 'ACTIVE' else 'ACTIVE', trading_date(timestamp).isoformat()),
             ).rowcount
             if changed:
+                if status == 'ACTIVE':
+                    record_arm(connection, connection.execute('SELECT * FROM levels WHERE id=?', (level_id,)).fetchone(), price, timestamp)
                 connection.execute("""INSERT INTO level_events
                     (level_id, event_type, underlying_price, timestamp, trade_id)
                     VALUES (?, ?, ?, ?, ?)""",
@@ -170,6 +178,7 @@ class LevelRepository:
                 connection.execute("""UPDATE levels SET status = ?, armed_from = ?,
                     activation_reference_price = COALESCE(activation_reference_price, ?), updated_at = ? WHERE id = ?""",
                     (status, self._arm_side(status, price, row['price']), price, timestamp.isoformat(), level.id))
+                record_arm(connection, connection.execute('SELECT * FROM levels WHERE id=?', (level.id,)).fetchone(), price, timestamp)
                 return True
         return False
 

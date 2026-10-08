@@ -171,6 +171,7 @@ class LiveEventPublisher:
 
     async def on_tick(self, tick):
         await self.state.simulation_flow.on_tick(tick)
+        candle = self.state.chart_candles.observe(tick.instrument, tick.price, self.state.level_repository.clock())
         self.committed(tick.instrument)
         provider = self.state.market_data_provider
         live = self.state.market_settings.market_data_mode == 'ZERODHA'
@@ -182,6 +183,7 @@ class LiveEventPublisher:
         self.state.live_price_change_percentages[tick.instrument] = percentage
         self.hub.publish('MARKET_PRICE_UPDATED', dict(
             instrument=tick.instrument, price=tick.price,
+            candle=candle,
             change=change, change_percentage=percentage,
             last_tick_at=getattr(provider, 'last_tick_at', None),
             ticks_received=getattr(provider, 'ticks_received', 0)))

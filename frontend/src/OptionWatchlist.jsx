@@ -11,7 +11,7 @@ export function visibleOptionWatchlist(items, today, search = '') {
 const percent = value => value == null ? '—' : `${value > 0 ? '+' : ''}${formatPrice(value)}%`;
 const tone = value => value == null ? '' : value >= 0 ? 'ms-up' : 'ms-down';
 
-export default function OptionWatchlist({ items, today, search = '', busy = false, error, onRemove }) {
+export default function OptionWatchlist({ items, today, search = '', busy = false, error, onRemove, onOpen }) {
   const options = visibleOptionWatchlist(items, today, search);
   return <section className="ms-option-watchlist-section" aria-label="Traded option watchlist">
     <div className="ms-sidehead"><span className="ms-label">Traded options</span><span className="ms-sub">{options.length}</span></div>
@@ -25,7 +25,7 @@ export default function OptionWatchlist({ items, today, search = '', busy = fals
         {item.status === 'CLOSED' && <button className="ms-link ms-option-remove" disabled={busy}
           aria-label={`Remove closed option ${item.option_symbol}`} onClick={() => onRemove(item.option_symbol)}>×</button>}
       </div>
-      <div className="ms-option-symbol" title={item.option_symbol}>{item.option_symbol}</div>
+      {onOpen ? <button className="ms-link ms-option-symbol" disabled={busy} title={item.option_symbol} aria-label={`Open ${item.option_symbol} Instrument Details`} onClick={() => onOpen(item.option_symbol)}>{item.option_symbol}</button> : <div className="ms-option-symbol" title={item.option_symbol}>{item.option_symbol}</div>}
       <div className="ms-sub">Strike {formatPrice(item.strike)} · Expiry {item.expiry}</div>
       <dl className="ms-option-quotes">
         <div><dt>Entry</dt><dd>{formatPrice(item.entry_price)}</dd></div>

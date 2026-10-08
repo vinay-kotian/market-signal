@@ -71,10 +71,20 @@ function upsert(rows, row, key = 'id', limit = 100) {
 }
 
 export function applyLiveEvent(state, event) {
+  const chartRevision = (state.chartRevision ?? 0) + (['SIGNAL_CREATED', 'OPTION_SELECTION_CREATED',
+    'TRADE_OPENED', 'TRADE_CLOSED', 'STOP_UPDATED', 'LEVEL_UPDATED', 'LEVEL_REARMED', 'LEVEL_DISARMED'].includes(event.type) ? 1 : 0);
+  return { ...reduceLiveEvent(state, event), chartRevision };
+}
+
+function reduceLiveEvent(state, event) {
   const data = event.data;
   switch (event.type) {
     case 'MARKET_PRICE_UPDATED':
-      return { ...state, connection: state.connection ? { ...state.connection,
+      return { ...state, chartCandles: data.candle ? { ...state.chartCandles,
+        [data.instrument]: { ...(state.chartCandles?.[data.instrument]?.day === new Date(data.candle.time * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) ? state.chartCandles[data.instrument] : {}),
+          day: new Date(data.candle.time * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }),
+          [data.candle.time]: data.candle } } : state.chartCandles,
+        connection: state.connection ? { ...state.connection,
         last_tick_at: data.last_tick_at, ticks_received: data.ticks_received,
         prices: { ...state.connection.prices, [data.instrument]: data.price } } : null,
         prices: { ...state.prices, [data.instrument]: { price: data.price, change: data.change, change_percentage: data.change_percentage ?? null } } };

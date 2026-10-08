@@ -1247,3 +1247,48 @@ token. Manual removal or day expiry drops a token only when nothing else needs
 it, at the existing subscription reconciliation interval. No second WebSocket
 or ongoing quote REST polling is introduced. Synthetic PAPER contracts continue
 to receive simulation quotes; they have no Zerodha token.
+
+### Instrument charts within Dashboard
+
+Click a Dashboard index watchlist row or a traded option symbol to open
+**Instrument Details**, and use **Back to Dashboard** to return. The date defaults
+to today in Asia/Kolkata; select an earlier date to inspect saved history. Index
+and linked option minute charts share zoom, pan and crosshair time. A contract
+selector lists every PAPER option traded for the chosen index/date. Event filters
+apply to chart markers and the recorded event list; hover or select a marker to
+inspect exact timestamps, signal/trade relationships, prices and exit results.
+
+The read-only endpoints accept an index name, option symbol, or a currently known
+Zerodha instrument token (the frontend's `/api` proxy follows existing conventions):
+
+- `GET /instruments/{instrument}/candles?date=YYYY-MM-DD&interval=minute`
+- `GET /instruments/{instrument}/events?date=YYYY-MM-DD`
+- `GET /instruments/{instrument}/trades?date=YYYY-MM-DD`
+
+`chart_candles` stores received tick OHLC by symbol, market-data source and UTC
+minute. SIMULATED and ZERODHA observations remain separate. Candles cover
+09:15–15:29 IST, with an axis endpoint at 15:30; missing minutes stay empty. Tick
+candles represent only received observations, not guaranteed exchange OHLC or
+volume. Opening details lazily retrieves and caches read-only Zerodha minute
+history where authenticated and available. Historical-day cache survives restart;
+today's broker requests are throttled to one per minute. Expired/delisted options
+use saved candles when an unambiguous current token is unavailable, since tokens
+can be reused. Empty or unavailable history is explicitly shown.
+
+`chart_events` adds immutable initial-arm/rearm and touch/cross snapshots without
+changing entry, exit or risk rules. Initial-arm snapshots and trigger snapshots
+are written inside the existing state/signal transactions. Signals, executions
+and protection markers reuse their existing persisted records. Older executions
+remain available; migrated/reconstructed protection events are omitted. No arm,
+touch or protection events are inferred from candles. Markers use actual recorded
+prices even in candle gaps; their exact timestamps remain in the detail panel.
+Initial stop references come from each trade's saved stop, with separate trade IDs.
+BACKTEST executions are excluded; backtests continue to use their isolated databases.
+Execution remains PAPER; no live broker order capability is added.
+
+Today’s candles travel in existing `MARKET_PRICE_UPDATED` messages on the shared
+browser socket. Committed trading events refresh the selected details; candle
+history is retained in the view rather than fetched on every tick. No additional
+broker or browser WebSocket, instrument subscription or per-instrument thread is
+created. A selected instrument without an existing feed subscription displays its
+saved/history candles until the existing services receive another quote.

@@ -11,6 +11,7 @@ from app.signal_engine import SignalEngine
 from app.price_history import PriceHistory
 from app.signal_repository import SignalRepository
 from app.database import connect
+from app.chart_data import record_chart_event
 from app.option_instruments import SimulatedOptionInstrumentSource
 from app.option_repository import OptionSelectionRepository
 from app.option_selector import OptionSelector
@@ -132,6 +133,11 @@ class LevelMonitor:
                 with connect(self._repository.database_path) as connection:
                     saved = self._signal_repository.save_many(signals, connection=connection)
                     for index, signal in enumerate(saved):
+                        trigger = triggers[index]
+                        record_chart_event(connection, signal.instrument, 'LEVEL_TRIGGERED', timestamp,
+                            level_id=signal.level_id, level=signal.level, price=signal.trigger_price,
+                            previous_price=trigger.previous_price, direction=signal.direction,
+                            signal_id=signal.id, trigger_kind='TOUCH' if trigger.current_price == trigger.level_price else 'CROSS')
                         if signal.valid:
                             selection = selections[index]
                             stored_selection = self._option_repository.save(

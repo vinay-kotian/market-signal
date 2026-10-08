@@ -57,6 +57,9 @@ def create_app(database_path=None, signal_settings=None,
         data_settings = market_settings or MarketSettings.from_environment()
         app.state.external_levels_settings = ExternalLevelsSettings.from_environment()
         app.state.market_settings = data_settings
+        from app.chart_data import CandleRepository
+        app.state.chart_candles = CandleRepository(app.state.database_path, data_settings.market_data_mode)
+        app.state.chart_fetch_lock = asyncio.Lock()
         app.state.zerodha_auth_error = False
         app.state.zerodha_auth_error_detail = None
         app.state.zerodha_login_state = None
@@ -178,6 +181,8 @@ def create_app(database_path=None, signal_settings=None,
     app.include_router(backtest_router)
     app.include_router(connection_router)
     app.include_router(live_router)
+    from app.chart_routes import router as chart_router
+    app.include_router(chart_router)
 
     @app.get("/health")
     async def health():

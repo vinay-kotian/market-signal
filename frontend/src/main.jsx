@@ -13,6 +13,7 @@ import BacktestPage from './BacktestPage';
 import OptionWatchlist, { visibleOptionWatchlist } from './OptionWatchlist';
 import { initialPage } from './connectionState';
 import './styles.css';
+const InstrumentDetails = React.lazy(() => import('./InstrumentDetails'));
 
 function App() {
   const [levelView, setLevelView] = useState('TODAY');
@@ -31,6 +32,7 @@ function App() {
   const feed = useRef(null);
   const [errors, setErrors] = useState({});
   const [selected, setSelected] = useState('');
+  const [detailsSymbol, setDetailsSymbol] = useState(null);
   const [search, setSearch] = useState('');
   const [tickPrice, setTickPrice] = useState('');
   const [busy, setBusy] = useState(false);
@@ -97,9 +99,10 @@ function App() {
   }, [page]);
   function navigate(next, section = '') {
     window.history.pushState({}, '', '/' + next + (section ? '#' + section : ''));
-    setPage(next); setEditor(null); setDeleting(null);
+    setPage(next); setEditor(null); setDeleting(null); setDetailsSymbol(null);
     if (section) requestAnimationFrame(() => document.getElementById(section)?.focus());
   }
+  function openInstrument(symbol) { navigate('dashboard'); setDetailsSymbol(symbol); }
   const rows = visibleLevels.filter(level => level.instrument === selected);
   const live = connection?.market_data_mode === 'ZERODHA';
   const shownPrices = prices;
@@ -111,12 +114,13 @@ function App() {
       <aside aria-label="Instrument watchlist">
         <div className="ms-sidehead"><span className="ms-label">Watchlist</span><span className="ms-sub">{instruments.length} indices · {visibleOptionWatchlist(optionWatchlist, today).length} options</span></div>
         <div className="ms-search"><input type="search" aria-label="Search instruments" placeholder="Search instruments" value={search} onChange={event => setSearch(event.target.value)} /></div>
-        <div className="ms-watchlist">{instruments.filter(symbol => symbol.toLowerCase().includes(search.toLowerCase())).map(symbol => <button className="ms-watch" aria-pressed={symbol === selected} key={symbol} disabled={busy} onClick={() => { setSelected(symbol); setEditor(null); }}>
+        <div className="ms-watchlist">{instruments.filter(symbol => symbol.toLowerCase().includes(search.toLowerCase())).map(symbol => <button className="ms-watch" aria-pressed={symbol === selected} key={symbol} disabled={busy} onClick={() => { setSelected(symbol); setEditor(null); if (page === 'dashboard') openInstrument(symbol); }}>
           <span>{symbol}<small>{visibleLevels.filter(level => level.instrument === symbol).length} levels · {viewingAllDates ? 'all dates' : 'today'}</small></span>
           <span className="ms-quote">{formatPrice(shownPrices[symbol]?.price)}<small className={shownPrices[symbol]?.change == null ? '' : shownPrices[symbol].change >= 0 ? 'ms-up' : 'ms-down'}>{formatWatchChange(shownPrices[symbol], live)}</small></span>
         </button>)}</div>
         {levels && !instruments.length && <p className="ms-sidefoot">{viewingAllDates ? 'No saved levels.' : 'No levels for today. Add a daily level in Levels.'}</p>}
         <OptionWatchlist items={optionWatchlist} today={today} search={search} busy={busy} error={errors.optionWatchlist}
+          onOpen={openInstrument}
           onRemove={symbol => mutate(() => request(`/watchlist/options/${encodeURIComponent(symbol)}`, { method: 'DELETE' }))} />
         {errors.action && <p className="ms-sidefoot ms-error" role="alert">{errors.action}</p>}
         <div className="ms-sidefoot">{live ? 'Live Zerodha prices' : 'Simulated prices received by the backend'}<br />{live ? 'Change from previous trading day’s close' : 'Movement since previous submitted tick'}</div>
@@ -128,7 +132,8 @@ function App() {
         {page === 'backtest' && <BacktestPage />}
         {page === 'report' && <PaperReportPage refreshKey={refreshKey} />}
         {page === 'trades' && <TradesPage refreshKey={refreshKey} tradeUpdates={trades} results={entryResults} resultsError={errors.entryResults} onRetry={() => mutate(async () => {})} />}
-        {(page === 'dashboard' || page === 'levels') && <>
+        {page === 'dashboard' && detailsSymbol && <React.Suspense fallback={<p>Loading Instrument Details…</p>}><InstrumentDetails key={detailsSymbol} symbol={detailsSymbol} today={today} prices={prices} chartCandles={liveState.chartCandles} revision={`${refreshKey}-${liveState.chartRevision ?? 0}`} onBack={() => setDetailsSymbol(null)} /></React.Suspense>}
+        {((page === 'dashboard' && !detailsSymbol) || page === 'levels') && <>
         {(errors.levels || errors.events || errors.action) && <div className="ms-error" role="alert">{errors.action || errors.levels || `Trigger status unavailable: ${errors.events}`} <button className="ms-link" disabled={busy} onClick={() => mutate(async () => {})}>Retry refresh</button></div>}
         {page === 'dashboard' && <div className="ms-pricebar"><div className="ms-instrument">{selected || 'No instrument selected'}</div><div><div className="ms-current">{formatPrice(current)}</div><div className="ms-sub">{live ? 'Latest received Zerodha price' : 'Latest simulated price'}</div></div></div>}
         {editor && <LevelForm key={editor.id ?? 'new'} level={editor.id ? editor : null} instrument={selected} instrumentOptions={connection?.available_instruments ?? []} live={live} busy={busy} onCancel={() => setEditor(null)} onSave={data => mutate(async () => {
