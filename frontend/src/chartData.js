@@ -17,7 +17,7 @@ export const markerTypes = {
 
 export const minuteOf = timestamp => Math.floor(new Date(timestamp).getTime() / 60000) * 60;
 export const istTime = timestamp => new Date(timestamp).toLocaleTimeString('en-IN', {
-  timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit',
+  timeZone: 'Asia/Kolkata', hourCycle: 'h23', hour: '2-digit', minute: '2-digit', second: '2-digit',
 });
 export function istEventTime(timestamp) {
   const fraction = String(timestamp).match(/\.\d+/)?.[0] ?? '';
