@@ -32,6 +32,7 @@ from app.option_routes import router as option_router
 from app.settings import OptionSettings
 from app.settings import TradeSettings
 from app.protection_settings import load_protection_settings, router as protection_settings_router
+from app.trading_time_settings import load_trading_time_settings, router as trading_time_settings_router
 from app.option_prices import SimulatedOptionPrices
 from app.paper_executor import PaperExecutor
 from app.trade_repository import TradeRepository
@@ -41,7 +42,7 @@ from app.index_settings import router as index_settings_router
 from app.position_monitor import PositionMonitor
 from app.simulation_flow import SimulationFlow
 from app.trade_events import TradeEventRepository
-from app.trading_time import TradingTimeRules, MarketCloseService, utc_now
+from app.trading_time import MarketCloseService, utc_now
 
 
 def create_app(database_path=None, signal_settings=None,
@@ -68,6 +69,7 @@ def create_app(database_path=None, signal_settings=None,
             raise ValueError('ZERODHA market data requires PAPER execution')
         initialize_database(app.state.database_path, execution_settings.stop_loss_percentage,
                             execution_settings.model_dump())
+        execution_settings = load_trading_time_settings(app.state.database_path, execution_settings)
         execution_settings = load_protection_settings(app.state.database_path, execution_settings)
         levels = LevelRepository(app.state.database_path, current_time)
         app.state.level_repository = levels
@@ -108,7 +110,7 @@ def create_app(database_path=None, signal_settings=None,
         app.state.signal_repository = signal_repository
         app.state.signal_engine = engine
         app.state.level_monitor = monitor
-        rules = TradingTimeRules(execution_settings)
+        rules = executor.time_rules
         positions = PositionMonitor(trade_repository, clock=current_time, time_rules=rules)
         market_close = MarketCloseService(trade_repository, prices, rules, current_time)
         flow = SimulationFlow(monitor, positions, prices, instruments, market_close)
@@ -178,6 +180,7 @@ def create_app(database_path=None, signal_settings=None,
     app.include_router(watchlist_router)
     app.include_router(index_settings_router)
     app.include_router(protection_settings_router)
+    app.include_router(trading_time_settings_router)
     app.include_router(backtest_router)
     app.include_router(connection_router)
     app.include_router(live_router)

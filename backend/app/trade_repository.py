@@ -103,6 +103,7 @@ class TradeRepository:
             watch_trade_closed(trade, timestamp, connection)
             events = TradeEventRepository(self.database_path)
             trigger = {'STOP_LOSS': 'STOP_LOSS_HIT', 'TRAILING_STOP_LOSS': 'STOP_LOSS_HIT',
+                       'MARKET_CLOSE': 'MARKET_CLOSING_EXIT_TRIGGERED',
                        'MARKET_CLOSING_EXIT': 'MARKET_CLOSING_EXIT_TRIGGERED'}.get(reason)
             if trigger:
                 events.record(trade.trade_id, trigger, price, timestamp, connection)

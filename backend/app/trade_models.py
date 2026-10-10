@@ -9,7 +9,7 @@ from app.settings import TradeSettings
 
 ValidityStatus = Literal["VALID", "INVALID_STRATEGY_BUG", "INVALID_DATA_ISSUE",
                          "INVALID_EXECUTION_ISSUE", "MANUAL_REVIEW"]
-ExitReason = Literal['STOP_LOSS', 'TRAILING_STOP_LOSS', 'MARKET_CLOSING_EXIT', 'MANUAL_SQUARE_OFF']
+ExitReason = Literal['STOP_LOSS', 'TRAILING_STOP_LOSS', 'MARKET_CLOSE', 'MARKET_CLOSING_EXIT', 'MANUAL_SQUARE_OFF']
 
 
 class TradeClassification(BaseModel):

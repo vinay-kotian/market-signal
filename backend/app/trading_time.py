@@ -26,7 +26,7 @@ class TradingTimeRules:
         now = self.local(timestamp).time()
         if now < self.settings.trading_start_time:
             return 'BEFORE_TRADING_START'
-        if now > self.settings.new_trade_cutoff_time:
+        if now >= self.settings.new_trade_cutoff_time:
             return 'NEW_TRADE_CUTOFF_REACHED'
         return None
 
@@ -59,7 +59,7 @@ class MarketCloseService:
                 if price is None:
                     # Every existing position has at least its observed entry quote.
                     price = trade.entry_price
-                changed = self.trades.close(trade, price, timestamp, 'MARKET_CLOSING_EXIT', connection) or changed
+                changed = self.trades.close(trade, price, timestamp, 'MARKET_CLOSE', connection) or changed
         if changed and self.on_change:
             self.on_change()
 

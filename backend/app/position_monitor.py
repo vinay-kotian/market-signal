@@ -23,7 +23,7 @@ class PositionMonitor:
             self.trades.record_option_price(tick.instrument, tick.price, timestamp, connection)
             for trade in self.trades.open_for_symbol(tick.instrument, connection):
                 if self.time_rules and self.time_rules.exit_due(trade, timestamp):
-                    self.trades.close(trade, tick.price, timestamp, 'MARKET_CLOSING_EXIT', connection)
+                    self.trades.close(trade, tick.price, timestamp, 'MARKET_CLOSE', connection)
                     continue
                 if trade.settings_snapshot.get('stop_strategy') == 'PROGRESSIVE':
                     self.update_progressive(trade, tick.price, timestamp, connection)

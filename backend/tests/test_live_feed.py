@@ -82,7 +82,7 @@ def test_market_close_without_tick_pushes_exit(tmp_path):
             client.portal.call(client.app.state.market_close.check)
             event = socket.receive_json()
             assert event['type'] == 'TRADE_CLOSED'
-            assert event['data']['exit_reason'] == 'MARKET_CLOSING_EXIT'
+            assert event['data']['exit_reason'] == 'MARKET_CLOSE'
 
 
 def test_rest_reconnect_snapshot_and_cross_client_crud(client):

@@ -47,7 +47,7 @@ class BacktestExecutor(PaperExecutor):
             existing = self.repository.get_by_selection(selection.id, connection)
             if existing:
                 return super().execute(signal, selection, timestamp, connection)
-            rejection = self.time_rules.entry_rejection(timestamp)
+            rejection = self.time_rules.entry_rejection(signal.timestamp) or self.time_rules.entry_rejection(timestamp)
             if rejection:
                 return self.fail(selection, timestamp, rejection, connection)
             if signal.instrument in self.pending or any(
@@ -70,7 +70,7 @@ class BacktestExecutor(PaperExecutor):
 
     def expire_pending(self, timestamp, *, session_end=False):
         for instrument, (signal, selection) in list(self.pending.items()):
-            rejection = self.time_rules.entry_rejection(timestamp)
+            rejection = self.time_rules.entry_rejection(signal.timestamp) or self.time_rules.entry_rejection(timestamp)
             if rejection or session_end:
                 with connect(self.repository.database_path) as connection:
                     self.fail(selection, timestamp, rejection or 'HISTORICAL_OPTION_PRICE_UNAVAILABLE', connection)

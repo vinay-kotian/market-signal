@@ -5,6 +5,7 @@ export const formatPrice = value => value == null ? '—' : value.toLocaleString
 export const formatExitReason = reason => ({
   STOP_LOSS: 'Stop Loss',
   TRAILING_STOP_LOSS: 'Trailing Stop Loss',
+  MARKET_CLOSE: 'Market Close',
   MARKET_CLOSING_EXIT: 'Market Closing Exit',
   MANUAL_SQUARE_OFF: 'Manual Square Off',
 })[reason] ?? reason?.replaceAll('_', ' ') ?? '—';

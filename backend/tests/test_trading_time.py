@@ -29,10 +29,10 @@ def enter(client):
 
 
 @pytest.mark.parametrize('hour,reason', [
-    ('09:14:59', 'BEFORE_TRADING_START'),
-    ('09:15:00', None), ('12:00:00', None), ('15:15:00', None),
-    ('15:15:01', 'NEW_TRADE_CUTOFF_REACHED'),
-    ('15:25:00', 'NEW_TRADE_CUTOFF_REACHED'),
+    ('09:24:59', 'BEFORE_TRADING_START'),
+    ('09:25:00', None), ('12:00:00', None), ('15:19:59', None),
+    ('15:20:00', 'NEW_TRADE_CUTOFF_REACHED'),
+    ('15:27:00', 'NEW_TRADE_CUTOFF_REACHED'),
 ])
 def test_entry_window(tmp_path, hour, reason):
     with TestClient(create_app(tmp_path / 'db', clock=Clock('2026-09-14T' + hour))) as client:
@@ -46,7 +46,7 @@ def test_positions_still_monitored_after_cutoff(tmp_path):
     clock = Clock()
     with TestClient(create_app(tmp_path / 'db', clock=clock)) as client:
         trade, = enter(client)
-        clock.set('2026-09-14T15:16:00')
+        clock.set('2026-09-14T15:21:00')
         publish(client, [105], trade['option_symbol'])
         assert client.get('/trades').json()[0]['status'] == 'OPEN'
         publish(client, [90], trade['option_symbol'])
@@ -61,14 +61,14 @@ def test_market_exit_without_tick_pnl_and_duplicates(tmp_path):
     with TestClient(app) as client:
         trade, = enter(client)
         publish(client, [105], trade['option_symbol'])
-        clock.set('2026-09-14T15:24:59')
+        clock.set('2026-09-14T15:26:59')
         asyncio.run(app.state.market_close.check())
         assert client.get('/trades').json()[0]['status'] == 'OPEN'
-        clock.set('2026-09-14T15:25:00')
+        clock.set('2026-09-14T15:27:00')
         asyncio.run(app.state.market_close.check())
         closed, = client.get('/trades').json()
         assert closed['status'] == 'CLOSED'
-        assert closed['exit_reason'] == 'MARKET_CLOSING_EXIT'
+        assert closed['exit_reason'] == 'MARKET_CLOSE'
         assert closed['exit_price'] == 105
         assert datetime.fromisoformat(closed['exit_time']) == clock()
         assert closed['realised_pnl'] == 5 * trade['quantity']
@@ -93,7 +93,7 @@ def test_restart_closes_overdue_position_using_persisted_quote(tmp_path):
     app = create_app(path, clock=clock)
     with TestClient(app) as client:
         closed, = client.get('/trades').json()
-        assert closed['exit_reason'] == 'MARKET_CLOSING_EXIT'
+        assert closed['exit_reason'] == 'MARKET_CLOSE'
         assert closed['exit_price'] == 105
         events = app.state.trade_events.for_trade(trade['trade_id'])
     with TestClient(create_app(path, clock=clock)) as client:
@@ -106,7 +106,7 @@ def test_event_loop_exits_without_requests(tmp_path):
     app = create_app(tmp_path / 'db', clock=clock)
     with TestClient(app) as client:
         enter(client)
-        clock.set('2026-09-14T15:25:00')
+        clock.set('2026-09-14T15:27:00')
         # Let the lifespan task run without any simulated tick or API request.
         async def wait_for_close():
             for _ in range(60):
@@ -115,17 +115,17 @@ def test_event_loop_exits_without_requests(tmp_path):
                 await asyncio.sleep(0.05)
             pytest.fail('Background mandatory exit did not run')
         asyncio.run(wait_for_close())
-        assert client.get('/trades').json()[0]['exit_reason'] == 'MARKET_CLOSING_EXIT'
+        assert client.get('/trades').json()[0]['exit_reason'] == 'MARKET_CLOSE'
 
 
 def test_deadline_tick_uses_incoming_quote(tmp_path):
     clock = Clock()
     with TestClient(create_app(tmp_path / 'db', clock=clock)) as client:
         trade, = enter(client)
-        clock.set('2026-09-14T15:25:00')
+        clock.set('2026-09-14T15:27:00')
         publish(client, [85], trade['option_symbol'])
         closed, = client.get('/trades').json()
-        assert closed['exit_reason'] == 'MARKET_CLOSING_EXIT'
+        assert closed['exit_reason'] == 'MARKET_CLOSE'
         assert closed['exit_price'] == 85
         assert closed['realised_pnl_percentage'] == -15
 
@@ -150,7 +150,7 @@ def test_failed_event_write_rolls_back_close(tmp_path):
             connection.execute("""CREATE TRIGGER reject_exit BEFORE INSERT ON trade_events
                 WHEN NEW.event_type = 'POSITION_CLOSED'
                 BEGIN SELECT RAISE(ABORT, 'test failure'); END""")
-        clock.set('2026-09-14T15:25:00')
+        clock.set('2026-09-14T15:27:00')
         import sqlite3
         with pytest.raises(sqlite3.IntegrityError):
             asyncio.run(app.state.market_close.check())

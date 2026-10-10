@@ -65,7 +65,7 @@ class PaperExecutor:
                 return fail("LIVE_MODE_NOT_SUPPORTED")
             if self.settings.trade_mode != self.repository.mode:
                 return fail("TRADE_MODE_MISMATCH")
-            time_rejection = self.time_rules.entry_rejection(timestamp)
+            time_rejection = self.time_rules.entry_rejection(signal.timestamp) or self.time_rules.entry_rejection(timestamp)
             if time_rejection:
                 return fail(time_rejection)
             if any(trade.instrument == selection.instrument for trade in self.repository.all_open(connection)):

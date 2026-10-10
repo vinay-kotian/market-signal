@@ -125,7 +125,8 @@ Persist:
 
 Possible exit reasons for this milestone:
 
-`STOP_LOSS`, `TRAILING_STOP_LOSS`, `MARKET_CLOSING_EXIT`, or `MANUAL_SQUARE_OFF`.
+`STOP_LOSS`, `TRAILING_STOP_LOSS`, `MARKET_CLOSE`, or `MANUAL_SQUARE_OFF`
+(historical `MARKET_CLOSING_EXIT` values remain supported).
 Manual square-off is a supported stored reason; there is currently no manual
 square-off action in this milestone.
 
@@ -147,33 +148,40 @@ Duplicate ticks must not create duplicate exit or risk-management events.
 
 ## Trading Times and Mandatory Exit
 
-All configured times are daily Asia/Kolkata wall-clock times:
+Trading Time Configuration is persisted in SQLite and edited in Settings. All
+session times use Asia/Kolkata. Defaults are market open 09:15, market close
+15:30, entry buffer after open 10 minutes, entry buffer before close 10 minutes,
+and mandatory exit buffer before close 3 minutes.
 
-- `trading_start_time`: 09:15 by default.
-- `new_trade_cutoff_time`: 15:15 by default.
-- `mandatory_exit_time`: 15:25 by default.
+The shared rules derive entry start as open plus its buffer, entry cutoff as
+close minus its buffer, and mandatory exit as close minus its buffer. Default
+entries are allowed from 09:25 inclusive until 15:20 exclusive; mandatory exits
+start at 15:27. Validate a positive session and entry window, non-negative entry
+buffers, mandatory exit strictly inside the session, and entry cutoff no later
+than mandatory exit.
 
-New PAPER entries are allowed at or after start and at or before cutoff.
-Outside that window, entry results record `BEFORE_TRADING_START` or
-`NEW_TRADE_CUTOFF_REACHED`. Existing positions still receive stop monitoring.
+Outside the entry window, entry results record `BEFORE_TRADING_START` or
+`NEW_TRADE_CUTOFF_REACHED`. Check both signal and execution timestamps. Blocked
+signals are consumed without queuing. Level, index and option monitoring, stop
+loss, trailing stops and breakeven protection continue normally.
 
 At or after mandatory exit, close all OPEN PAPER positions at the latest
-persisted simulated option quote. The observed entry quote is the fallback
-for legacy positions. Persist normal exit fields and P&L, with exit reason
-`MARKET_CLOSING_EXIT`, plus `MARKET_CLOSING_EXIT_TRIGGERED` and `POSITION_CLOSED`.
-At the deadline, market-close exit takes precedence over stop evaluation.
+persisted option quote, falling back to the observed entry quote for legacy
+positions. Persist normal exit fields and P&L with reason `MARKET_CLOSE` and
+existing audit events `MARKET_CLOSING_EXIT_TRIGGERED` and `POSITION_CLOSED`.
+Historical `MARKET_CLOSING_EXIT` records remain readable. Market-close exits
+precede stop evaluation at the deadline.
 
-Check on startup, every second while running, and after simulated ticks.
-Positions from earlier dates are overdue and close on recovery even before
-that day's trading start. No holiday or market-calendar rules apply.
+Check on startup, every second, after ticks and after time settings are saved.
+Saved changes apply immediately to PAPER, including open positions. Earlier-date
+positions are overdue and close on recovery. No holiday/calendar rules apply.
 Closed trades are never closed again; trade state and exit events commit together.
 
-
-Trading start: 09:15
-New trade cutoff: 15:15
-Mandatory exit: 15:25
-Timezone: Asia/Kolkata
-
+BACKTEST uses these same rules and captures the settings once when a run starts.
+Its persisted configuration snapshot includes the session and buffers; later
+Settings changes cannot alter an active replay. Only ticks within that captured
+market session are replayed. Mandatory exits fill at the first valid option
+observation at or after the deadline, without using a stale historical quote.
 
 ## Paper Trading Reporting
 

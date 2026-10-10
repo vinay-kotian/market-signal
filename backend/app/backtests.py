@@ -2,12 +2,12 @@
 import hashlib
 import json
 import logging
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Literal, Optional
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi import APIRouter, HTTPException, Request, Depends, Body
 from pydantic import AwareDatetime, Field, model_validator
 
 from app.date_range import date_filters, timestamp_scope
@@ -24,7 +24,7 @@ from app.models import LevelInput
 from app.option_repository import OptionSelectionRepository
 from app.option_selector import OptionSelector
 from app.position_monitor import PositionMonitor
-from app.settings import TradeSettings, SignalSettings, OptionSettings
+from app.settings import TradeSettings, SignalSettings, OptionSettings, LEGACY_TIME_BUFFERS
 from app.signal_engine import SignalEngine
 from app.signal_repository import SignalRepository
 from app.trade_events import TradeEventRepository
@@ -60,8 +60,6 @@ class BacktestInput(TradeSettings, SignalSettings, OptionSettings):
         for timestamp in (self.start_time, self.end_time):
             if timestamp and timestamp.astimezone(TradingTimeRules.timezone).date() != self.trading_date:
                 raise ValueError('Range timestamps must belong to the selected Asia/Kolkata trading date')
-        if not time(9, 15) <= self.trading_start_time <= self.new_trade_cutoff_time < self.mandatory_exit_time <= time(15, 30):
-            raise ValueError('Trading rules must fit within the 09:15–15:30 session')
         return self
 
 
@@ -88,8 +86,8 @@ class BacktestRunner:
             bundle = HistoricalDataset(contracts=config.contracts, ticks=config.dataset)
         else:
             bundle = self.data_source.load(config.trading_date, config.instrument)
-        session_start = datetime.combine(config.trading_date, time(9, 15), TradingTimeRules.timezone)
-        session_end = datetime.combine(config.trading_date, time(15, 30), TradingTimeRules.timezone)
+        session_start = datetime.combine(config.trading_date, config.market_open_time, TradingTimeRules.timezone)
+        session_end = datetime.combine(config.trading_date, config.market_close_time, TradingTimeRules.timezone)
         if any(row.timestamp.astimezone(TradingTimeRules.timezone).date() != config.trading_date for row in bundle.ticks):
             raise ValueError('All ticks must belong to the selected Asia/Kolkata trading date')
         if any(c.instrument != config.instrument for c in bundle.contracts):
@@ -153,7 +151,7 @@ class BacktestRunner:
             monitor = LevelMonitor(levels, SignalEngine(signal_settings), clock,
                 signal_repository=SignalRepository(path), option_selector=OptionSelector(instruments),
                 option_settings=option_settings, option_repository=OptionSelectionRepository(path), paper_executor=executor)
-            rules = TradingTimeRules(settings)
+            rules = executor.time_rules
             positions = PositionMonitor(trades, clock, rules)
             timeline.record('MARKET_OPEN', dict(instrument=config.instrument, data_source=bundle.source), timestamp=session_start)
 
@@ -268,12 +266,17 @@ def list_backtests(request: Request, filters: dict = Depends(date_filters)):
 
 
 @router.post('/backtests/run', status_code=201)
-async def run_backtest(config: BacktestInput, request: Request):
+async def run_backtest(request: Request, config: dict = Body(...)):
     try:
         # Only explicitly supplied fields override the current application snapshot.
         current = current_snapshot(request.app.state)
-        overrides = config.model_dump(mode='json', exclude_unset=True)
-        current['index_settings'].update(overrides.pop('index_settings', {}))
+        # Validate after merging: partial time overrides depend on the saved session.
+        overrides = TradeSettings.preserve_legacy_configuration(config)
+        for legacy, buffer in LEGACY_TIME_BUFFERS.items():
+            if legacy in overrides and buffer not in overrides:
+                current.pop(buffer, None)
+        if isinstance(overrides.get('index_settings'), dict):
+            overrides = {**overrides, 'index_settings': {**current['index_settings'], **overrides['index_settings']}}
         config = BacktestInput.model_validate({**current, **overrides})
         return await request.app.state.backtest_runner.run(config)
     except ValueError as error:

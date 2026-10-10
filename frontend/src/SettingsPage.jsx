@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { request } from './api';
 import ConnectionPage from './ConnectionPage';
+import TradingTimeSettings from './TradingTimeSettings';
 
 export default function SettingsPage({ indexes, error, onRefresh, connection, connectionError, feedStatus, lastUiEvent }) {
   return <div className="ms-settings">
+    <TradingTimeSettings />
     <ProtectionSettings />
     <section aria-label="Index Rules">
       <h3 className="ms-sectionhead">Index Rules</h3>

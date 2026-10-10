@@ -31,7 +31,7 @@ def dataset(option_ticks=(), *, close=True, entry=True):
         rows.append(tick('10:01:01', SYMBOL, 100))
     rows.extend(tick(time, SYMBOL, price) for time, price in option_ticks)
     if close:
-        rows.append(tick('15:25:05', SYMBOL, 100))
+        rows.append(tick('15:27:05', SYMBOL, 100))
     return rows
 
 
@@ -176,13 +176,13 @@ def test_progressive_dynamic_trailing_step(client):
 
 
 def test_mandatory_exit_uses_first_post_deadline_quote(client):
-    result = run(client, dataset([('10:02:00', 105), ('15:24:59', 109), ('15:26:00', 200)], close=False))
+    result = run(client, dataset([('10:02:00', 105), ('15:26:59', 109), ('15:28:00', 200)], close=False))
     trade, = result['trades']
     assert trade['exit_price'] == 200
-    assert trade['exit_time'] == f'{DATE}T15:26:00+05:30'
-    assert trade['exit_reason'] == 'MARKET_CLOSING_EXIT'
+    assert trade['exit_time'] == f'{DATE}T15:28:00+05:30'
+    assert trade['exit_reason'] == 'MARKET_CLOSE'
     event, = [e for e in result['timeline'] if e['event_type'] == 'MANDATORY_EXIT']
-    assert event['timestamp'] == f'{DATE}T15:25:00+05:30'
+    assert event['timestamp'] == f'{DATE}T15:27:00+05:30'
     assert event['payload'].get('option_price') is None  # Not the earlier 109 or future 200.
 
 
@@ -224,7 +224,7 @@ def test_zero_quote_cannot_fill_entry(client):
     assert any(e['event_type'] == 'ZERO_OPTION_QUOTE' for e in result['timeline'])
 
 
-@pytest.mark.parametrize('timestamp,reason', [('10:02:00', 'STOP_LOSS'), ('15:25:00', 'MARKET_CLOSING_EXIT')])
+@pytest.mark.parametrize('timestamp,reason', [('10:02:00', 'STOP_LOSS'), ('15:27:00', 'MARKET_CLOSE')])
 def test_zero_option_quote_closes_like_paper(client, timestamp, reason):
     result = run(client, dataset([(timestamp, 0)]))
     assert result['trades'][0]['exit_price'] == 0
@@ -346,7 +346,7 @@ def test_banknifty_date_levels_contract_and_lot_size(client):
 
 
 def test_entry_cutoff_boundary_is_shared(client):
-    result = run(client, dataset(), new_trade_cutoff_time='10:01:01')
+    result = run(client, dataset(), new_trade_cutoff_time='10:01:02')
     assert result['trades'][0]['entry_time'] == f'{DATE}T10:01:01+05:30'
     result = run(client, dataset(), new_trade_cutoff_time='10:01:00')
     assert result['total_trades'] == 0

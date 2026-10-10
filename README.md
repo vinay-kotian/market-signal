@@ -618,18 +618,43 @@ and shows breakeven status as Waiting, Active, or Disabled.
 
 ## Daily paper-trading window
 
-Set these environment variables before starting the backend (Asia/Kolkata):
+Settings → **Trading Time Configuration** controls the daily Asia/Kolkata session:
 
-```sh
-export TRADING_START_TIME=09:15
-export NEW_TRADE_CUTOFF_TIME=15:15
-export MANDATORY_EXIT_TIME=15:25
-```
+| Setting | Default |
+| --- | --- |
+| Market open | 09:15 |
+| Market close | 15:30 |
+| Entry block after open | 10 minutes |
+| Entry block before close | 10 minutes |
+| Mandatory exit before close | 3 minutes |
 
-These are the defaults. Start and cutoff are inclusive; settings must satisfy
-start <= cutoff < mandatory exit. Outside the entry window, signals and option
-selections can still be evaluated, but no new paper trade is created. Entry
-failures are visible on the Trades page. Existing positions remain monitored.
+The read-only preview updates while editing. Defaults allow entries from 09:25
+(inclusive) until 15:20 (exclusive), with mandatory exit starting at 15:27.
+`GET /settings/trading-time` returns configuration, timezone, and calculated
+windows. `PUT /settings/trading-time` validates and persists the five fields in
+the existing SQLite database; invalid combinations return 422 without saving.
+Entry buffers must leave a positive window, and mandatory exit must fall inside
+the session and must not precede the entry cutoff.
+
+Saved settings override environment defaults after a restart and apply immediately
+to PAPER entries and exit monitoring, including open positions. Moving an exit
+deadline earlier triggers a check when saving. Existing positions keep their
+risk/protection snapshots. Signals and option selection continue outside the
+entry window; rejected signals are consumed, never queued for later execution.
+Both signal and execution timestamps must fall inside the entry window.
+
+Environment defaults use `MARKET_OPEN_TIME`, `MARKET_CLOSE_TIME`,
+`ENTRY_BLOCK_AFTER_OPEN_MINUTES`, `ENTRY_BLOCK_BEFORE_CLOSE_MINUTES`, and
+`MANDATORY_EXIT_BEFORE_CLOSE_MINUTES`. Older absolute-time inputs
+(`TRADING_START_TIME`, `NEW_TRADE_CUTOFF_TIME`, `MANDATORY_EXIT_TIME`) remain
+accepted and translate into buffers when corresponding new values are absent.
+
+Backtests capture the saved session and buffers at run start and save them with
+results and trade snapshots. Each replay owns its rules; Settings changes cannot
+alter a running backtest. Replay bounds use the configured open/close times.
+Historical mandatory exits await the first recorded option quote at or after
+the deadline, with missing quotes reported as data gaps. New mandatory exits use
+`MARKET_CLOSE`; historical `MARKET_CLOSING_EXIT` rows remain readable and unchanged.
 
 `app/trading_time.py` owns the clock rules and an asyncio mandatory-exit task.
 It checks at startup and every second, with an additional check after ticks.
@@ -642,7 +667,7 @@ Latest simulated option quotes are saved in SQLite's `simulated_option_quotes`
 table and restored at startup. Mandatory exits use that quote (the observed
 entry price is the fallback for legacy trades). The exit and both trade events
 are one transaction. Failed periodic checks are logged and retried. The Trades
-page displays **Market closing exit** with its normal realised P&L.
+page displays **Market Close** with its normal realised P&L.
 
 Run verification:
 
@@ -750,7 +775,7 @@ returns a descriptive 422. Invalid catalogue/date/symbol data also returns 422.
 Replay is chronological, using a historical Asia/Kolkata clock and the shared
 `LevelMonitor`, `SignalEngine`, `OptionSelector`, PAPER entry construction,
 `TradingTimeRules`, `PositionMonitor` and progressive/legacy protection logic.
-Equal-time observations preserve source order. Only 09:15–15:30 ticks from the
+Equal-time observations preserve source order. Only ticks within the captured market-open/market-close session from the
 selected date are replayed. `BacktestExecutor` reserves an instrument until the
 first valid positive option quote at or after the signal. The shared executor
 now enforces the requested single active trade per instrument in both PAPER and
