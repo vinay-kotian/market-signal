@@ -2,9 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { request } from './api';
 import ConnectionPage from './ConnectionPage';
 import TradingTimeSettings from './TradingTimeSettings';
+import TelegramSettings from './TelegramSettings';
 
 export default function SettingsPage({ indexes, error, onRefresh, connection, connectionError, feedStatus, lastUiEvent }) {
   return <div className="ms-settings">
+    <TelegramSettings />
     <TradingTimeSettings />
     <ProtectionSettings />
     <section aria-label="Index Rules">

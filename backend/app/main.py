@@ -43,6 +43,7 @@ from app.position_monitor import PositionMonitor
 from app.simulation_flow import SimulationFlow
 from app.trade_events import TradeEventRepository
 from app.trading_time import MarketCloseService, utc_now
+from app.telegram_notifications import TelegramNotifications, router as telegram_router
 
 
 def create_app(database_path=None, signal_settings=None,
@@ -150,11 +151,17 @@ def create_app(database_path=None, signal_settings=None,
                     logging.getLogger(__name__).warning('Zerodha instrument sync failed; retry from Connection settings')
             app.state.zerodha_task = asyncio.create_task(app.state.market_data_provider.run())
         await market_close.check()
+        app.state.telegram_notifications = TelegramNotifications(app.state.database_path)
+        telegram_task = asyncio.create_task(app.state.telegram_notifications.run())
         close_task = asyncio.create_task(market_close.run())
         expiry_task = asyncio.create_task(monitor.run_expiry_checks())
         try:
             yield
         finally:
+            telegram_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await telegram_task
+            await app.state.telegram_notifications.close()
             expiry_task.cancel()
             with suppress(asyncio.CancelledError):
                 await expiry_task
@@ -177,6 +184,7 @@ def create_app(database_path=None, signal_settings=None,
     app.include_router(signals_router)
     app.include_router(option_router)
     app.include_router(trade_router)
+    app.include_router(telegram_router)
     app.include_router(watchlist_router)
     app.include_router(index_settings_router)
     app.include_router(protection_settings_router)

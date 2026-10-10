@@ -1185,6 +1185,33 @@ multiline text. Formula-like text gets a leading apostrophe for spreadsheet
 safety; numeric losses remain numeric. Trading execution and calculations are
 unchanged.
 
+### Telegram option entry alerts
+
+**Settings → Telegram notifications → Telegram option entry alerts** switches
+entry messages on/off immediately. The setting is saved in SQLite and defaults
+to **off**. `GET /api/settings/telegram` returns `{"enabled": false}`;
+`PUT /api/settings/telegram` accepts `{"enabled": true}` or `{"enabled": false}`
+(local backend URLs omit `/api`, as with other settings).
+
+Each new PAPER option entry while enabled sends `POST` to
+`https://jayantpanhalkar.pythonanywhere.com/api/telegram` with JSON
+`{"message": "..."}`. Messages include the trade ID, index, touched level,
+direction, option symbol/type/strike/expiry, entry premium, lots/quantity, entry
+value, initial stop premium, entry time in Asia/Kolkata, signal/selection IDs
+and strategy version. BACKTEST trades and unsuccessful entries never notify.
+
+The alert is queued in the trade transaction and becomes deliverable only after
+commit. One background asyncio worker sends alerts, with a 10-second timeout
+and up to three attempts (30- and 60-second retry delays). Relay errors do not
+affect trading; delivery requires a successful HTTP response with `sent: true`.
+Pending alerts survive restarts, and sent alerts are not replayed. Turning off
+cancels pending alerts, and entries made while off are not replayed when enabled.
+An HTTP request already in flight may still arrive after disabling. The relay
+does not expose an idempotency key, so a timeout or crash after remote acceptance
+can cause a repeated message on retry; trade IDs allow reconciliation.
+
+Tests use a mocked relay and do not send messages to the real channel.
+
 
 ## Progressive trailing stop (strategy 1.3.0)
 

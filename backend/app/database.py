@@ -26,6 +26,8 @@ def connect(database_path, *, check_same_thread=True):
 def initialize_database(database_path, stop_loss_percentage=10, trade_settings=None):
     with connect(database_path) as connection:
         connection.execute('BEGIN IMMEDIATE')
+        from app.telegram_notifications import initialize_notifications
+        initialize_notifications(connection)
         initialize_trades(connection, stop_loss_percentage)
         initialize_trailing(connection, trade_settings or {})
         initialize_trade_metadata(connection)

@@ -34,7 +34,7 @@ class TradeRepository:
             # Column names come only from the fixed model, never from request data.
             columns = ', '.join(values)
             placeholders = ', '.join('?' for _ in values)
-            connection.execute(
+            inserted = connection.execute(
                 f"INSERT INTO trades ({columns}) VALUES ({placeholders}) "
                 "ON CONFLICT(option_selection_id) DO NOTHING", tuple(values.values()),
             )
@@ -44,6 +44,9 @@ class TradeRepository:
             TradeEventRepository(self.database_path).record(
                 trade.trade_id, 'POSITION_OPENED', trade.entry_price, trade.entry_time, connection,
             )
+            if inserted.rowcount:
+                from app.telegram_notifications import enqueue_entry
+                enqueue_entry(connection, trade)
             return trade
 
     def open_for_symbol(self, symbol, connection):
