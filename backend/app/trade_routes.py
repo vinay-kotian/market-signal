@@ -7,6 +7,7 @@ from app.paper_report import PaperReportingService, PaperTradingReport
 
 from app.trade_models import Trade, TradeEntryResult, TradeClassification, BulkTradeClassification
 from app.trade_events import TradeEvent
+from app.date_range import date_filters
 
 
 router = APIRouter(tags=["paper trades"])
@@ -23,8 +24,8 @@ def list_entry_results(request: Request):
 
 
 @router.get('/trades/{trade_id}/events', response_model=list[TradeEvent])
-def trade_events(trade_id: int, request: Request):
-    return request.app.state.trade_events.for_trade(trade_id)
+def trade_events(trade_id: int, request: Request, filters: dict = Depends(date_filters)):
+    return request.app.state.trade_events.for_trade(trade_id, **filters)
 
 
 class TradeHistory(BaseModel):

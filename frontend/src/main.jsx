@@ -45,7 +45,6 @@ function App() {
     const failures = {};
     await Promise.all([
       ['/settings/indexes', 'indexes'], ['/connection', 'connection'], ['/levels', 'levels'], ['/simulation/events', 'events'],
-      ['/signals', 'signals'], ['/option-selections', 'selections'],
       ['/trades', 'trades'], ['/trade-entry-results', 'entryResults'],
       ['/watchlist/options', 'optionWatchlist'],
     ].map(async ([path, key]) => {
@@ -129,7 +128,7 @@ function App() {
         <nav aria-label="Pages">{['dashboard', 'levels', 'trades', 'report', 'backtest', 'settings'].map(name => <button className="ms-tab" key={name} aria-pressed={page === name} disabled={busy} onClick={() => navigate(name)}>{name[0].toUpperCase() + name.slice(1)}</button>)}</nav>
         <div className="ms-heading"><h2>{page[0].toUpperCase() + page.slice(1)}</h2><div className="ms-actions"><button className="ms-link" disabled={busy} onClick={() => mutate(async () => {})}>Refresh</button>{(page === 'dashboard' || page === 'levels') && <button className="ms-button" disabled={busy} onClick={() => page === 'dashboard' ? navigate('levels') : setEditor({})}>{page === 'dashboard' ? 'Manage levels ↗' : '+ Add level'}</button>}</div></div>
         {page === 'settings' && <SettingsPage indexes={liveState.indexes} error={errors.indexes} onRefresh={refresh} connection={connection} connectionError={errors.connection} feedStatus={feedStatus} lastUiEvent={lastUiEvent} />}
-        {page === 'backtest' && <BacktestPage />}
+        {page === 'backtest' && <BacktestPage refreshKey={refreshKey} />}
         {page === 'report' && <PaperReportPage refreshKey={refreshKey} />}
         {page === 'trades' && <TradesPage refreshKey={refreshKey} tradeUpdates={trades} results={entryResults} resultsError={errors.entryResults} onRetry={() => mutate(async () => {})} />}
         {page === 'dashboard' && detailsSymbol && <React.Suspense fallback={<p>Loading Instrument Details…</p>}><InstrumentDetails key={detailsSymbol} symbol={detailsSymbol} today={today} prices={prices} chartCandles={liveState.chartCandles} revision={`${refreshKey}-${liveState.chartRevision ?? 0}`} onBack={() => setDetailsSymbol(null)} /></React.Suspense>}
@@ -172,8 +171,8 @@ function App() {
             <div className="ms-fields"><label>Instrument<select value={selected} disabled={busy || !instruments.length} onChange={event => setSelected(event.target.value)}>{!instruments.length && <option value="">Add a level first</option>}{instruments.map(symbol => <option key={symbol}>{symbol}</option>)}</select></label><label>Simulated price<input required type="number" step="any" value={tickPrice} onChange={event => setTickPrice(event.target.value)} /></label><button className="ms-button ms-primary" disabled={busy || !selected}>{busy ? 'Processing…' : 'Send Tick →'}</button></div>
             <div className="ms-message" role="status">{message}</div>
           </form>}
-          <SignalsTable signals={signals} today={today} />
-          <OptionSelectionsTable selections={selections} error={errors.selections} onRetry={() => mutate(async () => {})} />
+          <SignalsTable signals={signals} refreshKey={refreshKey} />
+          <OptionSelectionsTable selections={selections} tradeUpdates={trades} refreshKey={refreshKey} />
         </>}
         </>}
       </main>

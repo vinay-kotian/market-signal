@@ -5,6 +5,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel
 
 from app.database import connect
+from app.date_range import timestamp_scope
 
 
 class TradeEvent(BaseModel):
@@ -39,9 +40,11 @@ class TradeEventRepository:
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING""",
             (trade_id, event_type, price, timestamp.isoformat(), previous_stop, current_stop, *metadata))
 
-    def for_trade(self, trade_id, connection=None):
+    def for_trade(self, trade_id, connection=None, from_date=None, to_date=None):
         context = connect(self.database_path) if connection is None else nullcontext(connection)
         with context as connection:
+            clauses, values = timestamp_scope(connection, 'timestamp', from_date, to_date)
+            where = ' AND ' + ' AND '.join(clauses) if clauses else ''
             return [TradeEvent(**dict(row)) for row in connection.execute(
-                'SELECT * FROM trade_events WHERE trade_id = ? ORDER BY julianday(timestamp), id', (trade_id,)
+                f'SELECT * FROM trade_events WHERE trade_id = ?{where} ORDER BY utc_timestamp(timestamp), id', (trade_id, *values)
             ).fetchall()]

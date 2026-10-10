@@ -1,3 +1,4 @@
+import { rangeError as reportRangeError } from './dateRange.js';
 import { tradingDate } from './format.js';
 import { request } from './api.js';
 
@@ -6,11 +7,7 @@ export function defaultReportRange(now = new Date()) {
   return { fromDate: today, toDate: today };
 }
 
-export function reportRangeError({ fromDate, toDate }) {
-  if (!fromDate || !toDate) return 'Choose both From Date and To Date.';
-  if (fromDate > toDate) return 'From Date cannot be after To Date.';
-  return '';
-}
+export { rangeError as reportRangeError } from './dateRange.js';
 
 function reportQuery(filters) {
   const error = reportRangeError(filters);

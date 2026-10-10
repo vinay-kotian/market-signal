@@ -1,3 +1,6 @@
+import { useDateRange } from './useDateRange';
+import DateRangeFilter from './DateRangeFilter';
+import { rangeQuery } from './dateRange';
 import React, { useEffect, useState } from 'react';
 import { request } from './api';
 import { formatPrice, formatExitReason } from './format';
@@ -6,7 +9,7 @@ import { supportedIndices } from './indices';
 
 const localTime = value => value ? new Date(value).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false }) : '—';
 
-export default function BacktestPage() {
+export default function BacktestPage({ refreshKey }) {
   const [instrument, setInstrument] = useState('NIFTY');
   const [date, setDate] = useState('2026-09-14');
   const [levels, setLevels] = useState('25000');
@@ -14,7 +17,9 @@ export default function BacktestPage() {
   const [dataset, setDataset] = useState(null);
   const [fileName, setFileName] = useState('');
   const [settings, setSettings] = useState(null);
-  const [runs, setRuns] = useState([]);
+  const [runs, setRuns] = useState(null);
+  const [range, setRange] = useDateRange();
+  const [historyRevision, setHistoryRevision] = useState(0), [historyError, setHistoryError] = useState('');
   const [result, setResult] = useState(null);
   const [selectedTrade, setSelectedTrade] = useState('');
   const [busy, setBusy] = useState(false);
@@ -23,11 +28,18 @@ export default function BacktestPage() {
 
   useEffect(() => {
     let active = true;
-    Promise.all([request('/backtests/settings'), request('/backtests')]).then(([snapshot, history]) => {
-      if (active) { setSettings(snapshot); setRuns(history); }
-    }).catch(error => { if (active) setError(error.message); });
+    request('/backtests/settings').then(snapshot => { if (active) setSettings(snapshot); }).catch(error => { if (active) setError(error.message); });
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setRuns(null); setHistoryError('');
+    request(`/backtests?${rangeQuery(range)}`, { signal: controller.signal })
+      .then(history => { if (!controller.signal.aborted) setRuns(history); })
+      .catch(error => { if (!controller.signal.aborted) setHistoryError(error.message); });
+    return () => controller.abort();
+  }, [range.fromDate, range.toDate, historyRevision, refreshKey]);
 
   async function run(event) {
     event.preventDefault(); setError('');
@@ -43,7 +55,7 @@ export default function BacktestPage() {
       }) });
       setResult(response);
       setSettings(response.settings_snapshot);
-      setRuns(await request('/backtests'));
+      setHistoryRevision(value => value + 1);
     } catch (error) { setError(error.message); }
     finally { setBusy(false); }
   }
@@ -85,13 +97,19 @@ export default function BacktestPage() {
         <button className="ms-button ms-primary" type="submit">{busy ? 'Running…' : 'Run Backtest'}</button>
       </fieldset>
     </form>
+    <div className="ms-sectionhead">Run history</div>
+    <DateRangeFilter range={range} onApply={setRange} />
+    <button type="button" className="ms-link" onClick={() => setHistoryRevision(value => value + 1)}>Refresh run history</button>
+    {historyError && <p className="ms-error" role="alert">{historyError}</p>}
+    {runs === null && !historyError && <p role="status">Loading run history…</p>}
+    {runs?.length === 0 && <p>No backtest runs created in the selected date range.</p>}
     <label>Saved runs<select disabled={busy} value={result?.id ?? ''} onChange={async event => {
       if (!event.target.value) return;
       setBusy(true); setError('');
       try { const saved = await request(`/backtests/${event.target.value}`); setResult(saved); setSettings(saved.settings_snapshot); setSelectedTrade(''); }
       catch (error) { setError(error.message); }
       finally { setBusy(false); }
-    }}><option value="">Select a run</option>{runs.map(run => <option key={run.id} value={run.id}>{run.trading_date ?? 'Legacy run'} · {run.instrument} · {run.status} · {run.id.slice(0, 8)}</option>)}</select></label>
+    }}><option value="">Select a run</option>{(runs ?? []).map(run => <option key={run.id} value={run.id}>{run.trading_date ?? 'Legacy run'} · {run.instrument} · {run.status} · {run.id.slice(0, 8)}</option>)}</select></label>
     {error && <p className="ms-error" role="alert">{error}</p>}
     {busy && <p role="status">Loading backtest…</p>}
     {result && <BacktestResults result={result} selectedTrade={selectedTrade} setSelectedTrade={setSelectedTrade} />}

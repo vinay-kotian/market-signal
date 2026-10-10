@@ -1,6 +1,6 @@
 """Read-only instrument details, scoped to PAPER records and the configured feed."""
 import json
-from datetime import date as Date, datetime, time, timedelta
+from datetime import date as Date, time
 from typing import Literal
 
 import httpx
@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from app.chart_data import IST, session_bounds, parse_timestamp
 from app.database import connect
+from app.date_range import timestamp_scope
 from app.indices import SUPPORTED_INDICES
 from app.trade_models import Trade
 from app.trading_date import trading_date
@@ -38,19 +39,14 @@ def identity(state, value):
     raise HTTPException(404, 'Unknown instrument or PAPER option contract')
 
 
-def day_bounds(day):
-    start = datetime.combine(day, time(), IST)
-    return start.isoformat(), (start + timedelta(days=1)).isoformat()
-
-
 def associated_trades(state, item, day):
-    start, end = day_bounds(day)
     column = 'instrument' if item['instrument_type'] == 'INDEX' else 'option_symbol'
     with connect(state.database_path) as c:
+        _, (start, end) = timestamp_scope(c, 'entry_time', day, day)
         return [Trade(**dict(row)).model_dump(mode='json') for row in c.execute(f'''
             SELECT * FROM trades WHERE trade_mode='PAPER' AND {column}=?
-            AND julianday(entry_time)<julianday(?)
-            AND (exit_time IS NULL OR julianday(exit_time)>=julianday(?)) ORDER BY trade_id''',
+            AND utc_timestamp(entry_time) < ?
+            AND (exit_time IS NULL OR utc_timestamp(exit_time) >= ?) ORDER BY trade_id''',
             (item['symbol'], end, start))]
 
 
@@ -108,18 +104,18 @@ async def candles(instrument: str, request: Request, date: Date, interval: Liter
 async def events(instrument: str, request: Request, date: Date):
     state = request.app.state
     item = identity(state, instrument)
-    start, end = day_bounds(date)
     result = []
     with connect(state.database_path) as c:
+        _, (start, end) = timestamp_scope(c, 'timestamp', date, date)
         # BACKTEST normally lives in a separate DB. Also defend against imported rows.
         signals = [dict(row) for row in c.execute('''SELECT s.* FROM signals s
-            WHERE instrument=? AND julianday(timestamp)>=julianday(?) AND julianday(timestamp)<julianday(?)
+            WHERE instrument=? AND utc_timestamp(timestamp) >= ? AND utc_timestamp(timestamp) < ?
             AND NOT EXISTS (SELECT 1 FROM trades t WHERE t.signal_id=s.id AND t.trade_mode='BACKTEST')
             ORDER BY julianday(timestamp),id''', (item['instrument'], start, end))]
         signal_ids = {s['id'] for s in signals}
         if item['instrument_type'] == 'INDEX':
             for row in c.execute('''SELECT * FROM chart_events WHERE instrument=?
-                AND julianday(timestamp)>=julianday(?) AND julianday(timestamp)<julianday(?) ORDER BY id''',
+                AND utc_timestamp(timestamp) >= ? AND utc_timestamp(timestamp) < ? ORDER BY id''',
                 (item['instrument'], start, end)):
                 data = json.loads(row['data'])
                 if data.get('signal_id') is not None and data['signal_id'] not in signal_ids:
@@ -153,7 +149,7 @@ async def events(instrument: str, request: Request, date: Date):
                     realised_pnl_percentage=trade['realised_pnl_percentage'], duration_seconds=duration, **metadata))
             for row in c.execute('''SELECT * FROM trade_events WHERE trade_id=? AND reconstructed=0
                 AND event_type NOT IN ('POSITION_OPENED','POSITION_CLOSED')
-                AND julianday(timestamp)>=julianday(?) AND julianday(timestamp)<julianday(?) ORDER BY id''',
+                AND utc_timestamp(timestamp) >= ? AND utc_timestamp(timestamp) < ? ORDER BY id''',
                 (trade['trade_id'], start, end)):
                 result.append({**dict(row), 'id': f"protection-{row['id']}", **metadata})
     result.sort(key=lambda event: (parse_timestamp(event['timestamp']), event['id']))

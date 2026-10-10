@@ -1,41 +1,41 @@
+import { useDateRange } from './useDateRange';
+import DateRangeFilter from './DateRangeFilter';
+import { presetRange, rangeQuery } from './dateRange';
 import React, { useEffect, useState } from 'react';
 import { request } from './api';
-import { formatPrice, tradingDate } from './format';
+import { formatPrice } from './format';
 
-export default function SignalsTable({ signals, today = tradingDate() }) {
-  const [dateMode, setDateMode] = useState('TODAY');
-  const [customDate, setCustomDate] = useState(today);
+export default function SignalsTable({ signals, refreshKey }) {
+  const [range, setRange] = useDateRange();
   const [instrument, setInstrument] = useState('');
   const [instrumentDraft, setInstrumentDraft] = useState('');
   const [result, setResult] = useState('');
   const [rows, setRows] = useState(null);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
-  const date = dateMode === 'TODAY' ? today : dateMode === 'CUSTOM' ? customDate : '';
   useEffect(() => {
     const controller = new AbortController();
     setRows(null); setError('');
-    const query = new URLSearchParams();
-    if (date) query.set('signal_date', date);
+    const query = rangeQuery(range);
     if (instrument) query.set('instrument', instrument);
     if (result) query.set('valid', result === 'VALID' ? 'true' : 'false');
     request(`/signals?${query}`, { signal: controller.signal })
       .then(data => { if (!controller.signal.aborted) setRows(data); })
       .catch(error => { if (!controller.signal.aborted) setError(error.message); });
     return () => controller.abort();
-  }, [date, instrument, result, signals, retry]);
+  }, [range.fromDate, range.toDate, instrument, result, signals, retry, refreshKey]);
   const onRetry = () => setRetry(value => value + 1);
   return <section className="ms-signals" aria-label="Recent signals">
     <div className="ms-sectionhead"><span>Recent signals</span><span className="ms-sub">Latest 100 matches · newest first</span></div>
     <form className="ms-signal-filters" onSubmit={event => { event.preventDefault(); setInstrument(instrumentDraft.trim().toUpperCase()); }}>
-      <label>Date<select value={dateMode} onChange={event => setDateMode(event.target.value)}><option value="TODAY">Today</option><option value="ALL">All dates</option><option value="CUSTOM">Choose date</option></select></label>
-      {dateMode === 'CUSTOM' && <label>Trading date<input type="date" required value={customDate} onChange={event => { if (event.target.value) setCustomDate(event.target.value); }} /></label>}
+      <DateRangeFilter label="Date" range={range} onApply={setRange} />
       <label>Instrument<input value={instrumentDraft} onChange={event => setInstrumentDraft(event.target.value)} placeholder="All instruments" /></label>
       <label>Result<select value={result} onChange={event => setResult(event.target.value)}><option value="">All results</option><option value="VALID">Valid</option><option value="REJECTED">Rejected</option></select></label>
-      <button className="ms-button" type="submit">Apply</button>
-      <button className="ms-link" type="button" onClick={() => { setDateMode('TODAY'); setInstrument(''); setInstrumentDraft(''); setResult(''); }}>Reset</button>
-      <span className="ms-sub">Asia/Kolkata{instrument ? ` · ${instrument}` : ''}</span>
+      <div className="ms-filter-actions"><button className="ms-button" type="submit">Apply</button>
+      <button className="ms-link" type="button" onClick={() => { setRange(presetRange(), 'TODAY'); setInstrument(''); setInstrumentDraft(''); setResult(''); }}>Reset</button>
+      </div>
     </form>
+    <p className="ms-sub ms-filter-note">Asia/Kolkata{instrument ? ` · ${instrument}` : ''}</p>
     {error && <div className="ms-error" role="alert">Signals unavailable. {error} <button className="ms-link" onClick={onRetry}>Retry</button></div>}
     {rows === null && !error ? <p className="ms-sub">Loading signals…</p> :
       <div className="ms-tablewrap"><table>

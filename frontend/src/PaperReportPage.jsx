@@ -1,16 +1,17 @@
+import { useDateRange } from './useDateRange';
 import React, { useEffect, useState } from 'react';
 import { supportedIndices } from './indices';
 import { request } from './api';
 import { formatPrice, formatExitReason } from './format';
-import DateRangeFields from './DateRangeFields';
+import DateRangeFilter from './DateRangeFilter';
 import BulkTradeClassification from './BulkTradeClassification';
 import { validityStatuses } from './bulkClassification';
-import { defaultReportRange, reportRangeError, loadReport } from './reportFilters';
+import { reportRangeError, loadReport } from './reportFilters';
 
 export default function PaperReportPage({ refreshKey }) {
   const [view, setView] = useState('STRATEGY');
   const [report, setReport] = useState(null);
-  const [range, setRange] = useState(defaultReportRange);
+  const [range, setRange] = useDateRange();
   const { fromDate, toDate } = range;
   const validation = reportRangeError(range);
   const [matchingIds, setMatchingIds] = useState([]);
@@ -54,14 +55,13 @@ export default function PaperReportPage({ refreshKey }) {
 
   useEffect(() => { setChecked([]); }, [fromDate, toDate, view, status, instrument, refreshKey, retry]);
   const allChecked = matchingIds.length > 0 && matchingIds.every(id => checked.includes(id));
-  function changeRange(key, value) {
-    setRange(previous => ({ ...previous, [key]: value }));
-    setPage(1); setSelected(null); setChecked([]); setNotice('');
+  function changeRange(next, preset) {
+    setRange(next, preset); setPage(1); setSelected(null); setChecked([]); setNotice('');
   }
 
   return <section aria-label="Paper trading report">
     <label className="ms-report-view">Report view <select disabled={bulkBusy} value={view} onChange={event => { setView(event.target.value); setPage(1); setSelected(null); setNotice(''); }}><option value="STRATEGY">STRATEGY · included trades</option><option value="RAW">RAW · all PAPER trades</option></select></label>
-    <DateRangeFields range={range} onChange={changeRange} disabled={bulkBusy} />
+    <DateRangeFilter range={range} onApply={changeRange} disabled={bulkBusy} />
     <p className="ms-sub">Performance and trade history are calculated for the selected report view and date range, using trade entry time in Asia/Kolkata. Status and instrument filters apply to both sections.</p>
     <div className="ms-sectionhead">Performance Summary</div>
     {error && <p className="ms-error" role="alert">{error} <button onClick={() => setRetry(value => value + 1)}>Retry</button></p>}

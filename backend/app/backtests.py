@@ -7,9 +7,10 @@ from pathlib import Path
 from typing import Literal, Optional
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import AwareDatetime, Field, model_validator
 
+from app.date_range import date_filters, timestamp_scope
 from app.backtest_events import BacktestTimeline
 from app.backtest_executor import BacktestExecutor, HistoricalOptionPrices
 from app.backtest_summary import backtest_summary
@@ -231,11 +232,16 @@ class BacktestRunner:
         with connect(path) as connection:
             return json.loads(connection.execute('SELECT result FROM backtest_run').fetchone()['result'])
 
-    def list(self):
+    def list(self, from_date=None, to_date=None):
         results = []
         for path in self.directory.glob('*/results.sqlite3'):
             with connect(path) as connection:
-                row = json.loads(connection.execute('SELECT result FROM backtest_run').fetchone()['result'])
+                clauses, values = timestamp_scope(connection, 'created_at', from_date, to_date)
+                where = ' WHERE ' + ' AND '.join(clauses) if clauses else ''
+                saved = connection.execute(f'SELECT result FROM backtest_run{where}', values).fetchone()
+                if saved is None:
+                    continue
+                row = json.loads(saved['result'])
             results.append({key: row.get(key) for key in ('id', 'trading_date', 'instrument', 'status', 'created_at', 'total_trades', 'net_pnl')})
         return sorted(results, key=lambda row: row['created_at'] or '', reverse=True)
 
@@ -257,8 +263,8 @@ def backtest_settings(request: Request):
 
 
 @router.get('/backtests')
-def list_backtests(request: Request):
-    return request.app.state.backtest_runner.list()
+def list_backtests(request: Request, filters: dict = Depends(date_filters)):
+    return request.app.state.backtest_runner.list(**filters)
 
 
 @router.post('/backtests/run', status_code=201)

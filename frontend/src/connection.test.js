@@ -116,10 +116,9 @@ test('Report renders today’s Kolkata date range above the performance summary'
     const { default: Report } = await server.ssrLoadModule('/src/PaperReportPage.jsx');
     t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-02T19:00:00Z') });
     const html = renderToStaticMarkup(React.createElement(Report));
-    assert.match(html, /From Date<input[^>]+value="2026-10-03"/);
-    assert.match(html, /To Date<input[^>]+value="2026-10-03"/);
-    assert.ok(html.indexOf('Report view') < html.indexOf('From Date'));
-    assert.ok(html.indexOf('To Date') < html.indexOf('Performance Summary'));
+    assert.match(html, /aria-haspopup="dialog"[^>]*>Today ▾/);
+    assert.ok(html.indexOf('Report view') < html.indexOf('ms-date-filter'));
+    assert.ok(html.indexOf('ms-date-filter') < html.indexOf('Performance Summary'));
     assert.match(html, /selected report view and date range/);
     assert.doesNotMatch(html, /Summary metrics cover all dates/);
   } finally { t.mock.timers.reset(); await server.close(); }
@@ -129,18 +128,11 @@ test('Trades defaults to today in Kolkata and places shared date controls above 
   const server = await createServer({ optimizeDeps: { noDiscovery: true }, server: { middlewareMode: true, hmr: false }, appType: 'custom' });
   try {
     const { default: Trades } = await server.ssrLoadModule('/src/TradesPage.jsx');
-    const { default: DateRangeFields } = await server.ssrLoadModule('/src/DateRangeFields.jsx');
     t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-02T19:00:00Z') });
     const html = renderToStaticMarkup(React.createElement(Trades));
-    assert.match(html, /From Date<input[^>]+value="2026-10-03"/);
-    assert.match(html, /To Date<input[^>]+value="2026-10-03"/);
-    assert.ok(html.indexOf('From Date') < html.indexOf('Loading trades'));
+    assert.match(html, /aria-haspopup="dialog"[^>]*>Today ▾/);
+    assert.ok(html.indexOf('ms-date-filter') < html.indexOf('Loading trades'));
     assert.doesNotMatch(html, /latest 100/);
-    const invalid = renderToStaticMarkup(React.createElement(DateRangeFields, {
-      range: { fromDate: '2026-10-04', toDate: '2026-10-03' }, onChange() {},
-    }));
-    assert.match(invalid, /role="alert">From Date cannot be after To Date/);
-    assert.match(invalid, /aria-invalid="true"/);
   } finally { t.mock.timers.reset(); await server.close(); }
 });
 
@@ -237,7 +229,7 @@ test('Instrument Details stays under Dashboard with Kolkata date, filters and ex
     const html = renderToStaticMarkup(React.createElement(Details, { symbol: 'SENSEX', onBack() {} }));
     assert.match(html, /Back to Dashboard/);
     assert.match(html, /SENSEX · Instrument Details/);
-    assert.match(html, /value="2026-10-03"/);
+    assert.match(html, /aria-haspopup="dialog"[^>]*>Today ▾/);
     assert.match(html, /Loading chart data/);
     assert.match(html, /Level touch \/ cross/);
     assert.match(html, /Trailing stop updated/);

@@ -161,3 +161,39 @@ html,body{margin:0;background:#f7f9f7}
   #ms-design .ms-chart-tooltip { right: 10px; max-height: 270px; }
   #ms-design .ms-chart-event-details dl > div { grid-template-columns: 110px minmax(0, 1fr); }
 }
+
+#ms-design .ms-date-filter { position: relative; display: inline-block; margin: 8px 0; }
+#ms-design .ms-date-popover { position: fixed; z-index: 30; box-sizing: border-box; width: min(600px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; padding: 20px; background: #fff; color: #172b3a; border: 1px solid #d8e0e7; border-radius: 12px; box-shadow: 0 12px 40px #172b3a26; }
+#ms-design .ms-date-presets, #ms-design .ms-date-footer, #ms-design .ms-date-navigation { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+#ms-design .ms-date-months { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+#ms-design .ms-date-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; margin-top: 12px; text-align: center; }
+#ms-design .ms-date-grid button { padding: 8px 0; border: 0; border-radius: 5px; background: transparent; color: inherit; cursor: pointer; }
+#ms-design .ms-date-grid button:disabled { color: #aab2b9; cursor: default; }
+#ms-design .ms-date-grid .ms-date-selected { background: #285f45; color: white; }
+#ms-design .ms-date-grid .ms-date-between { background: #e5eee5; }
+#ms-design .ms-date-grid button:focus-visible { outline: 2px solid #367a58; outline-offset: 1px; }
+@media (max-width: 640px) {
+  #ms-design .ms-date-months { grid-template-columns: 1fr; }
+  #ms-design .ms-date-second { display: none; }
+  #ms-design .ms-date-popover { width: min(340px, calc(100vw - 24px)); }
+}
+
+#ms-design .ms-date-label { display: block; margin-bottom: 8px; font-size: 11px; line-height: 1.5; color: #737d74; }
+#ms-design .ms-signal-filters { align-items: flex-end; gap: 16px; margin-bottom: 12px; }
+#ms-design .ms-signal-filters .ms-date-filter { margin: 0; }
+#ms-design .ms-signal-filters label { line-height: 1.5; }
+#ms-design .ms-signal-filters input, #ms-design .ms-signal-filters select { height: 40px; margin-top: 8px; }
+#ms-design .ms-signal-filters > .ms-date-filter > .ms-button,
+#ms-design .ms-filter-actions > button { min-height: 40px; }
+#ms-design .ms-filter-actions { display: flex; align-items: center; gap: 12px; }
+#ms-design .ms-filter-note { margin: 0 0 24px; }
+#ms-design .ms-history-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; margin: 16px 0 24px; }
+#ms-design .ms-history-filters .ms-date-filter { margin: 0; }
+#ms-design .ms-date-footer { margin-top: 16px; }
+#ms-design .ms-date-months > section { min-width: 0; }
+@media (max-width: 430px) {
+  #ms-design .ms-signal-filters label { flex: 1 1 130px; }
+  #ms-design .ms-date-popover { padding: 16px; }
+  #ms-design .ms-date-presets { gap: 6px; }
+  #ms-design .ms-date-presets .ms-button { padding-inline: 8px; }
+}

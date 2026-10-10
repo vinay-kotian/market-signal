@@ -1,7 +1,5 @@
 from contextlib import nullcontext
-from datetime import datetime, time, timedelta
-
-from app.trading_date import TRADING_TIMEZONE
+from app.date_range import timestamp_scope
 
 from app.database import connect
 from app.signal_models import SignalAnalysis, SignalResult
@@ -36,22 +34,24 @@ class SignalRepository:
                 saved.append(SignalResult(id=cursor.lastrowid, **signal.model_dump()))
         return saved
 
-    def recent(self, limit: int = 100, signal_date=None, instrument=None, valid=None) -> list[SignalResult]:
+    def recent(self, limit: int = 100, signal_date=None, instrument=None, valid=None, from_date=None, to_date=None) -> list[SignalResult]:
         if limit < 1:
             raise ValueError("limit must be positive")
         clauses, values = [], []
-        if signal_date is not None:
-            start = datetime.combine(signal_date, time.min, TRADING_TIMEZONE)
-            clauses.extend(['julianday(timestamp) >= julianday(?)', 'julianday(timestamp) < julianday(?)'])
-            values.extend([start.isoformat(), (start + timedelta(days=1)).isoformat()])
+        if signal_date is not None and from_date is None and to_date is None:
+            from_date = from_date or signal_date
+            to_date = to_date or signal_date
         if instrument is not None:
             clauses.append('UPPER(instrument) = ?')
             values.append(instrument.strip().upper())
         if valid is not None:
             clauses.append('valid = ?')
             values.append(valid)
-        where = ' WHERE ' + ' AND '.join(clauses) if clauses else ''
         with connect(self.database_path) as connection:
+            dates, boundaries = timestamp_scope(connection, 'timestamp', from_date, to_date)
+            clauses.extend(dates)
+            values.extend(boundaries)
+            where = ' WHERE ' + ' AND '.join(clauses) if clauses else ''
             rows = connection.execute(
                 f"SELECT * FROM signals{where} ORDER BY id DESC LIMIT ?", (*values, limit)
             ).fetchall()

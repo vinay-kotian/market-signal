@@ -1,3 +1,5 @@
+import { useDateRange } from './useDateRange';
+import DateRangeFilter from './DateRangeFilter';
 import React, { useEffect, useRef, useState } from 'react';
 import { request } from './api';
 import { formatPrice, tradingDate } from './format';
@@ -59,7 +61,9 @@ function ChartPair({ panels, day, enabled, onSelect }) {
 }
 
 export default function InstrumentDetails({ symbol, today = tradingDate(), prices = {}, chartCandles = {}, revision = 0, onBack }) {
-  const [day, setDay] = useState(today), [info, setInfo] = useState(null), [option, setOption] = useState('');
+  const [range, setRange] = useDateRange();
+  const day = range.fromDate;
+  const [info, setInfo] = useState(null), [option, setOption] = useState('');
   const [datasets, setDatasets] = useState(null), [error, setError] = useState(''), [retry, setRetry] = useState(0);
   const cached = useRef(null);
   const [enabled, setEnabled] = useState(() => Object.fromEntries(Object.keys(markerTypes).map(type => [type, true])));
@@ -118,7 +122,7 @@ export default function InstrumentDetails({ symbol, today = tradingDate(), price
   const unplotted = panels.reduce((count, panel) => count + panel.events.filter(event => enabled[event.event_type]).length - eventMarkers(panel.events, panel.candles, enabled, day).length, 0);
   return <section className="ms-instrument-details" aria-label="Instrument Details">
     <button className="ms-link" onClick={onBack}>← Back to Dashboard</button>
-    <div className="ms-heading"><h2>{symbol} · Instrument Details</h2><label>Trading date (IST)<input type="date" value={day} max={today} onChange={event => { setDay(event.target.value || today); setDatasets(null); setSelected(null); }} /></label></div>
+    <div className="ms-heading"><h2>{symbol} · Instrument Details</h2><DateRangeFilter singleDay range={range} onApply={(next, preset) => { setRange(next, preset); setDatasets(null); setSelected(null); }} /></div>
     <div className="ms-pricebar"><div><strong>{formatPrice(quote?.price ?? last)}</strong><small className="ms-time">{day === today ? 'Current / last received price' : 'Last recorded close'}</small></div>
       <span className={change == null ? '' : change >= 0 ? 'ms-up' : 'ms-down'}>{formatPrice(change)} · {percentage(changePercent)}<small className="ms-time">{quote?.change != null ? 'Feed reference' : 'From first observed open'}</small></span><span className="ms-sub">PAPER · Asia/Kolkata</span></div>
     {error && <p role="alert" className="ms-error">{error}</p>}

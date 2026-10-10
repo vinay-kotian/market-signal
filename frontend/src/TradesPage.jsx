@@ -1,10 +1,11 @@
+import { useDateRange } from './useDateRange';
 import React, { useEffect, useState } from 'react';
-import DateRangeFields from './DateRangeFields';
-import { defaultReportRange, reportRangeError, loadTradeHistory } from './reportFilters';
+import DateRangeFilter from './DateRangeFilter';
+import { reportRangeError, loadTradeHistory } from './reportFilters';
 import { formatPrice, formatExitReason } from './format';
 
 export default function TradesPage({ refreshKey, tradeUpdates, results, resultsError, onRetry }) {
-  const [range, setRange] = useState(defaultReportRange);
+  const [range, setRange] = useDateRange();
   const [page, setPage] = useState(1);
   const [history, setHistory] = useState(null);
   const [error, setError] = useState('');
@@ -28,9 +29,7 @@ export default function TradesPage({ refreshKey, tradeUpdates, results, resultsE
   const failures = (results ?? []).filter(result => result.status === 'FAILED');
   return <section aria-label="Paper trades">
     <div className="ms-sectionhead"><span>Paper trades</span><span className="ms-sub">Open and closed · selected entry dates</span></div>
-    <DateRangeFields range={range} onChange={(key, value) => {
-      setRange(previous => ({ ...previous, [key]: value })); setPage(1);
-    }} />
+    <DateRangeFilter range={range} onApply={(next, preset) => { setRange(next, preset); setPage(1); }} />
     <p className="ms-sub">All PAPER trades entered within the selected dates in Asia/Kolkata, including trades excluded from strategy metrics.</p>
     {error && !validation && <div className="ms-error" role="alert">Trades unavailable. {error} <button className="ms-link" onClick={() => setRetry(value => value + 1)}>Retry</button></div>}
     {!history && !error && !validation && <p role="status">Loading trades…</p>}
