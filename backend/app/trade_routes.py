@@ -45,10 +45,11 @@ class TradeDetail(BaseModel):
 def report_filters(from_date: Optional[TradingDate] = None,
                    to_date: Optional[TradingDate] = None,
                    status: Optional[Literal['OPEN', 'CLOSED']] = None,
-                   instrument: Optional[str] = Query(None, min_length=1, max_length=100)):
+                   instrument: Optional[str] = Query(None, min_length=1, max_length=100),
+                   strategy_type: Optional[Literal['LEGACY', 'ATR']] = None):
     if from_date and to_date and from_date > to_date:
         raise HTTPException(status_code=422, detail='From Date cannot be after To Date')
-    return dict(from_date=from_date, to_date=to_date, status=status, instrument=instrument)
+    return dict(from_date=from_date, to_date=to_date, status=status, instrument=instrument, strategy_type=strategy_type)
 
 
 @router.get('/reports/paper-trading', response_model=PaperTradingReport)
@@ -57,16 +58,23 @@ def paper_report(request: Request, view: Literal["RAW", "STRATEGY"] = "STRATEGY"
     return PaperReportingService(request.app.state.trade_repository).report(view, **filters)
 
 
+@router.get('/reports/strategy-comparison')
+def strategy_comparison(request: Request, view: Literal['RAW', 'STRATEGY'] = 'STRATEGY',
+                        filters: dict = Depends(report_filters)):
+    return PaperReportingService(request.app.state.trade_repository).strategy_comparison(view, **filters)
+
+
 def export_filters(from_date: str = Query(..., pattern=r'^\d{4}-\d{2}-\d{2}$'),
                    to_date: Optional[str] = Query(None, pattern=r'^\d{4}-\d{2}-\d{2}$'),
                    status: Optional[Literal['OPEN', 'CLOSED']] = None,
-                   instrument: Optional[str] = Query(None, min_length=1, max_length=100)):
+                   instrument: Optional[str] = Query(None, min_length=1, max_length=100),
+                   strategy_type: Optional[Literal['LEGACY', 'ATR']] = None):
     try:
         start = TradingDate.fromisoformat(from_date)
         end = TradingDate.fromisoformat(to_date) if to_date is not None else start
     except ValueError:
         raise HTTPException(422, 'Use valid dates in YYYY-MM-DD format')
-    return {**date_filters(start, end), 'status': status, 'instrument': instrument}
+    return {**date_filters(start, end), 'status': status, 'instrument': instrument, 'strategy_type': strategy_type}
 
 
 @router.get('/reports/export', dependencies=[Depends(authenticate)])

@@ -223,3 +223,16 @@ html,body{margin:0;background:#f7f9f7}
 @media (max-width: 650px) {
   #ms-design .ms-trading-time-fields, #ms-design .ms-trading-windows dl { grid-template-columns: 1fr; }
 }
+
+/* Shared alignment for persistent, daily and next-trade instrument overrides. */
+#ms-design .ms-exit-overrides { display: grid; gap: 16px; margin: 16px 0 24px; }
+#ms-design .ms-exit-overrides .ms-exit-instrument-row { display: grid; grid-template-columns: 150px minmax(0, 1fr); align-items: center; gap: 16px; min-width: 0; }
+#ms-design .ms-exit-overrides .ms-exit-instrument-row select { margin-top: 0; min-height: 40px; }
+#ms-design .ms-exit-actions { margin-top: 20px; }
+@media (max-width: 650px) {
+  #ms-design .ms-exit-overrides .ms-exit-instrument-row { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  #ms-design .ms-exit-actions .ms-button { width: 100%; }
+}
+#ms-design .ms-strategy-comparison { margin: 28px 0; }
+#ms-design .ms-strategy-comparison thead th:not(:first-child) { text-align: right; }
+#ms-design .ms-strategy-comparison tbody th { background: transparent; font-size: 12px; color: #26332e; }

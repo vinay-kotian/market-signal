@@ -6,6 +6,7 @@ import { formatPrice, formatExitReason } from './format';
 
 export default function TradesPage({ refreshKey, tradeUpdates, results, resultsError, onRetry }) {
   const [range, setRange] = useDateRange();
+  const [strategyType, setStrategyType] = useState('');
   const [page, setPage] = useState(1);
   const [history, setHistory] = useState(null);
   const [error, setError] = useState('');
@@ -16,7 +17,7 @@ export default function TradesPage({ refreshKey, tradeUpdates, results, resultsE
     const controller = new AbortController();
     setHistory(null); setError('');
     if (validation) return () => controller.abort();
-    loadTradeHistory({ fromDate, toDate, page }, { signal: controller.signal })
+    loadTradeHistory({ fromDate, toDate, page, strategyType }, { signal: controller.signal })
       .then(rows => {
         if (controller.signal.aborted) return;
         const lastPage = Math.max(1, Math.ceil(rows.total / rows.page_size));
@@ -25,11 +26,12 @@ export default function TradesPage({ refreshKey, tradeUpdates, results, resultsE
       })
       .catch(error => { if (!controller.signal.aborted) setError(error.message); });
     return () => controller.abort();
-  }, [fromDate, toDate, page, validation, refreshKey, tradeUpdates, retry]);
+  }, [fromDate, toDate, page, strategyType, validation, refreshKey, tradeUpdates, retry]);
   const failures = (results ?? []).filter(result => result.status === 'FAILED');
   return <section aria-label="Paper trades">
     <div className="ms-sectionhead"><span>Paper trades</span><span className="ms-sub">Open and closed · selected entry dates</span></div>
     <DateRangeFilter range={range} onApply={(next, preset) => { setRange(next, preset); setPage(1); }} />
+    <label>Exit strategy<select value={strategyType} onChange={event => { setStrategyType(event.target.value); setPage(1); }}><option value="">All strategies</option><option value="LEGACY">Current / Legacy</option><option value="ATR">ATR</option></select></label>
     <p className="ms-sub">All PAPER trades entered within the selected dates in Asia/Kolkata, including trades excluded from strategy metrics.</p>
     {error && !validation && <div className="ms-error" role="alert">Trades unavailable. {error} <button className="ms-link" onClick={() => setRetry(value => value + 1)}>Retry</button></div>}
     {!history && !error && !validation && <p role="status">Loading trades…</p>}
@@ -48,16 +50,17 @@ export default function TradesPage({ refreshKey, tradeUpdates, results, resultsE
 
 export function TradesTable({ trades }) {
   return <div className="ms-tablewrap"><table>
-      <thead><tr><th>Instrument / level</th><th>Option</th><th className="ms-num">Quantity</th><th className="ms-num">Entry / stop</th><th>Entry time</th><th>Status / mode</th><th className="ms-num">Exit / P&amp;L</th><th>Exit reason</th></tr></thead>
+      <thead><tr><th>Instrument / level</th><th>Option</th><th>Exit strategy</th><th className="ms-num">Quantity</th><th className="ms-num">Entry / stop</th><th>Entry time</th><th>Status / mode</th><th className="ms-num">Exit / P&amp;L</th><th>Exit reason</th></tr></thead>
       <tbody>{(trades ?? []).map(trade => <tr key={trade.trade_id}>
         <td>{trade.instrument}<small className="ms-time">Level {formatPrice(trade.trigger_level)}</small></td>
         <td><span className="ms-contract">{trade.option_symbol}</span><small className="ms-time">Trade #{trade.trade_id} · Signal #{trade.signal_id}</small></td>
+        <td>{trade.strategy_type === 'ATR' ? 'ATR' : 'Current / Legacy'}{trade.strategy_type === 'ATR' && <small className="ms-time">ATR {formatPrice(trade.option_atr_at_entry)} · Risk {formatPrice(trade.initial_risk_percent)}%</small>}</td>
         <td className="ms-num">{trade.quantity}<small className="ms-time">{trade.number_of_lots} × {trade.lot_size}</small></td>
-        <td className="ms-num">{formatPrice(trade.entry_price)}<small className="ms-time">High {formatPrice(trade.highest_price)}</small><small className="ms-time">Stop {formatPrice(trade.current_stop_loss)}</small><small className="ms-time">Initial {formatPrice(trade.initial_stop_loss)}</small>{trade.settings_snapshot?.stop_strategy === 'PROGRESSIVE' && <small className="ms-time">{trade.profit_lock_activated ? `Profit locked · Trail ${trade.trailing_pct}% · Step ${trade.trailing_step}` : 'Awaiting profit trigger'}</small>}</td>
+        <td className="ms-num">{formatPrice(trade.entry_price)}<small className="ms-time">High {formatPrice(trade.highest_price)}</small><small className="ms-time">Stop {formatPrice(trade.current_stop_loss)}</small><small className="ms-time">Initial {formatPrice(trade.initial_stop_loss)}</small>{trade.strategy_type !== 'ATR' && trade.settings_snapshot?.stop_strategy === 'PROGRESSIVE' && <small className="ms-time">{trade.profit_lock_activated ? `Profit locked · Trail ${trade.trailing_pct}% · Step ${trade.trailing_step}` : 'Awaiting profit trigger'}</small>}</td>
         <td><small className="ms-time">{new Date(trade.entry_time).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</small></td>
-        <td><span className={`ms-status ${trade.status === 'CLOSED' ? 'disabled' : 'triggered'}`}>{trade.status}</span><small className="ms-time">{trade.trade_mode}</small>{trade.settings_snapshot?.stop_strategy !== 'PROGRESSIVE' && <small className="ms-time">Breakeven: {trade.breakeven_activated ? 'Active' : trade.breakeven_protection_enabled ? 'Waiting' : 'Disabled'}</small>}</td>
+        <td><span className={`ms-status ${trade.status === 'CLOSED' ? 'disabled' : 'triggered'}`}>{trade.status}</span><small className="ms-time">{trade.trade_mode}</small>{(trade.strategy_type === 'ATR' || trade.settings_snapshot?.stop_strategy !== 'PROGRESSIVE') && <small className="ms-time">Breakeven: {trade.breakeven_activated ? 'Active' : trade.breakeven_protection_enabled ? 'Waiting' : 'Disabled'}</small>}</td>
         <td className="ms-num">{formatPrice(trade.exit_price)}<small className="ms-time">P&amp;L {formatPrice(trade.realised_pnl)}{trade.realised_pnl_percentage == null ? '' : ` (${formatPrice(trade.realised_pnl_percentage)}%)`}</small></td>
         <td title={trade.exit_reason ?? undefined}>{formatExitReason(trade.exit_reason)}</td>
-      </tr>)}{trades?.length === 0 && <tr><td colSpan="8" className="ms-empty">No paper trades match the selected date range.</td></tr>}</tbody>
+      </tr>)}{trades?.length === 0 && <tr><td colSpan="9" className="ms-empty">No paper trades match the selected date range.</td></tr>}</tbody>
     </table></div>;
 }

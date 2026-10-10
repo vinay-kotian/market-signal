@@ -789,7 +789,8 @@ close positions, matching PAPER semantics. A missing entry/mandatory-exit quote
 marks the run FAILED, retaining
 partial trades and audit events. Explicit same-date `start_time`/`end_time`
 ranges remain available through the API; ending before mandatory exit can leave
-OPEN trades. No quotes/history are preloaded before the range.
+OPEN trades. ATR can use completed warmup candles and observations preceding
+the selected range; execution quotes and entry signals start with the replay.
 
 Every run has an isolated `backtests/{id}/results.sqlite3` database. It stores
 run metadata, input/settings, the exact catalogue, a dataset hash, BACKTEST
@@ -803,8 +804,8 @@ Metrics use this run's closed trades. Win rate includes breakeven trades in its
 denominator; total return is total realised P&L divided by the sum of closed
 trade entry premiums. Drawdown is the largest fall from a prior peak in
 cumulative realised P&L, ordered by exit timestamp then trade ID. Profit factor
-is null when there are no losses. Costs/slippage are not modelled, so gross and
-net P&L agree. This is a deterministic execution model over supplied
+is null when there are no losses. Optional flat transaction costs default to
+zero; gross and net P&L agree at zero cost. Slippage is not modelled. This is a deterministic execution model over supplied
 observations, not a spread/liquidity model. Multi-day optimization is excluded.
 
 
@@ -1381,3 +1382,107 @@ history is retained in the view rather than fetched on every tick. No additional
 broker or browser WebSocket, instrument subscription or per-instrument thread is
 created. A selected instrument without an existing feed subscription displays its
 saved/history candles until the existing services receive another quote.
+
+### Independent exit strategies
+
+Settings → **Exit Strategy** selects `LEGACY` (displayed as Current) or `ATR`
+for future PAPER entries. Current retains both existing protection variants:
+`PROGRESSIVE` profit lock / step tightening and the original `LEGACY` percentage
+trail / breakeven. Their formulas and entry signals are unchanged. Each variant's
+parameters remain independently configurable from ATR.
+
+Selection priority is explicit trade override (including the one-shot next-trade
+selection), instrument override, dated daily default, then persistent default.
+Dated instrument overrides precede persistent instrument overrides. Daily and
+next-trade selections use the entry's Asia/Kolkata date. A one-shot override is
+consumed transactionally only after successful entry. A new date falls back to
+the persistent configuration unless a selection for that date was saved.
+
+ATR is available by default, but the persistent default remains `LEGACY`.
+Disabling availability blocks new ATR selection/entry; retained ATR selections
+show `UNAVAILABLE`. Existing ATR trades continue using their frozen snapshots.
+Settings are validated on the server and never rewrite active trades.
+
+Defaults are period 14, `5minute`, initial multiplier 1.5, trailing `OFF`,
+trailing multiplier 2.0, percentage trail 10%, maximum initial risk 15%, and
+breakeven `OFF` with threshold 1 and lock 0%. Breakeven modes are `PERCENTAGE`,
+`ATR` multiples or initial risk `R`; a lock must lie below the activation distance.
+The optional maximum-risk guard **rejects entry** above the limit rather than
+changing the ATR formula; a null limit disables that guard.
+
+`atr_candles` is separate from chart history and isolates SIMULATED, ZERODHA and
+BACKTEST sources. ATR uses true range (including gaps from the previous close),
+a simple average of the first period's ranges, then Wilder/RMA smoothing.
+Only completed candles whose availability time is no later than entry qualify.
+Initial long-option stop = entry premium − option ATR × initial multiplier.
+Option ATR, index ATR, candle cutoff/source, initial risk and strategy/configuration
+are persisted at entry. Index ATR is analytical only. ATR trailing uses the
+**frozen option entry ATR**; percentage trailing uses the highest observed premium.
+Stops never loosen, and mandatory time exits use the existing monitor/service.
+Missing/nonpositive option ATR, invalid stops or guard failures record an entry
+failure; no fallback strategy or price data is invented.
+
+Zerodha obtains read-only completed five-minute OHLC history for the traded option
+and index before entry, with requests bounded to ten days and cached within a
+five-minute interval. SIMULATED/replay tick candles represent received observations
+only; they do not promise exchange OHLC. ATR requires sufficient observed history
+or supplied completed historical candles. The ATR definition follows
+[TradingView's ATR/RMA documentation](https://www.tradingview.com/support/solutions/43000501823-average-true-range-atr/);
+read-only history follows [Kite historical data documentation](https://www.kite.trade/docs/connect/v3/historical/).
+
+API routes (with the existing frontend `/api` proxy):
+
+- `GET/PUT /settings/exit-strategy`: persistent ATR configuration and defaults;
+  GET also returns today's selection, effective strategies and one-shot overrides.
+- `GET/PUT /settings/exit-strategy/legacy`: independent Current configuration.
+- `PUT /settings/exit-strategy/daily`: `{trading_date, default_exit_strategy,
+  instrument_overrides}`; null default inherits the persistent default.
+- `PUT /settings/exit-strategy/next-trade/{instrument}`: `{strategy: "ATR"}`
+  or `LEGACY`; null clears the one-shot override.
+- Reports, trade history, matching IDs and CSV accept `strategy_type=LEGACY|ATR`.
+  CSV includes strategy, ATR and initial-risk fields; Trades, Reports and Dashboard
+  traded-option cards show the strategy captured at entry.
+
+Backtests accept `exit_strategy`, `exit_configuration` (the ATR parameters) and
+`transaction_cost_per_order` (flat currency amount, default zero). Historical
+JSON may include `candles`: symbol, five-minute start timestamp, OHLC and optional
+`available_at`. Prior-day candles can warm ATR without advancing entry signals;
+future/incomplete candles are excluded at entry. Each run uses the shared strategy
+and position monitor and remains isolated from PAPER state and notifications.
+`POST /backtests/compare` runs Current and ATR multipliers
+1.0, 1.25, 1.5, 1.75, 2.0 and 2.5 on one loaded dataset. Its rows include dataset
+hashes and trade count, win rate, average profit/loss, profit factor, net P&L,
+drawdown, average R, stop hits and transaction costs. Inspect saved run failures
+when ATR history is insufficient. Win rate includes closed breakeven trades in
+the denominator, preserving the existing backtest convention.
+
+Trade P&L remains the existing gross execution calculation. Comparison statistics
+use closed-trade P&L less entry/exit costs; average R divides this by initial risk
+amount. Net P&L also deducts entry costs for still-open trades. Drawdown follows
+closed realised results in exit order and is not mark-to-market drawdown; open
+trade fees are reported in total costs/net P&L. Costs are user-supplied flat
+estimates, not a broker tax/fee schedule. No live order execution is added.
+
+
+### Strategy performance comparison in Reports
+
+The Reports page compares LEGACY and ATR PAPER trades for the selected inclusive
+entry-date range in Asia/Kolkata. `GET /reports/strategy-comparison` accepts the
+existing `from_date`, `to_date`, `view`, `status` and `instrument` filters. Both
+strategies are returned together; the history's single-strategy filter and page
+number do not narrow this comparison. Classification updates and page refreshes
+reload the comparison using the same filters.
+
+Metrics reuse existing report calculations. Win rate excludes breakeven trades,
+matching Reports; drawdown uses closed realised P&L ordered by actual exit time
+then trade ID. Average R uses closed-trade P&L divided by saved initial risk
+amount and includes a sample count. Historical trades with unknown/zero risk
+contribute to P&L and drawdown but not average R; unknown R/no-loss profit factor
+show a dash. Open trades count toward total trades without realised results.
+`STOP_LOSS` and `TRAILING_STOP_LOSS` count as SL hits. BACKTEST records are excluded.
+
+PAPER report P&L uses saved execution results and excludes brokerage/slippage.
+The comparison describes observed trades; each strategy may have different
+entry samples. Controlled identical-data comparisons with configurable flat
+transaction costs remain available in Backtesting. This section does not change
+strategy selection or establish trading profitability; LEGACY remains the default.

@@ -24,13 +24,22 @@ class BulkTradeClassification(TradeClassification):
 
 
 class TradeEntry(BaseModel):
+    strategy_type: Literal['LEGACY', 'ATR'] = 'LEGACY'
+    strategy_config_snapshot: dict = Field(default_factory=dict)
+    option_atr_at_entry: Optional[float] = None
+    index_atr_at_entry: Optional[float] = None
+    atr_candle_end: Optional[datetime] = None
+    atr_data_source: Optional[str] = None
+    initial_risk_per_unit: Optional[float] = None
+    initial_risk_amount: Optional[float] = None
+    initial_risk_percent: Optional[float] = None
     strategy_version: str = Field(default_factory=lambda: TradeSettings().strategy_version)
     validity_status: ValidityStatus = "VALID"
     validity_reason: Optional[str] = None
     exclude_from_strategy_metrics: bool = False
     settings_snapshot: dict
 
-    @field_validator("settings_snapshot", mode="before")
+    @field_validator("settings_snapshot", "strategy_config_snapshot", mode="before")
     @classmethod
     def decode_snapshot(cls, value):
         return json.loads(value) if isinstance(value, str) else value

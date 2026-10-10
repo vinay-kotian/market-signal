@@ -31,6 +31,10 @@ def initialize_database(database_path, stop_loss_percentage=10, trade_settings=N
         initialize_trades(connection, stop_loss_percentage)
         initialize_trailing(connection, trade_settings or {})
         initialize_trade_metadata(connection)
+        from app.exit_settings import initialize_exit_settings
+        from app.atr_data import initialize_atr
+        initialize_exit_settings(connection)
+        initialize_atr(connection)
         from app.option_watchlist import initialize_option_watchlist
         initialize_option_watchlist(connection)
         connection.execute("""CREATE TABLE IF NOT EXISTS simulated_option_quotes (

@@ -122,3 +122,51 @@ partial audit history. Tests cover both directions, initial arm distance,
 historical expiry/ITM and lot size, equal-time ordering, pending fills/cutoff,
 legacy/progressive protection parity, deterministic reruns, snapshot changes,
 run persistence and PAPER/dashboard/broadcast isolation.
+
+
+## ATR exits and comparisons
+
+Choose `exit_strategy: "LEGACY"` or `"ATR"` in `/backtests/run`; the shared
+PAPER/exit implementation supplies all protection decisions. `exit_configuration`
+contains independent ATR settings, and `transaction_cost_per_order` supplies a
+nonnegative flat fee estimate per entry or exit. Defaults are described in the
+[exit strategy settings](../README.md#independent-exit-strategies).
+
+Supply prior completed five-minute OHLC as an optional `candles` array in the
+uploaded/archive JSON and in the API request. Tick dates retain their existing
+single-day restriction; warmup candles may come from earlier trading dates.
+Candle symbols must exist in the supplied catalogue or match the underlying.
+Maximum 100,000 candles, unique by symbol/start, with finite valid OHLC and
+five-minute aligned timezone-aware start timestamps. For example:
+
+```json
+{
+  "symbol": "TEST-NIFTY-20260917-25050-PE",
+  "timestamp": "2026-09-14T09:20:00+05:30",
+  "open": 100,
+  "high": 104,
+  "low": 98,
+  "close": 102,
+  "available_at": "2026-09-14T09:25:00+05:30"
+}
+```
+
+`available_at` defaults to candle end. Delayed candles use their later actual
+availability time. ATR entry filters both completion and availability against
+entry time and freezes the result. It needs at least the configured period of
+eligible candles. Recorded ticks can build observed OHLC during replay;
+authoritative supplied OHLC takes precedence. No intra-candle ticks are invented.
+Missing option ATR skips entry with `OPTION_ATR_UNAVAILABLE` and retains its audit
+result. Supplied index ATR is recorded separately and never determines the stop.
+
+`POST /backtests/compare` accepts the same request and loads historical data once,
+then saves Current plus ATR multiplier runs for 1, 1.25, 1.5, 1.75, 2 and 2.5.
+Dataset hashes and all entry settings match across runs. Exit-dependent position
+availability can affect subsequent entries through the existing single-position
+rule. Each result includes run ID, strategy/multiplier, trade count, win rate,
+average profit/loss, profit factor, net P&L, realised drawdown, average R, stop hits
+and transaction costs. Open trade entry fees are included in net P&L and total
+costs; closed-trade metrics/drawdown use net realised results. Average R uses net
+closed-trade P&L divided by the immutable initial risk amount. Saved trade P&L
+continues to represent gross execution P&L. Older saved runs retain their original
+metrics and may lack ATR/risk/cost fields.

@@ -127,8 +127,10 @@ class KiteConnector:
         response = await self._get('/quote/ltp', params={'i': key})
         return response.json().get('data', {}).get(key, {}).get('last_price')
 
-    async def historical_candles(self, token, start, end):
-        response = await self._get(f'/instruments/historical/{token}/minute', params={
+    async def historical_candles(self, token, start, end, interval='minute'):
+        if interval not in ('minute', '5minute'):
+            raise ValueError('Unsupported candle interval')
+        response = await self._get(f'/instruments/historical/{token}/{interval}', params={
             'from': start.strftime('%Y-%m-%d %H:%M:%S'),
             'to': end.strftime('%Y-%m-%d %H:%M:%S'), 'continuous': 0, 'oi': 0})
         return response.json().get('data', {}).get('candles', [])

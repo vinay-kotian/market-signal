@@ -8,7 +8,8 @@ CSV_FIELDS = (
     'entry_time', 'exit_time', 'entry_price', 'highest_price', 'exit_price',
     'quantity', 'realised_pnl', 'realised_pnl_percentage', 'exit_reason', 'status',
     'trigger_level', 'validity_status', 'validity_reason',
-    'exclude_from_strategy_metrics',
+    'exclude_from_strategy_metrics', 'strategy_type', 'option_atr_at_entry',
+    'index_atr_at_entry', 'initial_stop_loss', 'initial_risk_per_unit', 'initial_risk_amount', 'initial_risk_percent',
 )
 
 

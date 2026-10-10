@@ -44,6 +44,8 @@ from app.simulation_flow import SimulationFlow
 from app.trade_events import TradeEventRepository
 from app.trading_time import MarketCloseService, utc_now
 from app.telegram_notifications import TelegramNotifications, router as telegram_router
+from app.exit_settings import load_legacy_settings, ExitSettingsRepository, router as exit_settings_router
+from app.atr_data import AtrData, ZerodhaAtrData
 
 
 def create_app(database_path=None, signal_settings=None,
@@ -71,7 +73,7 @@ def create_app(database_path=None, signal_settings=None,
         initialize_database(app.state.database_path, execution_settings.stop_loss_percentage,
                             execution_settings.model_dump())
         execution_settings = load_trading_time_settings(app.state.database_path, execution_settings)
-        execution_settings = load_protection_settings(app.state.database_path, execution_settings)
+        execution_settings = load_legacy_settings(app.state.database_path, load_protection_settings(app.state.database_path, execution_settings))
         levels = LevelRepository(app.state.database_path, current_time)
         app.state.level_repository = levels
         engine = SignalEngine(signal_settings or SignalSettings.from_environment())
@@ -97,8 +99,13 @@ def create_app(database_path=None, signal_settings=None,
                     prices.set_price(symbol, price)
         selection_settings = option_settings or OptionSettings.from_environment()
         selector = OptionSelector(instruments)
+        app.state.exit_settings = ExitSettingsRepository(app.state.database_path)
+        atr_data = (ZerodhaAtrData(app.state.database_path, instruments, app.state.kite, current_time)
+                    if is_zerodha else AtrData(app.state.database_path, 'SIMULATED'))
+        app.state.atr_data = atr_data
         executor = PaperExecutor(trade_repository, instruments, prices,
-                                 execution_settings, engine.settings, selection_settings)
+                                 execution_settings, engine.settings, selection_settings,
+                                 exit_settings=app.state.exit_settings, atr_data=atr_data, clock=current_time)
         monitor = LevelMonitor(levels, engine,
                                signal_repository=signal_repository, option_selector=selector,
                                option_settings=selection_settings,
@@ -114,7 +121,7 @@ def create_app(database_path=None, signal_settings=None,
         rules = executor.time_rules
         positions = PositionMonitor(trade_repository, clock=current_time, time_rules=rules)
         market_close = MarketCloseService(trade_repository, prices, rules, current_time)
-        flow = SimulationFlow(monitor, positions, prices, instruments, market_close)
+        flow = SimulationFlow(monitor, positions, prices, instruments, market_close, atr_data)
         app.state.simulation_flow = flow
         app.state.market_close = market_close
         app.state.position_monitor = positions
@@ -185,6 +192,7 @@ def create_app(database_path=None, signal_settings=None,
     app.include_router(option_router)
     app.include_router(trade_router)
     app.include_router(telegram_router)
+    app.include_router(exit_settings_router)
     app.include_router(watchlist_router)
     app.include_router(index_settings_router)
     app.include_router(protection_settings_router)

@@ -31,6 +31,7 @@ class TradeRepository:
         with context as connection:
             values = entry.model_dump(mode="json")
             values['settings_snapshot'] = json.dumps(values['settings_snapshot'])
+            values['strategy_config_snapshot'] = json.dumps(values['strategy_config_snapshot'])
             # Column names come only from the fixed model, never from request data.
             columns = ', '.join(values)
             placeholders = ', '.join('?' for _ in values)
@@ -146,6 +147,15 @@ class TradeRepository:
                 f"SELECT status, realised_pnl, exclude_from_strategy_metrics FROM trades WHERE {where}", values,
             ).fetchall()
 
+    def performance_rows(self, **filters):
+        with connect(self.database_path) as connection:
+            where, values = paper_scope(connection, **filters)
+            return connection.execute(
+                'SELECT strategy_type, status, realised_pnl, exclude_from_strategy_metrics, '
+                'initial_risk_amount, exit_reason FROM trades '
+                f'WHERE {where} ORDER BY CASE WHEN exit_time IS NOT NULL THEN utc_timestamp(exit_time) END, trade_id', values,
+            ).fetchall()
+
     def export_rows(self, columns, **filters):
         # StreamingResponse may resume its iterator on different pool threads.
         # Only this iterator owns the connection; next() calls are serialized.
@@ -162,10 +172,10 @@ class TradeRepository:
                 cursor.close()
 
     def history(self, page=1, page_size=20, status=None, instrument=None,
-                from_date=None, to_date=None, view='STRATEGY'):
+                from_date=None, to_date=None, view='STRATEGY', strategy_type=None):
         with connect(self.database_path) as connection:
             where, values = paper_scope(connection, from_date=from_date, to_date=to_date,
-                                        status=status, instrument=instrument, view=view)
+                                        status=status, instrument=instrument, view=view, strategy_type=strategy_type)
             connection.execute('BEGIN')
             total = connection.execute(f'SELECT COUNT(*) FROM trades WHERE {where}', values).fetchone()[0]
             rows = connection.execute(

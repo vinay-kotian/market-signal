@@ -35,6 +35,22 @@ class PaperReportingService:
         rows = self.trades.paper_results(**filters)
         return calculate_report(rows, view)
 
+    def strategy_comparison(self, view='STRATEGY', **filters):
+        # Compare both frozen entry strategies, independent of the history's
+        # single-strategy selector, in one database snapshot.
+        filters.pop('strategy_type', None)
+        rows = self.trades.performance_rows(**filters)
+        comparison = {}
+        for strategy in ('LEGACY', 'ATR'):
+            group = [row for row in rows if row['strategy_type'] == strategy]
+            report = calculate_report(group, view).model_dump(mode='json')
+            closed = [row for row in group if row['status'] == 'CLOSED'
+                      and (view == 'RAW' or not row['exclude_from_strategy_metrics'])]
+            pnls = [Decimal(str(row['realised_pnl'])) for row in closed]
+            comparison[strategy] = {**report, **realised_risk_metrics(closed, pnls)}
+        return dict(view=view, mode='PAPER', strategies=comparison,
+                    costs_included=False, drawdown_basis='CLOSED_REALISED_PNL')
+
     def export_csv(self, **filters):
         from app.report_csv import CSV_FIELDS, csv_chunks
         # The report/history already use persisted trade results. Export those
@@ -67,3 +83,24 @@ def calculate_report(rows, view="STRATEGY"):
         maximum_profit=max(profits, default=0), maximum_loss=max(losses, default=0),
         profit_factor=gross_profit / gross_loss if gross_loss else None,
     )
+
+
+def realised_risk_metrics(closed, pnls):
+    """Shared report/replay metrics over closed trades in exit-time order.
+
+    Older trades with unknown entry risk remain in P&L/drawdown but cannot
+    contribute a reconstructed R value.
+    """
+    equity = peak = drawdown = Decimal(0)
+    rs = []
+    for row, pnl in zip(closed, pnls):
+        equity += pnl
+        peak = max(peak, equity)
+        drawdown = max(drawdown, peak-equity)
+        risk = row['initial_risk_amount']
+        if risk is not None and risk > 0:
+            rs.append(pnl / Decimal(str(risk)))
+    return dict(max_drawdown=float(drawdown),
+                average_r=float(sum(rs, Decimal(0))/len(rs)) if rs else None,
+                average_r_sample_size=len(rs),
+                sl_hits=sum(row['exit_reason'] in ('STOP_LOSS', 'TRAILING_STOP_LOSS') for row in closed))

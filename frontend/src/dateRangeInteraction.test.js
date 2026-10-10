@@ -181,7 +181,9 @@ test('Reports CSV button uses the shared custom range and shows download errors'
   const urls = [];
   t.mock.method(globalThis, 'fetch', async url => {
     urls.push(url);
-    const data = url.includes('/trades/history/ids') ? []
+    const emptyStrategy = { total_trades: 0, win_rate: 0, net_pnl: 0, profit_factor: null, max_drawdown: 0, average_r: null, average_r_sample_size: 0, sl_hits: 0 };
+    const data = url.includes('/reports/strategy-comparison') ? { strategies: { LEGACY: emptyStrategy, ATR: emptyStrategy } }
+      : url.includes('/trades/history/ids') ? []
       : url.includes('/trades/history') ? { items: [], total: 0, page_size: 20 }
       : { total_trades: 0, win_rate: 0, net_pnl: 0, profit_factor: null };
     return { ok: true, json: async () => data };

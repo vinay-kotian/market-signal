@@ -16,6 +16,7 @@ function reportQuery(filters) {
     view: filters.view, from_date: filters.fromDate, to_date: filters.toDate,
   });
   if (filters.status) query.set('status', filters.status);
+  if (filters.strategyType) query.set('strategy_type', filters.strategyType);
   if (filters.instrument) query.set('instrument', filters.instrument);
   return query;
 }
@@ -42,6 +43,11 @@ export async function loadReport(filters, { signal, send = request } = {}) {
     send(`/trades/history/ids?${query}`, { signal }),
   ]);
   return { report, history, matchingIds };
+}
+
+export async function loadStrategyComparison(filters, { signal, send = request } = {}) {
+  const query = reportQuery({ ...filters, strategyType: null });
+  return send(`/reports/strategy-comparison?${query}`, { signal });
 }
 
 export async function exportReport(filters, { apiKey, send = request } = {}) {

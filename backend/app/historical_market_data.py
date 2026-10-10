@@ -9,6 +9,7 @@ from pydantic import AwareDatetime, BaseModel, Field, model_validator
 
 from app.market_data import PriceTick
 from app.option_instruments import OptionContract
+from app.atr_data import AtrCandle
 
 
 class HistoricalTick(PriceTick):
@@ -30,6 +31,7 @@ class HistoricalDataset(BaseModel):
     contracts: list[HistoricalContract] = Field(min_length=1, max_length=10000)
     ticks: list[HistoricalTick] = Field(min_length=1, max_length=100000)
     source: str = Field(default='USER_SUPPLIED', max_length=200)
+    candles: list[AtrCandle] = Field(default_factory=list, max_length=100000)
 
     @model_validator(mode='after')
     def unique_contracts(self):
@@ -39,6 +41,9 @@ class HistoricalDataset(BaseModel):
             raise ValueError('Historical contract symbols and identities must be unique')
         if any(symbol in ('NIFTY', 'BANKNIFTY', 'SENSEX') for symbol in symbols):
             raise ValueError('Option symbols must differ from underlying symbols')
+        keys = [(c.symbol, c.timestamp) for c in self.candles]
+        if len(set(keys)) != len(keys):
+            raise ValueError('Historical ATR candle identities must be unique')
         return self
 
 

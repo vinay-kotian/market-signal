@@ -28,6 +28,7 @@ export default function OptionWatchlist({ items, today, search = '', busy = fals
       {onOpen ? <button className="ms-link ms-option-symbol" disabled={busy} title={item.option_symbol} aria-label={`Open ${item.option_symbol} Instrument Details`} onClick={() => onOpen(item.option_symbol)}>{item.option_symbol}</button> : <div className="ms-option-symbol" title={item.option_symbol}>{item.option_symbol}</div>}
       <div className="ms-sub">Strike {formatPrice(item.strike)} · Expiry {item.expiry}</div>
       <dl className="ms-option-quotes">
+        <div><dt>Exit strategy</dt><dd>{item.strategy_type === 'ATR' ? 'ATR' : 'Current'}</dd></div>
         <div><dt>Entry</dt><dd>{formatPrice(item.entry_price)}</dd></div>
         <div title={item.quote_timestamp ? `Last quote: ${new Date(item.quote_timestamp).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST` : 'No quote received'}><dt>LTP</dt><dd>{formatPrice(item.current_ltp)}</dd></div>
         <div><dt>Change from entry</dt><dd className={tone(item.change_from_entry_percentage)}>{percent(item.change_from_entry_percentage)}</dd></div>

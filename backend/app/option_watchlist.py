@@ -17,6 +17,7 @@ class OptionWatchlistItem(BaseModel):
     expiry: str
     option_type: Literal['CE', 'PE']
     trade_id: int
+    strategy_type: Literal['LEGACY', 'ATR'] = 'LEGACY'
     trade_mode: Literal['PAPER', 'LIVE']
     entry_time: datetime
     entry_price: float
@@ -96,7 +97,7 @@ class OptionWatchlistRepository:
             result.append(OptionWatchlistItem(
                 option_symbol=row['option_symbol'], instrument=row['instrument'], strike=row['strike'],
                 expiry=row['expiry'], option_type=row['option_type'], trade_id=row['trade_id'],
-                trade_mode=row['trade_mode'], entry_time=row['entry_time'], entry_price=row['entry_price'],
+                strategy_type=row['strategy_type'], trade_mode=row['trade_mode'], entry_time=row['entry_time'], entry_price=row['entry_price'],
                 current_ltp=row['current_ltp'], quote_timestamp=row['quote_timestamp'],
                 change_from_entry_percentage=change,
                 unrealized_pnl_percentage=change if row['status'] == 'OPEN' else None,

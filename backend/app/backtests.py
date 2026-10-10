@@ -30,9 +30,15 @@ from app.signal_repository import SignalRepository
 from app.trade_events import TradeEventRepository
 from app.trade_repository import TradeRepository
 from app.trading_time import TradingTimeRules
+from app.atr_data import AtrCandle, AtrData
+from app.exit_settings import AtrSettings, ExitSettings
 
 
 class BacktestInput(TradeSettings, SignalSettings, OptionSettings):
+    exit_strategy: Literal['LEGACY', 'ATR'] = 'LEGACY'
+    exit_configuration: AtrSettings = Field(default_factory=AtrSettings)
+    transaction_cost_per_order: float = Field(default=0, ge=0, allow_inf_nan=False)
+    candles: list[AtrCandle] = Field(default_factory=list, max_length=100000)
     trade_mode: Literal['BACKTEST'] = 'BACKTEST'
     index_settings: dict[Literal['NIFTY', 'BANKNIFTY', 'SENSEX'], IndexSettingsInput] = Field(default_factory=dict)
     trading_date: date
@@ -76,16 +82,21 @@ class BacktestRunner:
         self.directory = Path(directory)
         self.data_source = data_source or LocalHistoricalDataSource(self.directory.parent / 'historical-data')
 
-    async def run(self, config: BacktestInput):
+    def load_dataset(self, config: BacktestInput):
         if config.fixture:
             if config.instrument != 'NIFTY' or config.trading_date != date(2026, 9, 14):
                 raise ValueError('Synthetic demo is only for NIFTY on 2026-09-14')
             bundle = HistoricalDataset.model_validate_json(
                 (Path(__file__).with_name('fixtures') / 'nifty-demo.json').read_text())
         elif config.dataset is not None:
-            bundle = HistoricalDataset(contracts=config.contracts, ticks=config.dataset)
+            bundle = HistoricalDataset(contracts=config.contracts, ticks=config.dataset, candles=config.candles)
         else:
             bundle = self.data_source.load(config.trading_date, config.instrument)
+        return bundle
+
+    async def run(self, config: BacktestInput, *, bundle=None):
+        if bundle is None:
+            bundle = self.load_dataset(config)
         session_start = datetime.combine(config.trading_date, config.market_open_time, TradingTimeRules.timezone)
         session_end = datetime.combine(config.trading_date, config.market_close_time, TradingTimeRules.timezone)
         if any(row.timestamp.astimezone(TradingTimeRules.timezone).date() != config.trading_date for row in bundle.ticks):
@@ -97,6 +108,8 @@ class BacktestRunner:
         allowed = {config.instrument} | {c.symbol for c in bundle.contracts}
         if any(row.instrument not in allowed for row in bundle.ticks):
             raise ValueError('Dataset contains an unknown instrument or option symbol')
+        if any(row.symbol not in allowed for row in bundle.candles):
+            raise ValueError('ATR candles contain an unknown instrument or option symbol')
         start = max(config.start_time or session_start, session_start)
         end = min(config.end_time or session_end, session_end)
         records = sorted([row for row in bundle.ticks if start <= row.timestamp <= end], key=lambda row: row.timestamp)
@@ -115,6 +128,8 @@ class BacktestRunner:
         snapshot.update(timezone='Asia/Kolkata', index_settings={key: value.model_dump(mode='json')
                         for key, value in config.index_settings.items()},
                         contracts=[c.model_dump(mode='json') for c in bundle.contracts])
+        snapshot.update(exit_strategy=config.exit_strategy, exit_configuration=config.exit_configuration.model_dump(mode='json'),
+                        transaction_cost_per_order=config.transaction_cost_per_order)
         dataset_hash = hashlib.sha256(bundle.model_dump_json().encode()).hexdigest()
         created = datetime.now(timezone.utc).isoformat()
         result = dict(id=run_id, status='RUNNING', trading_date=config.trading_date.isoformat(),
@@ -123,7 +138,13 @@ class BacktestRunner:
                       created_at=created, started_at=created, completed_at=None, error_message=None,
                       data_source=bundle.source, dataset_hash=dataset_hash)
         initialize_database(path, config.stop_loss_percentage, config.model_dump())
+        atr_data = AtrData(path, 'BACKTEST')
+        atr_data.cache(bundle.candles)
+        for tick in sorted((row for row in bundle.ticks if row.timestamp < start), key=lambda row: row.timestamp):
+            atr_data.observe(tick.instrument, tick.price, tick.timestamp)
         with connect(path) as connection:
+            exit_settings = ExitSettings(**config.exit_configuration.model_dump(), default_exit_strategy=config.exit_strategy)
+            connection.execute('UPDATE exit_settings SET settings=? WHERE id=1', (exit_settings.model_dump_json(),))
             connection.execute('''CREATE TABLE backtest_run (
                 id TEXT PRIMARY KEY, trading_date TEXT, instrument TEXT, status TEXT,
                 created_at TEXT, started_at TEXT, completed_at TEXT, error_message TEXT,
@@ -147,7 +168,8 @@ class BacktestRunner:
             signal_settings = SignalSettings(**{key: values[key] for key in SignalSettings.model_fields})
             option_settings = OptionSettings(**{key: values[key] for key in OptionSettings.model_fields})
             prices = HistoricalOptionPrices(clock)
-            executor = BacktestExecutor(trades, instruments, prices, settings, signal_settings, option_settings)
+            executor = BacktestExecutor(trades, instruments, prices, settings, signal_settings, option_settings,
+                                        atr_data=atr_data, clock=clock)
             monitor = LevelMonitor(levels, SignalEngine(signal_settings), clock,
                 signal_repository=SignalRepository(path), option_selector=OptionSelector(instruments),
                 option_settings=option_settings, option_repository=OptionSelectionRepository(path), paper_executor=executor)
@@ -163,6 +185,7 @@ class BacktestRunner:
                 await monitor.reconcile()
 
             async def consume(tick):
+                atr_data.observe(tick.instrument, tick.price, clock())
                 if tick.instrument == config.instrument:
                     timeline.spot = tick.price
                     await monitor.on_tick(tick)
@@ -206,7 +229,7 @@ class BacktestRunner:
         signal_rows = SignalRepository(path).recent(100000)
         signals = {signal.id: signal for signal in signal_rows}
         catalogue = {c.symbol: c for c in bundle.contracts}
-        result.update(**backtest_summary(trade_rows),
+        result.update(**backtest_summary(trade_rows, config.transaction_cost_per_order),
             levels=[level.model_dump(mode='json') for level in levels.list()],
             trades=[{**trade.model_dump(mode='json'), 'signal_timestamp': signals[trade.signal_id].timestamp.isoformat(),
                      'instrument_token': catalogue[trade.option_symbol].instrument_token} for trade in trade_rows],
@@ -246,13 +269,54 @@ class BacktestRunner:
 
 def current_snapshot(state):
     executor = state.paper_executor
+    with connect(state.database_path) as connection:
+        exit_settings = state.exit_settings.load(connection)
     return {**executor.signal_settings.model_dump(mode='json'), **executor.option_settings.model_dump(mode='json'),
             **executor.settings.model_dump(mode='json'), 'trade_mode': 'BACKTEST',
+            'exit_strategy': exit_settings.default_exit_strategy,
+            'exit_configuration': {key: getattr(exit_settings, key) for key in AtrSettings.model_fields},
+            'transaction_cost_per_order': 0,
             'index_settings': {row.instrument: {'initial_arm_distance_points': row.initial_arm_distance_points}
                                for row in IndexSettingsRepository(state.database_path).list()}}
 
 
+def merge_configuration(state, config):
+    # Only explicitly supplied fields override the current application snapshot.
+    current = current_snapshot(state)
+    # Validate after merging: partial time overrides depend on the saved session.
+    overrides = TradeSettings.preserve_legacy_configuration(config)
+    for legacy, buffer in LEGACY_TIME_BUFFERS.items():
+        if legacy in overrides and buffer not in overrides:
+            current.pop(buffer, None)
+    if isinstance(overrides.get('index_settings'), dict):
+        overrides = {**overrides, 'index_settings': {**current['index_settings'], **overrides['index_settings']}}
+    return BacktestInput.model_validate({**current, **overrides})
+
+
 router = APIRouter(tags=['backtests'])
+
+
+@router.post('/backtests/compare', status_code=201)
+async def compare_backtests(request: Request, config: dict = Body(...)):
+    try:
+        validated = merge_configuration(request.app.state, config)
+        runner = request.app.state.backtest_runner
+        # Load the dataset once: every run has identical ticks, warmup and contracts.
+        bundle = runner.load_dataset(validated)
+        runs = []
+        for strategy, multiplier in [('LEGACY', None)] + [('ATR', m) for m in (1, 1.25, 1.5, 1.75, 2, 2.5)]:
+            configuration = {**validated.exit_configuration.model_dump()}
+            if multiplier is not None:
+                configuration['atr_initial_multiplier'] = multiplier
+            candidate = validated.model_copy(update={'exit_strategy': strategy, 'exit_configuration': AtrSettings(**configuration)})
+            result = await runner.run(candidate, bundle=bundle)
+            fields = ('id', 'status', 'dataset_hash', 'total_trades', 'closed_trades', 'winning_trades', 'losing_trades',
+                      'win_rate', 'average_profit', 'average_loss', 'profit_factor', 'net_pnl', 'max_drawdown',
+                      'average_r', 'sl_hits', 'transaction_costs', 'gross_pnl', 'error_message')
+            runs.append({**{key: result.get(key) for key in fields}, 'strategy': strategy, 'multiplier': multiplier})
+        return dict(runs=runs, trading_date=str(validated.trading_date), instrument=validated.instrument)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
 
 
 @router.get('/backtests/settings')
@@ -268,16 +332,7 @@ def list_backtests(request: Request, filters: dict = Depends(date_filters)):
 @router.post('/backtests/run', status_code=201)
 async def run_backtest(request: Request, config: dict = Body(...)):
     try:
-        # Only explicitly supplied fields override the current application snapshot.
-        current = current_snapshot(request.app.state)
-        # Validate after merging: partial time overrides depend on the saved session.
-        overrides = TradeSettings.preserve_legacy_configuration(config)
-        for legacy, buffer in LEGACY_TIME_BUFFERS.items():
-            if legacy in overrides and buffer not in overrides:
-                current.pop(buffer, None)
-        if isinstance(overrides.get('index_settings'), dict):
-            overrides = {**overrides, 'index_settings': {**current['index_settings'], **overrides['index_settings']}}
-        config = BacktestInput.model_validate({**current, **overrides})
+        config = merge_configuration(request.app.state, config)
         return await request.app.state.backtest_runner.run(config)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
