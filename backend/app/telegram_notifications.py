@@ -3,10 +3,11 @@ import asyncio
 import logging
 import time
 from datetime import timezone
+from typing import Optional
 
 import httpx
 from fastapi import APIRouter, Request
-from pydantic import BaseModel, ConfigDict, StrictBool
+from pydantic import BaseModel, ConfigDict, HttpUrl, StrictBool, field_validator
 
 from app.database import connect
 from app.trading_date import TRADING_TIMEZONE
@@ -18,9 +19,14 @@ logger = logging.getLogger('uvicorn.error')
 
 def initialize_notifications(connection):
     connection.execute('''CREATE TABLE IF NOT EXISTS telegram_settings (
-        id INTEGER PRIMARY KEY CHECK(id = 1), enabled INTEGER NOT NULL CHECK(enabled IN (0, 1))
+        id INTEGER PRIMARY KEY CHECK(id = 1), enabled INTEGER NOT NULL CHECK(enabled IN (0, 1)),
+        url TEXT NOT NULL
     )''')
-    connection.execute('INSERT OR IGNORE INTO telegram_settings VALUES (1, 0)')
+    columns = {row['name'] for row in connection.execute('PRAGMA table_info(telegram_settings)')}
+    if 'url' not in columns:
+        connection.execute('ALTER TABLE telegram_settings ADD COLUMN url TEXT')
+    connection.execute('UPDATE telegram_settings SET url = ? WHERE url IS NULL', (TELEGRAM_URL,))
+    connection.execute('INSERT OR IGNORE INTO telegram_settings (id, enabled, url) VALUES (1, 0, ?)', (TELEGRAM_URL,))
     connection.execute('''CREATE TABLE IF NOT EXISTS telegram_notifications (
         trade_id INTEGER PRIMARY KEY, message TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'PENDING', attempts INTEGER NOT NULL DEFAULT 0,
@@ -68,28 +74,28 @@ class TelegramNotifications:
 
     def settings(self):
         with connect(self.path) as connection:
-            enabled = connection.execute('SELECT enabled FROM telegram_settings WHERE id = 1').fetchone()[0]
-        return dict(enabled=bool(enabled))
+            row = connection.execute('SELECT enabled, url FROM telegram_settings WHERE id = 1').fetchone()
+        return dict(enabled=bool(row['enabled']), url=row['url'])
 
-    def update_settings(self, enabled):
+    def update_settings(self, enabled, url=None):
         with connect(self.path) as connection:
-            connection.execute('UPDATE telegram_settings SET enabled = ? WHERE id = 1', (enabled,))
+            connection.execute('UPDATE telegram_settings SET enabled = ?, url = COALESCE(?, url) WHERE id = 1', (enabled, url))
             if not enabled:
                 connection.execute("UPDATE telegram_notifications SET status = 'CANCELLED' WHERE status = 'PENDING'")
-        return dict(enabled=enabled)
+        return self.settings()
 
     async def deliver_next(self):
         with connect(self.path) as connection:
-            row = connection.execute('''SELECT * FROM telegram_notifications
-                WHERE status = 'PENDING' AND next_attempt <= ?
-                AND (SELECT enabled FROM telegram_settings WHERE id = 1) = 1
-                ORDER BY trade_id LIMIT 1''', (time.time(),)).fetchone()
+            row = connection.execute('''SELECT n.*, s.url FROM telegram_notifications n
+                JOIN telegram_settings s ON s.id = 1
+                WHERE n.status = 'PENDING' AND n.next_attempt <= ? AND s.enabled = 1
+                ORDER BY n.trade_id LIMIT 1''', (time.time(),)).fetchone()
         if row is None:
             return False
         attempts = row['attempts'] + 1
         error_name = None
         try:
-            response = await self.client.post(TELEGRAM_URL, json={'message': row['message']})
+            response = await self.client.post(row['url'], json={'message': row['message']})
             response.raise_for_status()
             if response.json().get('sent') is not True:
                 raise ValueError('Telegram relay did not confirm delivery')
@@ -122,6 +128,14 @@ class TelegramNotifications:
 class TelegramSettings(BaseModel):
     model_config = ConfigDict(extra='forbid')
     enabled: StrictBool
+    url: Optional[HttpUrl] = None
+
+    @field_validator('url', mode='before')
+    @classmethod
+    def clean_url(cls, value):
+        if not isinstance(value, str):
+            raise ValueError('Enter an HTTP or HTTPS Telegram URL')
+        return value.strip()
 
 
 router = APIRouter(prefix='/settings/telegram', tags=['settings'])
@@ -134,4 +148,4 @@ def get_settings(request: Request):
 
 @router.put('', response_model=TelegramSettings)
 def update_settings(data: TelegramSettings, request: Request):
-    return request.app.state.telegram_notifications.update_settings(data.enabled)
+    return request.app.state.telegram_notifications.update_settings(data.enabled, str(data.url) if data.url else None)

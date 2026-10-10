@@ -1188,13 +1188,19 @@ unchanged.
 ### Telegram option entry alerts
 
 **Settings → Telegram notifications → Telegram option entry alerts** switches
-entry messages on/off immediately. The setting is saved in SQLite and defaults
-to **off**. `GET /api/settings/telegram` returns `{"enabled": false}`;
-`PUT /api/settings/telegram` accepts `{"enabled": true}` or `{"enabled": false}`
-(local backend URLs omit `/api`, as with other settings).
+entry messages on/off immediately. The same section has a **Telegram URL** field
+and **Save URL** button. Settings persist in SQLite across restarts and default
+to **off**, using the relay URL below. Existing installations retain their
+on/off setting when the URL field is added.
+`GET /api/settings/telegram` returns `enabled` and `url`;
+`PUT /api/settings/telegram` accepts `{"enabled": true, "url": "https://relay.example/api/telegram"}`.
+The URL must be a valid HTTP or HTTPS URL; invalid URLs return 422. Omitting
+`url` preserves the saved address for toggle-only updates. Saving a URL applies
+to the next delivery attempt, including pending alerts; an in-flight request
+continues using its previous address. Local backend URLs omit `/api`.
 
-Each new PAPER option entry while enabled sends `POST` to
-`https://jayantpanhalkar.pythonanywhere.com/api/telegram` with JSON
+Each new PAPER option entry while enabled sends `POST` to the configured URL
+(default `https://jayantpanhalkar.pythonanywhere.com/api/telegram`) with JSON
 `{"message": "..."}`. Messages include the trade ID, index, touched level,
 direction, option symbol/type/strike/expiry, entry premium, lots/quantity, entry
 value, initial stop premium, entry time in Asia/Kolkata, signal/selection IDs

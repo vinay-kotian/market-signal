@@ -78,6 +78,19 @@ html,body{margin:0;background:#f7f9f7}
 #ms-design .ms-bulk-classification .ms-report-filters{margin-bottom:0}
 
 #ms-design .ms-settings{display:grid;gap:24px}
+#ms-design .ms-toggle{position:relative;display:flex;align-items:center;gap:12px;font-size:12px;color:#26332e;cursor:pointer;min-height:34px}
+#ms-design .ms-toggle input{position:absolute;top:0;left:0;width:58px;height:34px;margin:0;padding:0;opacity:0;cursor:pointer;z-index:1}
+#ms-design .ms-toggle-track{display:block;flex:0 0 58px;height:34px;border:2px solid #232323;border-radius:999px;background:#fff;pointer-events:none;transition:background 160ms ease,opacity 160ms ease}
+#ms-design .ms-toggle-track::after{content:"";display:block;width:24px;height:24px;margin:3px;border-radius:50%;background:#232323;transition:transform 160ms ease,background 160ms ease}
+#ms-design .ms-toggle input:checked + .ms-toggle-track{background:#232323}
+#ms-design .ms-toggle input:checked + .ms-toggle-track::after{transform:translateX(24px);background:#fff}
+#ms-design .ms-toggle input:focus-visible + .ms-toggle-track{outline:2px solid #367a58;outline-offset:3px}
+#ms-design .ms-toggle input:disabled{cursor:wait}
+#ms-design .ms-toggle input:disabled + .ms-toggle-track{opacity:.5}
+#ms-design .ms-toggle-state{display:inline-block;margin-left:6px;font-size:11px;font-weight:600}
+#ms-design .ms-telegram-url{margin-top:18px;width:100%}
+#ms-design .ms-telegram-url label{flex:1 1 320px;min-width:0}
+@media(prefers-reduced-motion:reduce){#ms-design .ms-toggle-track,#ms-design .ms-toggle-track::after{transition:none}}
 #ms-design .ms-settings > section{min-width:0;padding:24px;background:#fff;border:1px solid #dfe5df;border-radius:10px;scroll-margin-top:24px}
 #ms-design .ms-settings .ms-sectionhead{font-size:15px;font-weight:600;margin-bottom:8px}
 #ms-design .ms-settings .ms-sub{margin:0 0 20px;line-height:1.7}

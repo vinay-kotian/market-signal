@@ -29,7 +29,8 @@ def park_worker(monkeypatch):
 def enabled(client, value=True):
     response = client.put('/settings/telegram', json={'enabled': value})
     assert response.status_code == 200
-    assert response.json() == {'enabled': value}
+    assert response.json()['enabled'] == value
+    assert response.json()['url']
 
 
 def rows(client):
@@ -45,21 +46,63 @@ def mock_sender(client, handler):
 
 
 def test_defaults_off_and_toggle_persists_across_restart(client):
-    assert client.get('/settings/telegram').json() == {'enabled': False}
+    assert client.get('/settings/telegram').json() == {'enabled': False, 'url': TELEGRAM_URL}
     add_trade(client)
     assert rows(client) == []
     enabled(client)
     with TestClient(create_app(client.app.state.database_path)) as restarted:
-        assert restarted.get('/settings/telegram').json() == {'enabled': True}
+        assert restarted.get('/settings/telegram').json() == {'enabled': True, 'url': TELEGRAM_URL}
         enabled(restarted, False)
-    assert client.get('/settings/telegram').json() == {'enabled': False}
+    assert client.get('/settings/telegram').json() == {'enabled': False, 'url': TELEGRAM_URL}
 
 
 @pytest.mark.parametrize('payload', [{}, {'enabled': 'true'}, {'enabled': 1}, {'enabled': None},
-                                      {'enabled': True, 'url': 'https://example.com'}])
+                                      {'enabled': True, 'unknown': 'https://example.com'}])
 def test_invalid_settings_rejected(client, payload):
     assert client.put('/settings/telegram', json=payload).status_code == 422
-    assert client.get('/settings/telegram').json() == {'enabled': False}
+    assert client.get('/settings/telegram').json() == {'enabled': False, 'url': TELEGRAM_URL}
+
+
+@pytest.mark.parametrize('url', ['', 'bad', 'ftp://relay.example/api', '/relative', None, 42])
+def test_invalid_urls_do_not_change_saved_settings(client, url):
+    assert client.put('/settings/telegram', json={'enabled': True, 'url': url}).status_code == 422
+    assert client.get('/settings/telegram').json() == {'enabled': False, 'url': TELEGRAM_URL}
+
+
+def test_url_persists_and_toggle_only_update_preserves_it(client):
+    url = 'https://relay.example/api/telegram'
+    response = client.put('/settings/telegram', json={'enabled': False, 'url': '  ' + url + '\u00a0'})
+    assert response.status_code == 200
+    assert response.json() == {'enabled': False, 'url': url}
+    enabled(client)
+    assert client.get('/settings/telegram').json() == {'enabled': True, 'url': url}
+    with TestClient(create_app(client.app.state.database_path)) as restarted:
+        assert restarted.get('/settings/telegram').json() == {'enabled': True, 'url': url}
+
+
+def test_legacy_settings_migration_keeps_enabled_state(tmp_path):
+    path = tmp_path / 'legacy.sqlite3'
+    with connect(path) as connection:
+        connection.execute('CREATE TABLE telegram_settings (id INTEGER PRIMARY KEY, enabled INTEGER NOT NULL)')
+        connection.execute('INSERT INTO telegram_settings VALUES (1, 1)')
+    with TestClient(create_app(path)) as client:
+        assert client.get('/settings/telegram').json() == {'enabled': True, 'url': TELEGRAM_URL}
+
+
+def test_pending_delivery_uses_configured_url(client):
+    enabled(client)
+    add_trade(client)
+    url = 'https://relay.example/new-telegram'
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(200, json={'sent': True})
+
+    service = mock_sender(client, handler)
+    assert client.put('/settings/telegram', json={'enabled': True, 'url': url}).status_code == 200
+    assert client.portal.call(service.deliver_next)
+    assert str(requests[0].url) == url
 
 
 def test_entry_message_details_and_duplicate_saves(client):
