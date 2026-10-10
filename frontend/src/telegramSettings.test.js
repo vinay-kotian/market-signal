@@ -8,6 +8,7 @@ async function setup(t, fetch) {
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost' });
   const restore = [];
   for (const [name, value] of Object.entries({ window: dom.window, document: dom.window.document,
+    navigator: dom.window.navigator,
     HTMLElement: dom.window.HTMLElement, IS_REACT_ACT_ENVIRONMENT: true })) {
     const previous = Object.getOwnPropertyDescriptor(globalThis, name);
     Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
