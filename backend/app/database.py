@@ -13,8 +13,8 @@ DEFAULT_DATABASE_PATH = Path(__file__).resolve().parents[1] / "levels.sqlite3"
 
 
 @contextmanager
-def connect(database_path):
-    connection = sqlite3.connect(database_path)
+def connect(database_path, *, check_same_thread=True):
+    connection = sqlite3.connect(database_path, check_same_thread=check_same_thread)
     connection.row_factory = sqlite3.Row
     try:
         with connection:

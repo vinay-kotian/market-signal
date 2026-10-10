@@ -32,7 +32,9 @@ def timestamp_scope(connection, column, from_date=None, to_date=None):
                 value = start.isoformat(timespec='microseconds')
             except OverflowError:
                 # Python cannot represent the UTC part of the first IST date.
-                value = '0000' if offset == 0 else utc_timestamp((local_start + timedelta(days=1)).isoformat())
+                # The day after date.max is also outside the representable range.
+                value = ('0000' if offset == 0 else '9999-12-32' if boundary == date.max
+                         else utc_timestamp((local_start + timedelta(days=1)).isoformat()))
             clauses.append(f'utc_timestamp({column}) {operator} ?')
             values.append(value)
     return clauses, values

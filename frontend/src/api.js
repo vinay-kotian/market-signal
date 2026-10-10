@@ -1,6 +1,7 @@
 export async function request(path, options = {}) {
+  const { responseType = 'json', ...fetchOptions } = options;
   const response = await fetch(`/api${path}`, {
-    ...options,
+    ...fetchOptions,
     headers: { 'Content-Type': 'application/json', ...options.headers },
   });
   if (!response.ok) {
@@ -10,5 +11,6 @@ export async function request(path, options = {}) {
       : `Request failed (${response.status})`;
     throw new Error(detail);
   }
+  if (responseType === 'blob') return response.blob();
   return response.status === 204 ? null : response.json();
 }

@@ -1,7 +1,7 @@
 import json
 from typing import get_args
 
-from app.report_filters import paper_scope
+from app.report_filters import paper_scope, report_scope
 from contextlib import nullcontext
 
 from app.database import connect
@@ -141,6 +141,21 @@ class TradeRepository:
             return connection.execute(
                 f"SELECT status, realised_pnl, exclude_from_strategy_metrics FROM trades WHERE {where}", values,
             ).fetchall()
+
+    def export_rows(self, columns, **filters):
+        # StreamingResponse may resume its iterator on different pool threads.
+        # Only this iterator owns the connection; next() calls are serialized.
+        with connect(self.database_path, check_same_thread=False) as connection:
+            where, values = report_scope(connection, **filters)
+            cursor = connection.execute(
+                f"SELECT {', '.join(columns)} FROM trades WHERE {where} "
+                'ORDER BY utc_timestamp(entry_time), trade_id', values,
+            )
+            try:
+                while rows := cursor.fetchmany(256):
+                    yield from rows
+            finally:
+                cursor.close()
 
     def history(self, page=1, page_size=20, status=None, instrument=None,
                 from_date=None, to_date=None, view='STRATEGY'):

@@ -1129,6 +1129,37 @@ the API secret. On local port 8000 use `/external/levels`; Nginx and Vite strip
 `/api` from public requests. Use HTTPS for remote calls. Rotate the shared key
 by updating the backend environment, restarting, and updating the caller.
 
+### Trading report CSV export
+
+`GET /api/reports/export?from_date=2026-10-03&to_date=2026-10-06&mode=PAPER`
+downloads all matching trades as UTF-8 CSV, ordered by entry timestamp (oldest
+first, with trade ID breaking ties). `from_date` is required in `YYYY-MM-DD`
+format; `to_date` defaults to it. Dates are inclusive Asia/Kolkata **entry dates**.
+`mode` defaults to PAPER; PAPER and BACKTEST are supported, with strict isolation.
+The endpoint reads the application's report database; isolated backtest run
+databases are not aggregated into this report.
+
+Use the existing `X-API-Key` authentication with `EXTERNAL_LEVELS_API_KEY` set in
+the backend environment. Missing/incorrect keys return 401; an unconfigured key
+returns 503. Invalid dates, reversed ranges and unsupported modes return 422.
+Local backend URLs omit `/api`, following the existing proxy convention.
+
+The default `view=RAW` includes excluded trades. Optional `view=STRATEGY`,
+`status=OPEN|CLOSED` and `instrument` filters match the existing Reports filters.
+The Reports page's **Download CSV** uses the applied date range (including Custom
+Date Range), current PAPER mode, selected view, status and instrument. Enter the
+API key in its export field; the key stays in page memory and is not saved or
+included in the download URL. Export errors appear next to the button.
+
+CSV contains trade IDs, symbols, direction, entry/exit timestamps, premiums,
+quantity, persisted P&L/percentage, exit reason, status and classification fields.
+Timestamps retain their stored timezone offset (legacy naive timestamps mean
+UTC). OPEN trade results are blank. Empty results still contain column headers.
+Rows stream in bounded batches; CSV quoting preserves commas, quotes and
+multiline text. Formula-like text gets a leading apostrophe for spreadsheet
+safety; numeric losses remain numeric. Trading execution and calculations are
+unchanged.
+
 
 ## Progressive trailing stop (strategy 1.3.0)
 

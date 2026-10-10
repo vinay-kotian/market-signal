@@ -43,3 +43,26 @@ export async function loadReport(filters, { signal, send = request } = {}) {
   ]);
   return { report, history, matchingIds };
 }
+
+export async function exportReport(filters, { apiKey, send = request } = {}) {
+  const query = reportQuery(filters);
+  const mode = filters.mode ?? 'PAPER';
+  query.set('mode', mode);
+  if (!apiKey) throw new Error('Enter the API key to download CSV.');
+  const blob = await send(`/reports/export?${query}`, {
+    headers: { 'X-API-Key': apiKey }, responseType: 'blob',
+  });
+  return { blob, filename: `trading-report-${mode}-${filters.fromDate}-${filters.toDate}.csv` };
+}
+
+export function saveCsv({ blob, filename }) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Allow the browser to start the download before releasing the blob URL.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}

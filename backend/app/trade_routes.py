@@ -2,12 +2,14 @@ from datetime import date as TradingDate
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Request, Query, HTTPException, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from app.paper_report import PaperReportingService, PaperTradingReport
 
 from app.trade_models import Trade, TradeEntryResult, TradeClassification, BulkTradeClassification
 from app.trade_events import TradeEvent
 from app.date_range import date_filters
+from app.external_levels import authenticate
 
 
 router = APIRouter(tags=["paper trades"])
@@ -53,6 +55,31 @@ def report_filters(from_date: Optional[TradingDate] = None,
 def paper_report(request: Request, view: Literal["RAW", "STRATEGY"] = "STRATEGY",
                  filters: dict = Depends(report_filters)):
     return PaperReportingService(request.app.state.trade_repository).report(view, **filters)
+
+
+def export_filters(from_date: str = Query(..., pattern=r'^\d{4}-\d{2}-\d{2}$'),
+                   to_date: Optional[str] = Query(None, pattern=r'^\d{4}-\d{2}-\d{2}$'),
+                   status: Optional[Literal['OPEN', 'CLOSED']] = None,
+                   instrument: Optional[str] = Query(None, min_length=1, max_length=100)):
+    try:
+        start = TradingDate.fromisoformat(from_date)
+        end = TradingDate.fromisoformat(to_date) if to_date is not None else start
+    except ValueError:
+        raise HTTPException(422, 'Use valid dates in YYYY-MM-DD format')
+    return {**date_filters(start, end), 'status': status, 'instrument': instrument}
+
+
+@router.get('/reports/export', dependencies=[Depends(authenticate)])
+def export_report(request: Request, filters: dict = Depends(export_filters),
+                  mode: Literal['PAPER', 'BACKTEST'] = 'PAPER',
+                  view: Literal['RAW', 'STRATEGY'] = 'RAW'):
+    filename = f"trading-report-{mode}-{filters['from_date']}-{filters['to_date']}.csv"
+    chunks = PaperReportingService(request.app.state.trade_repository).export_csv(
+        mode=mode, view=view, **filters)
+    return StreamingResponse(chunks, media_type='text/csv; charset=utf-8', headers={
+        'Content-Disposition': f'attachment; filename="{filename}"',
+        'Cache-Control': 'no-store',
+    })
 
 
 @router.get('/trades/history', response_model=TradeHistory)

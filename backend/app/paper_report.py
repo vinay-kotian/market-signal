@@ -35,6 +35,12 @@ class PaperReportingService:
         rows = self.trades.paper_results(**filters)
         return calculate_report(rows, view)
 
+    def export_csv(self, **filters):
+        from app.report_csv import CSV_FIELDS, csv_chunks
+        # The report/history already use persisted trade results. Export those
+        # exact values, including null results for OPEN trades.
+        return csv_chunks(self.trades.export_rows(CSV_FIELDS, **filters))
+
 
 def calculate_report(rows, view="STRATEGY"):
     if view not in ('RAW', 'STRATEGY'):

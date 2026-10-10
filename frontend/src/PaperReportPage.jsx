@@ -6,7 +6,7 @@ import { formatPrice, formatExitReason } from './format';
 import DateRangeFilter from './DateRangeFilter';
 import BulkTradeClassification from './BulkTradeClassification';
 import { validityStatuses } from './bulkClassification';
-import { reportRangeError, loadReport } from './reportFilters';
+import { reportRangeError, loadReport, exportReport, saveCsv } from './reportFilters';
 
 export default function PaperReportPage({ refreshKey }) {
   const [view, setView] = useState('STRATEGY');
@@ -28,6 +28,17 @@ export default function PaperReportPage({ refreshKey }) {
   const [error, setError] = useState('');
   const [detailError, setDetailError] = useState('');
   const [retry, setRetry] = useState(0);
+  const [exportKey, setExportKey] = useState('');
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState('');
+
+  async function downloadCsv() {
+    setExportBusy(true); setExportError('');
+    try {
+      saveCsv(await exportReport({ fromDate, toDate, mode: 'PAPER', view, status, instrument }, { apiKey: exportKey }));
+    } catch (error) { setExportError(`CSV export failed: ${error.message}`); }
+    finally { setExportBusy(false); }
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -62,6 +73,11 @@ export default function PaperReportPage({ refreshKey }) {
   return <section aria-label="Paper trading report">
     <label className="ms-report-view">Report view <select disabled={bulkBusy} value={view} onChange={event => { setView(event.target.value); setPage(1); setSelected(null); setNotice(''); }}><option value="STRATEGY">STRATEGY · included trades</option><option value="RAW">RAW · all PAPER trades</option></select></label>
     <DateRangeFilter range={range} onApply={changeRange} disabled={bulkBusy} />
+    <div className="ms-report-filters">
+      <label>Export API key<input type="password" autoComplete="off" value={exportKey} onChange={event => setExportKey(event.target.value)} disabled={exportBusy} /></label>
+      <button className="ms-button" onClick={downloadCsv} disabled={exportBusy || bulkBusy || Boolean(validation)}>{exportBusy ? 'Downloading…' : 'Download CSV'}</button>
+    </div>
+    {exportError && <p className="ms-error" role="alert">{exportError}</p>}
     <p className="ms-sub">Performance and trade history are calculated for the selected report view and date range, using trade entry time in Asia/Kolkata. Status and instrument filters apply to both sections.</p>
     <div className="ms-sectionhead">Performance Summary</div>
     {error && <p className="ms-error" role="alert">{error} <button onClick={() => setRetry(value => value + 1)}>Retry</button></p>}

@@ -175,3 +175,29 @@ test('calendar repositions on viewport resize and page scroll without losing its
   assert.equal(panel.style.top, '148px');
   assert.equal(document.querySelectorAll('.ms-date-between').length, 2);
 });
+
+test('Reports CSV button uses the shared custom range and shows download errors', async t => {
+  const { server, root, click, button, dom } = await setup(t);
+  const urls = [];
+  t.mock.method(globalThis, 'fetch', async url => {
+    urls.push(url);
+    const data = url.includes('/trades/history/ids') ? []
+      : url.includes('/trades/history') ? { items: [], total: 0, page_size: 20 }
+      : { total_trades: 0, win_rate: 0, net_pnl: 0, profit_factor: null };
+    return { ok: true, json: async () => data };
+  });
+  const { default: Reports } = await server.ssrLoadModule('/src/PaperReportPage.jsx');
+  await act(() => root.render(React.createElement(Reports, { refreshKey: 0 })));
+  await click(button('Today ▾'));
+  await click(document.querySelector('[data-day="2026-10-03"]'));
+  await click(document.querySelector('[data-day="2026-10-06"]'));
+  await click(button('Apply'));
+  assert.ok(button('3 Oct 2026 – 6 Oct 2026 ▾'));
+  assert.equal(document.querySelector('input[type="password"]').autocomplete, 'off');
+  assert.ok(!button('Download CSV').disabled);
+  await act(async () => button('Download CSV').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })));
+  assert.match(document.querySelector('[role="alert"]').textContent,
+    /CSV export failed: Enter the API key to download CSV/);
+  assert.ok(!button('Download CSV').disabled);
+  assert.ok(!urls.some(url => url.includes('/reports/export')));
+});
