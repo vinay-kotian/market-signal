@@ -2,7 +2,7 @@
 import hashlib
 import json
 import logging
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 from pathlib import Path
 from typing import Literal, Optional
 from uuid import UUID, uuid4
@@ -32,9 +32,11 @@ from app.trade_repository import TradeRepository
 from app.trading_time import TradingTimeRules
 from app.atr_data import AtrCandle, AtrData
 from app.exit_settings import AtrSettings, ExitSettings
+from app.exit_strategies import strategy_for
 
 
 class BacktestInput(TradeSettings, SignalSettings, OptionSettings):
+    data_source: Literal['ARCHIVE', 'SIMULATED', 'ZERODHA_HISTORICAL'] = 'ARCHIVE'
     exit_strategy: Literal['LEGACY', 'ATR'] = 'LEGACY'
     exit_configuration: AtrSettings = Field(default_factory=AtrSettings)
     transaction_cost_per_order: float = Field(default=0, ge=0, allow_inf_nan=False)
@@ -57,6 +59,16 @@ class BacktestInput(TradeSettings, SignalSettings, OptionSettings):
             raise ValueError('Levels must be finite positive prices')
         if self.dataset is not None and self.fixture is not None:
             raise ValueError('Choose dataset or fixture, not both')
+        if self.data_source == 'ZERODHA_HISTORICAL':
+            if self.dataset is not None or self.fixture or self.contracts or self.candles:
+                raise ValueError('Zerodha historical data cannot be combined with uploaded or simulated data')
+            if self.instrument not in ('NIFTY', 'BANKNIFTY'):
+                raise ValueError('Zerodha historical backtesting supports NIFTY and BANKNIFTY')
+            if any(value.second or value.microsecond for value in (self.market_open_time, self.market_close_time,
+                    self.trading_start_time, self.new_trade_cutoff_time, self.mandatory_exit_time)):
+                raise ValueError('Candle approximation requires session and trading boundaries on whole minutes')
+        if self.data_source == 'SIMULATED' and not self.fixture:
+            raise ValueError('SIMULATED backtests require the existing nifty-demo fixture')
         if self.dataset is not None and not self.contracts:
             raise ValueError('Recorded ticks require a dated historical option contract catalogue')
         if self.contracts and self.dataset is None:
@@ -81,6 +93,14 @@ class BacktestRunner:
     def __init__(self, directory, data_source=None):
         self.directory = Path(directory)
         self.data_source = data_source or LocalHistoricalDataSource(self.directory.parent / 'historical-data')
+        self.zerodha_loader = None
+
+    async def prepare_dataset(self, config):
+        if config.data_source == 'ZERODHA_HISTORICAL':
+            if self.zerodha_loader is None:
+                raise ValueError('Zerodha historical integration is unavailable; configure Zerodha market data')
+            return await self.zerodha_loader.load(config)
+        return self.load_dataset(config)
 
     def load_dataset(self, config: BacktestInput):
         if config.fixture:
@@ -96,7 +116,7 @@ class BacktestRunner:
 
     async def run(self, config: BacktestInput, *, bundle=None):
         if bundle is None:
-            bundle = self.load_dataset(config)
+            bundle = await self.prepare_dataset(config)
         session_start = datetime.combine(config.trading_date, config.market_open_time, TradingTimeRules.timezone)
         session_end = datetime.combine(config.trading_date, config.market_close_time, TradingTimeRules.timezone)
         if any(row.timestamp.astimezone(TradingTimeRules.timezone).date() != config.trading_date for row in bundle.ticks):
@@ -129,14 +149,18 @@ class BacktestRunner:
                         for key, value in config.index_settings.items()},
                         contracts=[c.model_dump(mode='json') for c in bundle.contracts])
         snapshot.update(exit_strategy=config.exit_strategy, exit_configuration=config.exit_configuration.model_dump(mode='json'),
-                        transaction_cost_per_order=config.transaction_cost_per_order)
-        dataset_hash = hashlib.sha256(bundle.model_dump_json().encode()).hexdigest()
+                        transaction_cost_per_order=config.transaction_cost_per_order, data_source=bundle.source,
+                        data_resolution=bundle.data_resolution, execution_model=bundle.execution_model)
+        hash_data = bundle.model_dump(mode='json', exclude={'coverage', 'warnings'})
+        dataset_hash = hashlib.sha256(json.dumps(hash_data, sort_keys=True).encode()).hexdigest()
         created = datetime.now(timezone.utc).isoformat()
         result = dict(id=run_id, status='RUNNING', trading_date=config.trading_date.isoformat(),
                       instrument=config.instrument, strategy_version=config.strategy_version,
                       settings_snapshot=snapshot, input_levels=list(dict.fromkeys(config.levels)),
                       created_at=created, started_at=created, completed_at=None, error_message=None,
-                      data_source=bundle.source, dataset_hash=dataset_hash)
+                      data_source=bundle.source, dataset_hash=dataset_hash, data_resolution=bundle.data_resolution,
+                      execution_model=bundle.execution_model, historical_data_coverage=bundle.coverage,
+                      data_warnings=bundle.warnings)
         initialize_database(path, config.stop_loss_percentage, config.model_dump())
         atr_data = AtrData(path, 'BACKTEST')
         atr_data.cache(bundle.candles)
@@ -170,6 +194,8 @@ class BacktestRunner:
             prices = HistoricalOptionPrices(clock)
             executor = BacktestExecutor(trades, instruments, prices, settings, signal_settings, option_settings,
                                         atr_data=atr_data, clock=clock)
+            executor.historical_data_errors = bundle.option_data_errors
+            executor.candle_approximation = bundle.execution_model == 'CANDLE_APPROXIMATION'
             monitor = LevelMonitor(levels, SignalEngine(signal_settings), clock,
                 signal_repository=SignalRepository(path), option_selector=OptionSelector(instruments),
                 option_settings=option_settings, option_repository=OptionSelectionRepository(path), paper_executor=executor)
@@ -184,12 +210,29 @@ class BacktestRunner:
                 executor.expire_pending(timestamp)
                 await monitor.reconcile()
 
-            async def consume(tick):
-                atr_data.observe(tick.instrument, tick.price, clock())
+            candle_lookup = {(c.symbol, c.completed_at): c for c in bundle.minute_candles}
+
+            async def consume(tick, observation='QUOTE'):
+                if not executor.candle_approximation:
+                    atr_data.observe(tick.instrument, tick.price, clock())
                 if tick.instrument == config.instrument:
                     timeline.spot = tick.price
                     await monitor.on_tick(tick)
                 else:
+                    if observation == 'OPTION_CANDLE':
+                        candle = candle_lookup[(tick.instrument, clock())]
+                        # Only completed OHLC is used. Test the adverse low before
+                        # crediting a high, then retest low against any raised stop.
+                        # Shared protection decides every transition; no inferred path.
+                        for price in (candle.low, candle.high, candle.low, candle.close):
+                            with connect(path) as connection:
+                                open_positions = trades.open_for_symbol(tick.instrument, connection)
+                                if not open_positions:
+                                    break
+                                for trade in open_positions:
+                                    strategy_for(trade.strategy_type).protect(positions, trade, price, clock(), connection)
+                            timeline.capture(monitor=monitor)
+                        return
                     # Existing positions process this observation before a pending entry fills.
                     await positions.on_tick(tick)
                     prices.observe(tick.instrument, tick.price)
@@ -199,10 +242,20 @@ class BacktestRunner:
                             reason='Valid for exits; cannot fill an entry'))
                 timeline.capture(tick, monitor)
 
-            await HistoricalMarketDataProvider(consume).replay(records, advance)
+            if executor.candle_approximation:
+                import asyncio
+                for record in records:
+                    await advance(record.timestamp)
+                    await consume(record, record.observation)
+                    await asyncio.sleep(0)
+            else:
+                await HistoricalMarketDataProvider(consume).replay(records, advance)
             await advance(end)
             executor.expire_pending(end, session_end=True)
             timeline.capture(monitor=monitor)
+            if executor.candle_approximation and any(row.status == 'FAILED' for row in OptionSelectionRepository(path).recent(100000)):
+                raise ValueError('Historical contract selection failed; the dated catalogue has no required expiry/strike/type. '
+                                 'No substitute contract was used.')
             timeline.record('MARKET_CLOSE', dict(instrument=config.instrument, partial_session=end < session_end), timestamp=end)
             failed_entries = [r for r in trades.recent_results(100000)
                               if r.failure_reason == 'HISTORICAL_OPTION_PRICE_UNAVAILABLE']
@@ -232,7 +285,11 @@ class BacktestRunner:
         result.update(**backtest_summary(trade_rows, config.transaction_cost_per_order),
             levels=[level.model_dump(mode='json') for level in levels.list()],
             trades=[{**trade.model_dump(mode='json'), 'signal_timestamp': signals[trade.signal_id].timestamp.isoformat(),
-                     'instrument_token': catalogue[trade.option_symbol].instrument_token} for trade in trade_rows],
+                     'instrument_token': catalogue[trade.option_symbol].instrument_token,
+                     'gross_pnl': trade.realised_pnl,
+                     'transaction_costs': config.transaction_cost_per_order * (2 if trade.status == 'CLOSED' else 1),
+                     'net_pnl': trade.realised_pnl - 2*config.transaction_cost_per_order if trade.status == 'CLOSED' else None}
+                    for trade in trade_rows],
             signals=[signal.model_dump(mode='json') for signal in signal_rows],
             option_selections=[{**row.model_dump(mode='json'),
                 'instrument_token': catalogue[row.option_symbol].instrument_token if row.option_symbol else None}
@@ -302,7 +359,7 @@ async def compare_backtests(request: Request, config: dict = Body(...)):
         validated = merge_configuration(request.app.state, config)
         runner = request.app.state.backtest_runner
         # Load the dataset once: every run has identical ticks, warmup and contracts.
-        bundle = runner.load_dataset(validated)
+        bundle = await runner.prepare_dataset(validated)
         runs = []
         for strategy, multiplier in [('LEGACY', None)] + [('ATR', m) for m in (1, 1.25, 1.5, 1.75, 2, 2.5)]:
             configuration = {**validated.exit_configuration.model_dump()}
@@ -314,14 +371,26 @@ async def compare_backtests(request: Request, config: dict = Body(...)):
                       'win_rate', 'average_profit', 'average_loss', 'profit_factor', 'net_pnl', 'max_drawdown',
                       'average_r', 'sl_hits', 'transaction_costs', 'gross_pnl', 'error_message')
             runs.append({**{key: result.get(key) for key in fields}, 'strategy': strategy, 'multiplier': multiplier})
-        return dict(runs=runs, trading_date=str(validated.trading_date), instrument=validated.instrument)
+        return dict(runs=runs, trading_date=str(validated.trading_date), instrument=validated.instrument,
+                    data_source=bundle.source, data_resolution=bundle.data_resolution,
+                    execution_model=bundle.execution_model, data_warnings=bundle.warnings,
+                    historical_data_coverage=bundle.coverage)
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
 
 
 @router.get('/backtests/settings')
 def backtest_settings(request: Request):
-    return current_snapshot(request.app.state)
+    state = request.app.state
+    snapshot = current_snapshot(state)
+    now = state.level_repository.clock().astimezone(TradingTimeRules.timezone)
+    day = now.date()
+    if now.time().replace(tzinfo=None) < state.paper_executor.settings.market_close_time:
+        day -= timedelta(days=1)
+    while day.weekday() >= 5:
+        day -= timedelta(days=1)
+    return {**snapshot, 'latest_completed_session': day.isoformat(),
+            'zerodha_historical_available': state.kite is not None}
 
 
 @router.get('/backtests')

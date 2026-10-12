@@ -1,3 +1,5 @@
+import asyncio
+import time
 import csv
 import hashlib
 import io
@@ -43,6 +45,12 @@ class MarketSettings(BaseModel):
                    frontend_url=os.getenv('FRONTEND_URL', 'http://127.0.0.1:5173'))
 
 
+class MarketDataRequestError(ValueError):
+    def __init__(self, status_code):
+        self.status_code = status_code
+        super().__init__(f'Zerodha market-data request failed (HTTP {status_code})')
+
+
 class KiteConnector:
     """Deliberately exposes only login, instrument-master and quote operations."""
     def __init__(self, settings, client=None, session_store=None):
@@ -52,6 +60,8 @@ class KiteConnector:
         if not self._token.get_secret_value() and session_store:
             self._token = SecretStr(session_store.load() or '')
         self.client = client or httpx.AsyncClient(base_url='https://api.kite.trade', timeout=15)
+        self._history_lock = None
+        self._history_requested_at = 0
 
     @property
     def authenticated(self):
@@ -115,7 +125,7 @@ class KiteConnector:
             self.expire()
             raise ValueError('Zerodha session expired; login again')
         if response.status_code != 200:
-            raise ValueError('Zerodha market-data request failed')
+            raise MarketDataRequestError(response.status_code)
         return response
 
     async def instruments(self):
@@ -130,10 +140,29 @@ class KiteConnector:
     async def historical_candles(self, token, start, end, interval='minute'):
         if interval not in ('minute', '5minute'):
             raise ValueError('Unsupported candle interval')
-        response = await self._get(f'/instruments/historical/{token}/{interval}', params={
-            'from': start.strftime('%Y-%m-%d %H:%M:%S'),
-            'to': end.strftime('%Y-%m-%d %H:%M:%S'), 'continuous': 0, 'oi': 0})
-        return response.json().get('data', {}).get('candles', [])
+        from app.trading_time import TradingTimeRules
+        start, end = start.astimezone(TradingTimeRules.timezone), end.astimezone(TradingTimeRules.timezone)
+        if self._history_lock is None:
+            self._history_lock = asyncio.Lock()
+        async with self._history_lock:
+            for attempt in range(3):
+                await asyncio.sleep(max(0, .35 - (time.monotonic() - self._history_requested_at)))
+                self._history_requested_at = time.monotonic()
+                try:
+                    response = await self._get(f'/instruments/historical/{token}/{interval}', params={
+                        'from': start.strftime('%Y-%m-%d %H:%M:%S'),
+                        'to': end.strftime('%Y-%m-%d %H:%M:%S'), 'continuous': 0, 'oi': 0})
+                    payload = response.json()
+                    rows = payload.get('data', {}).get('candles')
+                    if payload.get('status', 'success') != 'success' or not isinstance(rows, list):
+                        raise ValueError('Zerodha returned invalid historical candles')
+                    return rows
+                except (httpx.RequestError, MarketDataRequestError) as error:
+                    retryable = isinstance(error, httpx.RequestError) or error.status_code == 429 or error.status_code >= 500
+                    if not retryable or attempt == 2:
+                        raise ValueError('Zerodha historical request unavailable after retries' if retryable
+                                         else str(error)) from error
+                    await asyncio.sleep(.5 * 2**attempt)
 
     def expire(self):
         self._token = SecretStr('')

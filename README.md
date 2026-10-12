@@ -758,7 +758,16 @@ subsequent application settings update changes a persisted run or its trades.
 `GET /backtests/settings` shows current defaults, `GET /backtests` lists saved
 runs, and `GET /backtests/{id}` returns a saved result.
 
-There is **no external historical-data archive connected**. For a real date,
+Choose **Zerodha historical · 1-minute candles** to fetch a completed session
+through the existing read-only Kite client. This requires a reliable dated
+instrument catalogue and complete index/selected-option minute coverage. Every
+successful instrument sync now saves that day's catalogue; today's master
+cannot reconstruct an older or expired option universe. See
+[Zerodha candle replay and execution assumptions](docs/backtesting.md#zerodha-historical-candle-replay).
+Both LEGACY and ATR reuse the existing strategy and isolated BACKTEST records.
+Results label candle approximation, coverage warnings and costs explicitly.
+
+For recorded tick replay of a real date,
 supply recorded spot/option ticks plus an archived catalogue of that day's
 contracts (including the nearest expiry even when a required strike is absent).
 Today's Zerodha instrument dump and current quotes are not substitutes for this

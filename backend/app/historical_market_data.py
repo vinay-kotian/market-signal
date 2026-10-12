@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 from typing import Literal, Protocol, Optional
-from datetime import date
+from datetime import date, timedelta
 
 from pydantic import AwareDatetime, BaseModel, Field, model_validator
 
@@ -15,6 +15,29 @@ from app.atr_data import AtrCandle
 class HistoricalTick(PriceTick):
     timestamp: AwareDatetime
     price: float = Field(ge=0, allow_inf_nan=False)
+    observation: Literal['QUOTE', 'OPTION_OPEN', 'OPTION_CANDLE', 'INDEX_CLOSE'] = 'QUOTE'
+
+
+class MinuteCandle(BaseModel):
+    symbol: str = Field(min_length=1)
+    timestamp: AwareDatetime
+    open: float = Field(gt=0, allow_inf_nan=False)
+    high: float = Field(gt=0, allow_inf_nan=False)
+    low: float = Field(ge=0, allow_inf_nan=False)
+    close: float = Field(ge=0, allow_inf_nan=False)
+    volume: float = Field(ge=0, allow_inf_nan=False)
+
+    @model_validator(mode='after')
+    def valid_candle(self):
+        if self.timestamp.second or self.timestamp.microsecond:
+            raise ValueError('Historical minute candles must start on a minute boundary')
+        if not self.low <= min(self.open, self.close) <= max(self.open, self.close) <= self.high:
+            raise ValueError('Invalid historical minute OHLC')
+        return self
+
+    @property
+    def completed_at(self):
+        return self.timestamp + timedelta(minutes=1)
 
 
 class HistoricalContract(BaseModel):
@@ -32,6 +55,12 @@ class HistoricalDataset(BaseModel):
     ticks: list[HistoricalTick] = Field(min_length=1, max_length=100000)
     source: str = Field(default='USER_SUPPLIED', max_length=200)
     candles: list[AtrCandle] = Field(default_factory=list, max_length=100000)
+    minute_candles: list[MinuteCandle] = Field(default_factory=list)
+    data_resolution: str = 'RECORDED_OBSERVATIONS'
+    execution_model: str = 'OBSERVED_PRICE'
+    coverage: dict = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
+    option_data_errors: dict[str, str] = Field(default_factory=dict)
 
     @model_validator(mode='after')
     def unique_contracts(self):

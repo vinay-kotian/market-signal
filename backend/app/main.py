@@ -157,6 +157,10 @@ def create_app(database_path=None, signal_settings=None,
                     import logging
                     logging.getLogger(__name__).warning('Zerodha instrument sync failed; retry from Connection settings')
             app.state.zerodha_task = asyncio.create_task(app.state.market_data_provider.run())
+        from app.zerodha_history import ZerodhaHistoricalDataLoader
+        app.state.backtest_runner.zerodha_loader = ZerodhaHistoricalDataLoader(
+            app.state.backtest_runner.data_source.directory,
+            app.state.zerodha_instruments, app.state.kite, current_time)
         await market_close.check()
         app.state.telegram_notifications = TelegramNotifications(app.state.database_path)
         telegram_task = asyncio.create_task(app.state.telegram_notifications.run())

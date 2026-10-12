@@ -1,5 +1,6 @@
 from datetime import date, datetime, timezone
 from functools import reduce
+import json
 from math import gcd
 from typing import Optional
 
@@ -55,8 +56,15 @@ class ZerodhaInstrumentService:
         with connect(path) as connection:
             connection.execute('CREATE TABLE IF NOT EXISTS zerodha_instruments (exchange TEXT, symbol TEXT, data TEXT, PRIMARY KEY(exchange, symbol))')
             connection.execute('CREATE TABLE IF NOT EXISTS zerodha_sync (id INTEGER PRIMARY KEY CHECK(id=1), timestamp TEXT)')
+            connection.execute('''CREATE TABLE IF NOT EXISTS zerodha_instrument_catalogues (
+                trading_date TEXT PRIMARY KEY, observed_at TEXT NOT NULL, records TEXT NOT NULL)''')
             rows = connection.execute('SELECT data FROM zerodha_instruments').fetchall()
             last = connection.execute('SELECT timestamp FROM zerodha_sync WHERE id=1').fetchone()
+            if rows and last:
+                from app.trading_date import trading_date
+                connection.execute('INSERT OR IGNORE INTO zerodha_instrument_catalogues VALUES (?, ?, ?)',
+                    (trading_date(datetime.fromisoformat(last['timestamp'])).isoformat(), last['timestamp'],
+                     json.dumps([json.loads(row['data']) for row in rows])))
         self.install([Instrument.model_validate_json(row['data']) for row in rows])
         if last:
             self.last_sync, self.status = last['timestamp'], 'SYNCED'
@@ -75,6 +83,12 @@ class ZerodhaInstrumentService:
                 connection.executemany('INSERT INTO zerodha_instruments VALUES (?, ?, ?)',
                     [(r.exchange, r.trading_symbol, r.model_dump_json()) for r in records])
                 connection.execute('INSERT OR REPLACE INTO zerodha_sync VALUES (1, ?)', (timestamp,))
+                from app.trading_date import trading_date
+                # Retain the earliest daily universe: a post-close refresh may
+                # already have removed that day's expiring options.
+                connection.execute('INSERT OR IGNORE INTO zerodha_instrument_catalogues VALUES (?, ?, ?)',
+                    (trading_date(datetime.fromisoformat(timestamp)).isoformat(), timestamp,
+                     json.dumps([r.model_dump(mode='json') for r in records])))
             self.install(records)
             self.last_sync, self.status = timestamp, 'SYNCED'
         except Exception:

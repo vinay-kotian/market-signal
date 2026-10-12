@@ -3,7 +3,8 @@
 The previous backtester reused the strategy in isolated SQLite databases but
 used synthetic contracts and previously observed quotes for fills. This version
 adds a dated historical catalogue and replaces those fills with pending
-historical execution. No external historical archive is currently connected.
+historical execution. The optional Zerodha candle loader is described below;
+recorded tick archives remain upload/local-file based.
 
 ## Reused components and abstractions
 
@@ -170,3 +171,120 @@ costs; closed-trade metrics/drawdown use net realised results. Average R uses ne
 closed-trade P&L divided by the immutable initial risk amount. Saved trade P&L
 continues to represent gross execution P&L. Older saved runs retain their original
 metrics and may lack ATR/risk/cost fields.
+
+## Zerodha historical candle replay
+
+Select **Zerodha historical · 1-minute candles** in Backtest after configuring
+`MARKET_DATA_MODE=ZERODHA` and connecting Kite. The UI starts with the current
+configured exit strategy and latest completed weekday session in Asia/Kolkata.
+It has no exchange holiday calendar: an empty holiday session is rejected.
+The existing archive/upload sources and synthetic NIFTY demo remain available.
+
+```json
+{
+  "trading_date": "2026-10-09",
+  "instrument": "NIFTY",
+  "levels": [25200, 25300],
+  "data_source": "ZERODHA_HISTORICAL",
+  "exit_strategy": "ATR",
+  "transaction_cost_per_order": 2
+}
+```
+
+`BacktestInput` retains the existing `trading_date` naming and current-settings
+merge behavior. Explicit settings override only this run. Zerodha history may
+not be combined with uploaded data or a demo fixture. Both `/backtests/run` and
+`/backtests/compare` use the same loader and existing isolated replay engine.
+Only NIFTY/BANKNIFTY are supported for this source. Sessions, entry cutoffs and
+mandatory exits must fall on whole-minute boundaries.
+
+### Dated contracts and downloads
+
+The first successful Zerodha instrument sync each day now archives a catalogue
+by Kolkata calendar date in `zerodha_instrument_catalogues`; later refreshes
+retain that earliest snapshot. Post-session-only snapshots are rejected because
+expiring contracts may already have been removed. This is an additive table
+created automatically in the application database. The previously saved latest
+dump is backfilled under its original sync date before a new sync replaces it.
+Existing strategy tables
+and PAPER records are unaffected. A legacy latest dump is usable only if its
+saved sync timestamp belongs to the requested date. An undated or newer dump
+cannot prove the historical nearest expiry and is rejected, including across
+weekends. Saving catalogues starts with this release; historical catalogues
+cannot be retroactively reconstructed from today's master.
+
+The shared `OptionSelector` supplies all expiry, strike, CE/PE and ITM decisions.
+The loader prefetches contracts it could select at the recorded index closes,
+in both directions. This keeps strategy comparisons on one frozen archive
+without downloading an entire option chain. An unavailable unused candidate
+is retained as a coverage warning; a run actually selecting it fails. Missing
+strikes never fall back to another expiry.
+
+Completed-session minute downloads must contain every session minute, in
+chronological order with unique timestamps and finite valid OHLCV. An empty,
+missing or duplicate minute fails coverage validation. Sparse option histories
+are therefore rejected even when a trade might otherwise have filled; no price
+interpolation is performed. No successful trading result is produced using a
+selected contract with incomplete session history.
+
+Validated downloads are stored in `HISTORICAL_DATA_DIRECTORY/zerodha-history.sqlite3`,
+defaulting to `historical-data` beside the application database. Cache keys include the full dated contract
+identity/token, requested interval and exact range, preventing token-reuse
+collisions. Cache hits do not change the dataset hash. Previously validated
+cached prices can replay after expiry or without an active session; uncached
+expired-contract tokens are rejected because they cannot safely identify a
+historical contract through today's API. Backtest reports, catalogue/token
+snapshots, coverage, source, assumptions and audit events remain in each run's
+existing isolated `results.sqlite3`.
+
+The existing read-only Kite connector throttles history requests to less than
+three per second using one async lock shared with charts and PAPER ATR history.
+HTTP 429, server failures and network failures retry up to three attempts with
+bounded backoff. Expired authentication requires reconnecting; it never falls
+back to simulated prices. No order APIs are added or called.
+
+### Execution assumptions
+
+Results explicitly identify `data_resolution: "1_MINUTE_OHLC"` and
+`execution_model: "CANDLE_APPROXIMATION"`:
+
+1. Feed completed index **closes** to the unchanged level/signal engine at
+   candle end. Do not infer index touches or order of multiple intraminute
+   levels from OHLC. Initial arming/rearming, approach distance, deduplication,
+   direction and the single-position rule remain shared with PAPER.
+2. Reserve an eligible signal, then fill at the next option candle **open**.
+   At an equal timestamp, completed option bars are handled first, then index
+   closes/signals, then the next option opens. The preceding completed option
+   close is never an entry fill. Actual entry time is revalidated against the
+   configured cutoff by the shared executor.
+3. At completion of a held option candle, pass its **low, high, low again,
+   close** through the existing protection implementation, stopping once the
+   trade closes. A low that already breaches the existing stop exits before
+   crediting the high. Otherwise the high can raise protection, and the repeated
+   low conservatively tests ambiguous high/low ordering against that protection.
+   Stop exits fill at the adverse observed low, rather than a favorable stop
+   price. This is a documented stress assumption, not a claimed tick path.
+   Exit timestamps are bar completion timestamps, not exact intraminute times.
+4. Evaluate a completed preceding option bar before its next open. A surviving
+   position exits at the first option open at or after the mandatory deadline
+   through the shared position monitor. No stale closing quote is used.
+5. Build ATR from authoritative option OHLC aggregated into **complete five-minute
+   bars**, matching the existing ATR timeframe, plus prior completed Kite
+   five-minute bars from a ten-calendar-day warmup range. Only bars completed
+   and available by entry contribute. Option ATR determines the stop; index ATR
+   does not. Missing warmup is reported; insufficient eligible candles retain
+   the existing `OPTION_ATR_UNAVAILABLE` entry skip.
+6. Flat per-order transaction costs use the existing backtest model and are
+   reported with gross/net P&L and average R. There is no independent configurable
+   slippage or brokerage-tax breakdown in that existing model. The adverse
+   candle-low fill is the conservative execution assumption; it cannot model
+   real spreads, liquidity or exchange tick ordering.
+
+An actual 9 October run requires a reliable catalogue for **9 October**, cached
+or retrievable prices for its selected contracts, and Kite history access.
+Automated tests use mock broker responses, including an entire 375-minute
+9 October BANKNIFTY session. They do not establish that a user's Kite account
+or the exchange archive can supply the requested day's contracts/prices.
+
+Official API references: [historical candle data](https://kite.trade/docs/connect/v3/historical/)
+and [history rate limits/errors](https://kite.trade/docs/connect/v3/exceptions/).

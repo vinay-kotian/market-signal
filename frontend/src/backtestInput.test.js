@@ -18,3 +18,11 @@ test('trade timeline includes its signals, level observations and session bounda
   assert.deepEqual(eventsForTrade(events, { trade_id: 1, trigger_level: 60000 }).map(e => e.id), [1, 2, 3]);
   assert.equal(eventsForTrade(events).length, 4);
 });
+
+test('latest completed session uses IST close and skips weekends', async () => {
+  const { latestCompletedSession } = await import('./backtestInput.js');
+  assert.equal(latestCompletedSession(new Date('2026-10-11T12:00:00Z')), '2026-10-09');
+  assert.equal(latestCompletedSession(new Date('2026-10-12T03:00:00Z')), '2026-10-09');
+  assert.equal(latestCompletedSession(new Date('2026-10-12T10:00:00Z')), '2026-10-12');
+  assert.equal(latestCompletedSession(new Date('2026-10-12T09:45:00Z'), '15:00'), '2026-10-12');
+});

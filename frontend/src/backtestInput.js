@@ -1,3 +1,14 @@
+export function latestCompletedSession(now = new Date(), closeTime = '15:30') {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(now).map(part => [part.type, part.value]));
+  const day = new Date(`${parts.year}-${parts.month}-${parts.day}T00:00:00Z`);
+  if (`${parts.hour}:${parts.minute}` < closeTime.slice(0, 5)) day.setUTCDate(day.getUTCDate() - 1);
+  while ([0, 6].includes(day.getUTCDay())) day.setUTCDate(day.getUTCDate() - 1);
+  return day.toISOString().slice(0, 10);
+}
+
 export function parseLevels(value) {
   const parts = value.trim().split(/[\s,]+/);
   const levels = [...new Set(parts.map(Number))];

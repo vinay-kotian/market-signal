@@ -26,6 +26,15 @@ class BacktestExecutor(PaperExecutor):
         self.pending = {}  # One reservation per underlying; no per-instrument threads.
         self.unfilled = []
         self.repository.execution_model = self
+        self.historical_data_errors = {}
+        self.candle_approximation = False
+
+    async def prepare(self, selection):
+        # The prefetched archive is checked only when the shared strategy actually
+        # selects a contract. Missing unused candidate data cannot fabricate trades.
+        if selection.status == 'SELECTED' and selection.option_symbol in self.historical_data_errors:
+            raise ValueError(self.historical_data_errors[selection.option_symbol])
+        await super().prepare(selection)
 
     def exit_price(self, trade, observed_price, timestamp, reason):
         # The shared monitor supplies the first observation triggering an exit.
@@ -53,7 +62,7 @@ class BacktestExecutor(PaperExecutor):
             if signal.instrument in self.pending or any(
                     trade.instrument == signal.instrument for trade in self.repository.all_open(connection)):
                 return self.fail(selection, timestamp, 'ACTIVE_TRADE_EXISTS', connection)
-            if self.prices.current_price(selection.option_symbol) is not None:
+            if not self.candle_approximation and self.prices.current_price(selection.option_symbol) is not None:
                 return super().execute(signal, selection, timestamp, connection)
             self.pending[signal.instrument] = (signal, selection)
             return None

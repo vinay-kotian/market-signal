@@ -1,10 +1,10 @@
 import { useDateRange } from './useDateRange';
 import DateRangeFilter from './DateRangeFilter';
 import { rangeQuery } from './dateRange';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { request } from './api';
 import { formatPrice, formatExitReason } from './format';
-import { parseLevels, parseHistoricalDataset, eventsForTrade } from './backtestInput';
+import { parseLevels, parseHistoricalDataset, eventsForTrade, latestCompletedSession } from './backtestInput';
 import { ConfigurationFields, StrategySelect } from './ExitStrategySettings';
 import { supportedIndices } from './indices';
 
@@ -14,7 +14,8 @@ export default function BacktestPage({ refreshKey }) {
   const [strategy, setStrategy] = useState('LEGACY'), [atr, setAtr] = useState(null);
   const [fee, setFee] = useState(0), [comparison, setComparison] = useState(null);
   const [instrument, setInstrument] = useState('NIFTY');
-  const [date, setDate] = useState('2026-09-14');
+  const [date, setDate] = useState(latestCompletedSession);
+  const dateTouched = useRef(false), sourceTouched = useRef(false);
   const [levels, setLevels] = useState('25000');
   const [source, setSource] = useState('archive');
   const [dataset, setDataset] = useState(null);
@@ -31,7 +32,11 @@ export default function BacktestPage({ refreshKey }) {
 
   useEffect(() => {
     let active = true;
-    request('/backtests/settings').then(snapshot => { if (active) { setSettings(snapshot); setAtr(snapshot.exit_configuration); } }).catch(error => { if (active) setError(error.message); });
+    request('/backtests/settings').then(snapshot => { if (active) {
+      setSettings(snapshot); setAtr(snapshot.exit_configuration); setStrategy(snapshot.exit_strategy ?? 'LEGACY');
+      if (!dateTouched.current && snapshot.latest_completed_session) setDate(snapshot.latest_completed_session);
+      if (!sourceTouched.current && snapshot.zerodha_historical_available) setSource('zerodha');
+    } }).catch(error => { if (active) setError(error.message); });
     return () => { active = false; };
   }, []);
 
@@ -53,6 +58,7 @@ export default function BacktestPage({ refreshKey }) {
     try {
       const response = await request(compare ? '/backtests/compare' : '/backtests/run', { method: 'POST', body: JSON.stringify({
         trading_date: date, instrument, levels: prices, exit_strategy: strategy, ...(atr ? { exit_configuration: atr } : {}), transaction_cost_per_order: Number(fee),
+        data_source: source === 'zerodha' ? 'ZERODHA_HISTORICAL' : source === 'demo' ? 'SIMULATED' : 'ARCHIVE',
         ...(source === 'demo' ? { fixture: 'nifty-demo' } : {}),
         ...(source === 'file' ? { dataset: dataset.ticks, contracts: dataset.contracts, candles: dataset.candles ?? [] } : {}),
       }) });
@@ -63,7 +69,7 @@ export default function BacktestPage({ refreshKey }) {
     finally { setBusy(false); }
   }
 
-  const currentSettings = settings ? Object.entries(settings).filter(([key]) => !['contracts', 'index_settings', 'trade_mode', 'timezone'].includes(key)) : [];
+  const currentSettings = settings ? Object.entries(settings).filter(([key]) => !['contracts', 'index_settings', 'trade_mode', 'timezone', 'latest_completed_session', 'zerodha_historical_available'].includes(key)) : [];
 
   return <section aria-label="Backtesting">
     <p className="ms-sub">Replay one historical trading day with the current strategy. Times use Asia/Kolkata. Each run stores its settings and remains separate from PAPER reports.</p>
@@ -72,17 +78,20 @@ export default function BacktestPage({ refreshKey }) {
         <div className="ms-report-filters">
           <StrategySelect label="Exit strategy" value={strategy} onChange={setStrategy} />
           <label>Transaction cost per order<input type="number" min="0" step="any" value={fee} onChange={event => setFee(event.target.value)} /></label>
-          <label>Trading date<input required type="date" value={date} onChange={event => setDate(event.target.value)} /></label>
+          <label>Trading date<input required type="date" value={date} onChange={event => { dateTouched.current = true; setDate(event.target.value); }} /></label>
           <label>Instrument<select value={instrument} onChange={event => {
             setInstrument(event.target.value); if (event.target.value !== 'NIFTY' && source === 'demo') setSource('archive');
-          }}>{supportedIndices.map(symbol => <option key={symbol}>{symbol}</option>)}</select></label>
+          }}>{supportedIndices.filter(symbol => source !== 'zerodha' || symbol !== 'SENSEX').map(symbol => <option key={symbol}>{symbol}</option>)}</select></label>
           <label>Price data<select value={source} onChange={event => {
-            setSource(event.target.value); if (event.target.value === 'demo') { setDate('2026-09-14'); setInstrument('NIFTY'); }
-          }}><option value="archive">Historical archive</option><option value="file">Upload historical JSON</option><option value="demo">Synthetic NIFTY demo · 14 Sep 2026</option></select></label>
+            sourceTouched.current = true; setSource(event.target.value);
+            if (event.target.value === 'demo') { dateTouched.current = true; setDate('2026-09-14'); setInstrument('NIFTY'); }
+            if (event.target.value === 'zerodha' && instrument === 'SENSEX') setInstrument('NIFTY');
+          }}><option value="zerodha">Zerodha historical · 1-minute candles</option><option value="archive">Historical archive</option><option value="file">Upload historical JSON</option><option value="demo">Synthetic NIFTY demo · 14 Sep 2026</option></select></label>
         </div>
         {atr && <details><summary>ATR exit configuration</summary><ConfigurationFields settings={atr} onChange={(key, value) => setAtr(previous => ({ ...previous, [key]: value }))} /></details>}
         <label>Trading levels<textarea required rows="4" value={levels} placeholder={'59800\n60000\n60250'} onChange={event => setLevels(event.target.value)} /></label>
         <p className="ms-sub">Enter one level per line, or separate levels with commas.</p>
+        {source === 'zerodha' && <p className="ms-sub">Connect Zerodha in Connection settings. Completed minute closes generate signals; entries use the next option open. Stops use conservative candle assumptions. Dated contract metadata and complete minute coverage are required. Holidays may need a different date.</p>}
         {source === 'file' && <label>Historical dataset<input type="file" accept=".json,application/json" onChange={async event => {
           const file = event.target.files?.[0]; setDataset(null); setFileName(''); setError('');
           if (!file) return;
@@ -130,14 +139,21 @@ export function BacktestResults({ result, selectedTrade = '', setSelectedTrade }
   return <section className="ms-report-timeline" aria-label="Backtest results">
       <div className="ms-sectionhead">{result.status} · {result.instrument} · {result.trading_date}</div><p className="ms-sub">Run ID: {result.id} · Source: {result.data_source}</p>
       {result.status === 'FAILED' && <p className="ms-error" role="alert">{result.error_message ?? result.error}</p>}
+      {result.execution_model && <p className="ms-sub">Resolution: {result.data_resolution} · Execution: {result.execution_model} · Strategy: {result.settings_snapshot?.exit_strategy}</p>}
+      {result.data_warnings?.length > 0 && <ul aria-label="Historical data warnings">{result.data_warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
+      {result.historical_data_coverage?.symbols && <details><summary>Historical data coverage and execution assumptions</summary>
+        <p>Catalogue observed: {result.historical_data_coverage.catalogue_observed_at}</p>
+        <ul>{Object.entries(result.historical_data_coverage.symbols).map(([symbol, coverage]) => <li key={symbol}>{symbol}: {coverage.complete ? `${coverage.received_minutes}/${coverage.expected_minutes} minutes · complete` : coverage.error}</li>)}</ul>
+        <ul>{result.historical_data_coverage.assumptions?.map(assumption => <li key={assumption}>{assumption}</li>)}</ul>
+      </details>}
       <dl className="ms-report-summary">{[['Total Trades', result.total_trades], ['Wins', result.wins], ['Losses', result.losses], ['Win Rate', `${formatPrice(result.win_rate)}%`], ['Net P&L', formatPrice(result.net_pnl ?? result.gross_pnl)], ['Profit Factor', result.profit_factor == null ? 'N/A' : formatPrice(result.profit_factor)], ['Max Drawdown', formatPrice(result.max_drawdown)]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
       <p className="ms-sub">Breakeven {result.breakeven} · Open {result.open_trades} · Average P&L {formatPrice(result.average_pnl)} · Average return {formatPrice(result.average_return_percent)}% · Total return {formatPrice(result.total_return_percent)}% · Best trade {formatPrice(result.best_trade)} · Worst trade {formatPrice(result.worst_trade)}</p>
-      <p className="ms-sub">{result.costs_supported ? <>Transaction costs {formatPrice(result.transaction_costs)} · Average R {formatPrice(result.average_r)} · SL hits {result.sl_hits}.</> : 'Costs are not modelled.'} Drawdown uses realised P&L in exit order; total return uses the sum of closed trade entry premiums. {result.ticks_processed} ticks processed.</p>
+      <p className="ms-sub">{result.costs_supported ? <>Gross P&amp;L {formatPrice(result.gross_pnl)} · Transaction costs {formatPrice(result.transaction_costs)} · Average R {formatPrice(result.average_r)} · SL hits {result.sl_hits}.</> : 'Costs are not modelled.'} Drawdown uses realised P&L in exit order; total return uses the sum of closed trade entry premiums. {result.ticks_processed} observations processed.</p>
       <div className="ms-tablewrap"><table><thead><tr>{['Signal time', 'Level', 'Direction', 'Option', 'Exit strategy', 'Entry', 'Exit', 'Exit reason', 'Quantity', 'P&L', 'Return %'].map(label => <th key={label}>{label}</th>)}</tr></thead>
         <tbody>{result.trades.map(row => <tr key={row.trade_id} onClick={() => setSelectedTrade(String(row.trade_id))}>
           <td>{localTime(row.signal_timestamp)}</td><td>{formatPrice(row.trigger_level)}</td><td>{row.direction}</td><td>{row.option_symbol}<small className="ms-time">{row.expiry} · Strike {row.strike}</small></td>
           <td>{row.strategy_type === 'ATR' ? 'ATR' : 'Current'}</td><td>{formatPrice(row.entry_price)}<small className="ms-time">{localTime(row.entry_time)}</small></td><td>{formatPrice(row.exit_price)}<small className="ms-time">{localTime(row.exit_time)}</small></td>
-          <td>{row.exit_reason ? formatExitReason(row.exit_reason) : row.status}</td><td>{row.quantity}</td><td>{formatPrice(row.realised_pnl)}</td><td>{formatPrice(row.realised_pnl_percentage)}</td>
+          <td>{row.exit_reason ? formatExitReason(row.exit_reason) : row.status}</td><td>{row.quantity}</td><td>{formatPrice(row.realised_pnl)}{row.net_pnl != null && <small className="ms-time">Net {formatPrice(row.net_pnl)} · Costs {formatPrice(row.transaction_costs)}</small>}</td><td>{formatPrice(row.realised_pnl_percentage)}</td>
         </tr>)}{result.trades.length === 0 && <tr><td colSpan="11">No trades created. Inspect the timeline and entry results.</td></tr>}</tbody>
       </table></div>
       <details className="ms-backtest-settings"><summary>Signal and entry results</summary>
@@ -156,5 +172,7 @@ export function BacktestResults({ result, selectedTrade = '', setSelectedTrade }
 
 function StrategyComparison({ comparison }) {
   const metrics = ['total_trades', 'win_rate', 'average_profit', 'average_loss', 'profit_factor', 'net_pnl', 'max_drawdown', 'average_r', 'sl_hits', 'transaction_costs'];
-  return <section aria-label="Exit strategy comparison"><h3>Current and ATR · {comparison.trading_date}</h3><p className="ms-sub">Identical historical data and entry rules; each run stores a separate snapshot. Review entry failures in saved runs when data is insufficient.</p><div className="ms-tablewrap"><table><thead><tr><th>Strategy</th><th>Status</th>{metrics.map(key => <th key={key}>{key.replaceAll('_', ' ')}</th>)}</tr></thead><tbody>{comparison.runs.map(run => <tr key={run.id}><td>{run.strategy === 'ATR' ? `ATR × ${run.multiplier}` : 'Current'}</td><td>{run.status}</td>{metrics.map(key => <td key={key}>{formatPrice(run[key])}</td>)}</tr>)}</tbody></table></div></section>;
+  return <section aria-label="Exit strategy comparison"><h3>Current and ATR · {comparison.trading_date}</h3><p className="ms-sub">Identical historical data and entry rules; each run stores a separate snapshot. Review entry failures in saved runs when data is insufficient. {comparison.data_source} · {comparison.data_resolution} · {comparison.execution_model}</p>
+    {comparison.data_warnings?.length > 0 && <ul aria-label="Historical data warnings">{comparison.data_warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
+    <div className="ms-tablewrap"><table><thead><tr><th>Strategy</th><th>Status</th>{metrics.map(key => <th key={key}>{key.replaceAll('_', ' ')}</th>)}</tr></thead><tbody>{comparison.runs.map(run => <tr key={run.id}><td>{run.strategy === 'ATR' ? `ATR × ${run.multiplier}` : 'Current'}</td><td>{run.status}</td>{metrics.map(key => <td key={key}>{formatPrice(run[key])}</td>)}</tr>)}</tbody></table></div></section>;
 }
