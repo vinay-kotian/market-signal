@@ -11,11 +11,17 @@ export function latestCompletedSession(now = new Date(), closeTime = '15:30') {
 
 export function parseLevels(value) {
   const parts = value.trim().split(/[\s,]+/);
-  const levels = [...new Set(parts.map(Number))];
-  if (!value.trim() || levels.length > 100 || levels.some(price => !Number.isFinite(price) || price <= 0)) {
+  const levels = [...new Set(parts)].map(part => {
+    const [price, timeframe, extra] = part.split('@');
+    if (extra !== undefined || (timeframe !== undefined && !/^[1-9][0-9]*[mhdw]$/.test(timeframe))) {
+      throw new Error('Use price@timeframe, for example 25000@15m.');
+    }
+    return timeframe ? { price: Number(price), timeframe } : Number(price);
+  });
+  if (!value.trim() || levels.length > 100 || levels.some(item => { const price = typeof item === 'number' ? item : item.price; return !Number.isFinite(price) || price <= 0; })) {
     throw new Error('Enter 1–100 positive levels, separated by newlines, commas, or spaces.');
   }
-  return levels;
+  return [...new Map(levels.map(item => [typeof item === 'number' ? `${item}@` : `${item.price}@${item.timeframe}`, item])).values()];
 }
 
 export function parseHistoricalDataset(text) {
@@ -31,6 +37,7 @@ export function eventsForTrade(timeline, trade) {
   if (!trade) return timeline;
   return timeline.filter(event => event.trade_id === trade.trade_id
     || (event.trade_id == null && event.payload.level_id === trade.level_id)
-    || (event.trade_id == null && event.payload.level === trade.trigger_level)
+    || (event.trade_id == null && trade.level_id == null && event.payload.level === trade.trigger_level
+      && (event.payload.timeframe ?? null) === (trade.timeframe ?? null))
     || ['MARKET_OPEN', 'MARKET_CLOSE'].includes(event.event_type));
 }

@@ -99,7 +99,7 @@ def test_shared_index_arming_and_ui_parity(client, instrument, distance):
     result = post(client, {**BODY, 'instrument': instrument, 'levels': prices}).json()['results']
     assert [r['level_state'] for r in result] == ['ACTIVE', 'PENDING_ARM']
     for price, external in zip(prices, result):
-        ui = client.post('/levels', json={'instrument': instrument, 'price': price, 'enabled': True}).json()
+        ui = client.post('/levels', json={'instrument': instrument, 'price': price, 'enabled': True, 'timeframe': '5m'}).json()
         assert ui['status'] == external['level_state']
     assert client.get('/signals').json() == []
 

@@ -13,7 +13,8 @@ LEVEL_SCHEMA = """CREATE TABLE levels_daily (
     status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK(status IN ('ACTIVE', 'DISARMED', 'EXPIRED', 'PENDING_ARM')),
     activation_reference_price REAL,
     armed_from TEXT CHECK(armed_from IN ('ABOVE', 'BELOW')),
-    level_date TEXT NOT NULL
+    level_date TEXT NOT NULL,
+    timeframe TEXT
 )"""
 
 

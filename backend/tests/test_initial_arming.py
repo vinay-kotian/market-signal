@@ -193,7 +193,7 @@ def test_zero_distance_arms_on_create_or_first_valid_tick(client):
     tick(client, 23200)
     assert get(client, missing)['status'] == 'ACTIVE'
     assert client.get('/signals').json() == []
-    assert create(client, price=23200)['status'] == 'ACTIVE'
+    assert client.post('/levels', json=dict(instrument='NIFTY', price=23200, enabled=True, timeframe='5m')).json()['status'] == 'ACTIVE'
 
 
 def test_setting_change_applies_on_next_rearm_tick(client):
@@ -290,7 +290,7 @@ def test_create_and_edit_use_each_index_setting(client, instrument, price, dista
     assert create(client, instrument, price + distance - 1)['status'] == 'PENDING_ARM'
     active = create(client, instrument, price + distance)
     assert active['status'] == 'ACTIVE'
-    result = client.put(f"/levels/{active['id']}", json=dict(instrument=instrument, price=price + distance - 1, enabled=True))
+    result = client.put(f"/levels/{active['id']}", json=dict(instrument=instrument, price=price + distance - 1, enabled=True, timeframe='5m'))
     assert result.json()['status'] == 'PENDING_ARM'
 
 

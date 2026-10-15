@@ -56,7 +56,8 @@ by another client require Refresh to see their signals.
 | Method | Path | Result |
 | --- | --- | --- |
 | POST | `/levels` | Create a level (201) |
-| GET | `/levels` | List levels in ID order (200) |
+| GET | `/levels` | List levels in ascending price order (200) |
+| GET | `/levels/timeframes` | List configured timeframe options (200) |
 | GET | `/levels/{id}` | Read one level (200) |
 | PUT | `/levels/{id}` | Replace its editable fields (200) |
 | DELETE | `/levels/{id}` | Delete a level (204, empty body) |
@@ -1495,3 +1496,5 @@ The comparison describes observed trades; each strategy may have different
 entry samples. Controlled identical-data comparisons with configurable flat
 transaction costs remain available in Backtesting. This section does not change
 strategy selection or establish trading profitability; LEGACY remains the default.
+
+Level dates, timeframe configuration, migration and historical safeguards are documented in [Level management](docs/level-management.md).

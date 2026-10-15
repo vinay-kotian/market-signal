@@ -20,21 +20,21 @@ export function ComparisonTable({ comparison }) {
   </table></div>;
 }
 
-export default function StrategyPerformanceComparison({ fromDate, toDate, view, status, instrument, refreshKey }) {
+export default function StrategyPerformanceComparison({ fromDate, toDate, view, status, instrument, timeframe, refreshKey }) {
   const [comparison, setComparison] = useState(null), [error, setError] = useState(''), [retry, setRetry] = useState(0);
   const validation = reportRangeError({ fromDate, toDate });
   useEffect(() => {
     const controller = new AbortController();
     setComparison(null); setError('');
     if (validation) return () => controller.abort();
-    loadStrategyComparison({ fromDate, toDate, view, status, instrument }, { signal: controller.signal })
+    loadStrategyComparison({ fromDate, toDate, view, status, instrument, timeframe }, { signal: controller.signal })
       .then(saved => {
         if (!saved?.strategies?.LEGACY || !saved?.strategies?.ATR) throw new Error('Invalid comparison response');
         if (!controller.signal.aborted) setComparison(saved);
       })
       .catch(error => { if (!controller.signal.aborted) setError(error.message); });
     return () => controller.abort();
-  }, [fromDate, toDate, view, status, instrument, refreshKey, retry, validation]);
+  }, [fromDate, toDate, view, status, instrument, timeframe, refreshKey, retry, validation]);
   return <section className="ms-strategy-comparison" aria-label="Strategy Performance Comparison">
     <h3 className="ms-sectionhead">Strategy Performance Comparison</h3>
     <p className="ms-sub">Both PAPER strategies over the selected entry dates, report view, status and instrument. The history's strategy selector applies to history and its summary; this comparison always shows both strategies.</p>

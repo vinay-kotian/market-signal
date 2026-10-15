@@ -3,6 +3,8 @@ from typing import Annotated, Literal, Optional
 
 import json
 
+from app.timeframes import Timeframe
+
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from app.settings import TradeSettings
 
@@ -48,6 +50,7 @@ class TradeEntry(BaseModel):
     option_selection_id: int
     instrument: str
     trigger_level: float
+    timeframe: Optional[Timeframe] = None
     direction: Literal["FROM_ABOVE", "FROM_BELOW"]
     option_symbol: str
     option_type: Literal["CE", "PE"]

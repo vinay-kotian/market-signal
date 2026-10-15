@@ -15,6 +15,7 @@ function reportQuery(filters) {
   const query = new URLSearchParams({
     view: filters.view, from_date: filters.fromDate, to_date: filters.toDate,
   });
+  if (filters.timeframe) query.set('timeframe', filters.timeframe);
   if (filters.status) query.set('status', filters.status);
   if (filters.strategyType) query.set('strategy_type', filters.strategyType);
   if (filters.instrument) query.set('instrument', filters.instrument);

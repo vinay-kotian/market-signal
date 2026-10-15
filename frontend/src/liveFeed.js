@@ -103,7 +103,7 @@ function reduceLiveEvent(state, event) {
     case 'LEVEL_DISARMED':
     case 'LEVEL_REARMED':
     case 'LEVEL_UPDATED':
-      return { ...state, levels: upsert(state.levels, data.level, 'id', Infinity).sort((a, b) => a.id - b.id) };
+      return { ...state, levels: upsert(state.levels, data.level, 'id', Infinity).sort((a, b) => Number(a.price) - Number(b.price) || a.id - b.id) };
     case 'LEVEL_DELETED': return { ...state, levels: (state.levels ?? []).filter(level => level.id !== data.id) };
     case 'SIGNAL_CREATED': return { ...state, signals: upsert(state.signals, data) };
     case 'OPTION_SELECTION_CREATED': return { ...state, selections: upsert(state.selections, data) };

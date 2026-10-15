@@ -4,11 +4,11 @@ import json
 import logging
 from datetime import date, datetime, timezone, timedelta
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal, Optional, Union
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, Request, Depends, Body
-from pydantic import AwareDatetime, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, Field, model_validator
 
 from app.date_range import date_filters, timestamp_scope
 from app.backtest_events import BacktestTimeline
@@ -21,6 +21,7 @@ from app.level_monitor import LevelMonitor
 from app.index_settings import IndexSettingsInput, IndexSettingsRepository
 from app.level_repository import LevelRepository
 from app.models import LevelInput
+from app.timeframes import Timeframe, validate_timeframe
 from app.option_repository import OptionSelectionRepository
 from app.option_selector import OptionSelector
 from app.position_monitor import PositionMonitor
@@ -35,6 +36,11 @@ from app.exit_settings import AtrSettings, ExitSettings
 from app.exit_strategies import strategy_for
 
 
+class BacktestLevel(BaseModel):
+    price: float = Field(gt=0, allow_inf_nan=False)
+    timeframe: Optional[Timeframe] = None
+
+
 class BacktestInput(TradeSettings, SignalSettings, OptionSettings):
     data_source: Literal['ARCHIVE', 'SIMULATED', 'ZERODHA_HISTORICAL'] = 'ARCHIVE'
     exit_strategy: Literal['LEGACY', 'ATR'] = 'LEGACY'
@@ -45,18 +51,25 @@ class BacktestInput(TradeSettings, SignalSettings, OptionSettings):
     index_settings: dict[Literal['NIFTY', 'BANKNIFTY', 'SENSEX'], IndexSettingsInput] = Field(default_factory=dict)
     trading_date: date
     instrument: Literal['NIFTY', 'BANKNIFTY', 'SENSEX']
-    levels: list[float] = Field(min_length=1, max_length=100)
+    levels: list[Union[float, BacktestLevel]] = Field(min_length=1, max_length=100)
     dataset: Optional[list[HistoricalTick]] = Field(default=None, min_length=1, max_length=100000)
     contracts: list[HistoricalContract] = Field(default_factory=list, max_length=10000)
     fixture: Optional[Literal['nifty-demo']] = None
     start_time: Optional[AwareDatetime] = None
     end_time: Optional[AwareDatetime] = None
 
+    def unique_levels(self):
+        return list(dict.fromkeys((item.price, item.timeframe) if isinstance(item, BacktestLevel)
+                                  else (item, None) for item in self.levels))
+
     @model_validator(mode='after')
     def validate_input(self):
         from math import isfinite
-        if any(not isfinite(level) or level <= 0 for level in self.levels):
+        if any(not isfinite(level) or level <= 0 for level in self.levels if isinstance(level, (int, float))):
             raise ValueError('Levels must be finite positive prices')
+        for level in self.levels:
+            if isinstance(level, BacktestLevel):
+                validate_timeframe(level.timeframe)
         if self.dataset is not None and self.fixture is not None:
             raise ValueError('Choose dataset or fixture, not both')
         if self.data_source == 'ZERODHA_HISTORICAL':
@@ -156,7 +169,8 @@ class BacktestRunner:
         created = datetime.now(timezone.utc).isoformat()
         result = dict(id=run_id, status='RUNNING', trading_date=config.trading_date.isoformat(),
                       instrument=config.instrument, strategy_version=config.strategy_version,
-                      settings_snapshot=snapshot, input_levels=list(dict.fromkeys(config.levels)),
+                      settings_snapshot=snapshot, input_levels=[price if timeframe is None else dict(price=price, timeframe=timeframe)
+                                   for price, timeframe in config.unique_levels()],
                       created_at=created, started_at=created, completed_at=None, error_message=None,
                       data_source=bundle.source, dataset_hash=dataset_hash, data_resolution=bundle.data_resolution,
                       execution_model=bundle.execution_model, historical_data_coverage=bundle.coverage,
@@ -185,8 +199,8 @@ class BacktestRunner:
         try:
             for instrument, index_config in config.index_settings.items():
                 IndexSettingsRepository(path).update(instrument, index_config)
-            for price in dict.fromkeys(config.levels):
-                levels.create(LevelInput(instrument=config.instrument, price=price, enabled=True))
+            for price, timeframe in config.unique_levels():
+                levels.create(LevelInput(instrument=config.instrument, price=price, timeframe=timeframe, enabled=True))
             values = config.model_dump()
             settings = TradeSettings(**{key: values[key] for key in TradeSettings.model_fields})
             signal_settings = SignalSettings(**{key: values[key] for key in SignalSettings.model_fields})

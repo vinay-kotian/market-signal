@@ -67,7 +67,7 @@ def test_startup_expires_active_disarmed_and_disabled_preserving_history(tmp_pat
     with TestClient(create_app(path, clock=clock)) as client:
         disarmed = create_active_level(client, json=PAYLOAD).json()
         active = create_active_level(client, json={**PAYLOAD, 'price': 26000}).json()
-        disabled = create_active_level(client, json={**PAYLOAD, 'enabled': False}).json()
+        disabled = create_active_level(client, json={**PAYLOAD, 'enabled': False, 'timeframe': '5m'}).json()
         publish(client, [24900, 25000])
         events = client.get(f"/levels/{disarmed['id']}/events").json()
         assert events[0]['event_type'] == 'LEVEL_DISARMED'
@@ -164,10 +164,11 @@ def test_quote_fetch_crossing_midnight_does_not_save_stale_signals(tmp_path):
         assert client.get(f"/levels/{level['id']}").json()['status'] == 'EXPIRED'
 
 
-def test_level_date_cannot_be_edited(client):
+def test_unused_level_date_can_be_edited(client):
     level = create_active_level(client, json=PAYLOAD).json()
-    assert client.put(f"/levels/{level['id']}", json={**PAYLOAD, 'level_date': '2026-09-15'}).status_code == 409
-    assert client.get(f"/levels/{level['id']}").json() == level
+    response = client.put(f"/levels/{level['id']}", json={**PAYLOAD, 'level_date': '2026-09-15'})
+    assert response.status_code == 200
+    assert client.get(f"/levels/{level['id']}").json()['level_date'] == '2026-09-15'
 
 
 def test_migration_preserves_ids_events_sequence_and_derives_local_date(tmp_path):

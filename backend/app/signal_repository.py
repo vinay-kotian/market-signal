@@ -24,12 +24,12 @@ class SignalRepository:
                     """
                     INSERT INTO signals (
                         trigger_id, level_id, instrument, level, trigger_price,
-                        direction, approach_distance, valid, rejection_reason, timestamp
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        direction, approach_distance, valid, rejection_reason, timestamp, timeframe
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (signal.trigger_id, signal.level_id, signal.instrument, signal.level,
                      signal.trigger_price, signal.direction, signal.approach_distance,
-                     signal.valid, signal.rejection_reason, signal.timestamp.isoformat()),
+                     signal.valid, signal.rejection_reason, signal.timestamp.isoformat(), signal.timeframe),
                 )
                 saved.append(SignalResult(id=cursor.lastrowid, **signal.model_dump()))
         return saved

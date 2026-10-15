@@ -172,10 +172,10 @@ class TradeRepository:
                 cursor.close()
 
     def history(self, page=1, page_size=20, status=None, instrument=None,
-                from_date=None, to_date=None, view='STRATEGY', strategy_type=None):
+                from_date=None, to_date=None, view='STRATEGY', strategy_type=None, timeframe=None):
         with connect(self.database_path) as connection:
             where, values = paper_scope(connection, from_date=from_date, to_date=to_date,
-                                        status=status, instrument=instrument, view=view, strategy_type=strategy_type)
+                                        status=status, instrument=instrument, view=view, strategy_type=strategy_type, timeframe=timeframe)
             connection.execute('BEGIN')
             total = connection.execute(f'SELECT COUNT(*) FROM trades WHERE {where}', values).fetchone()[0]
             rows = connection.execute(

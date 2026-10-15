@@ -142,8 +142,8 @@ function App() {
         {page === 'levels' && <label className="ms-level-date-filter">Level dates <select value={levelView} title={levelView === 'TODAY' ? `${today} · Asia/Kolkata` : 'All dates, including expired levels'} onChange={event => { setLevelView(event.target.value); setEditor(null); }}><option value="TODAY">Today</option><option value="ALL">All dates</option></select></label>}
         <div className="ms-sectionhead"><span>Configured levels{page === 'levels' && selected ? ` · ${selected}` : ''}</span><span className="ms-sub">{rows.length} levels</span></div>
         {levels === null && !errors.levels ? <p>Loading levels…</p> : <div className="ms-tablewrap"><table>
-          <thead><tr><th>Level price</th><th>Trading date</th>{page === 'levels' && <th>Entered (IST)</th>}<th>Level state</th>{page === 'dashboard' ? <><th className="ms-num">Distance · pts</th><th>Status · recent</th></> : <><th>Enabled</th><th>Actions</th></>}</tr></thead>
-          <tbody>{rows.map(level => <tr key={level.id}><td>{formatPrice(level.price)}</td><td>{level.level_date}</td>{page === 'levels' && <td>{level.created_at ? <time dateTime={level.created_at}>
+          <thead><tr><th>Level price</th><th>Timeframe</th><th>Trading date</th>{page === 'levels' && <th>Entered (IST)</th>}<th>Level state</th>{page === 'dashboard' ? <><th className="ms-num">Distance · pts</th><th>Status · recent</th></> : <><th>Enabled</th><th>Actions</th></>}</tr></thead>
+          <tbody>{rows.map(level => <tr key={level.id}><td>{formatPrice(level.price)}</td><td>{level.timeframe ?? 'Not recorded'}</td><td>{level.level_date}</td>{page === 'levels' && <td>{level.created_at ? <time dateTime={level.created_at}>
             {new Date(level.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' })}
             <small className="ms-time">{new Date(level.created_at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}</small>
           </time> : '—'}</td>}<td><span className="ms-status">{level.status.replaceAll('_', ' ')}</span>{level.status === 'PENDING_ARM' && <small className="ms-time">Current: {formatPrice(shownPrices[level.instrument]?.price)}<br />Distance: {formatPrice(shownPrices[level.instrument]?.price == null ? null : Math.abs(shownPrices[level.instrument].price - level.price))} / {formatPrice(liveState.indexes?.find(index => index.instrument === level.instrument)?.initial_arm_distance_points)} pts</small>}</td>{page === 'dashboard' ? <>
@@ -154,7 +154,7 @@ function App() {
               if (deleting !== level.id) setDeleting(level.id);
               else mutate(async () => { await request(`/levels/${level.id}`, { method: 'DELETE' }); setDeleting(null); });
             }}>{deleting === level.id ? 'Confirm delete' : 'Delete'}</button>{deleting === level.id && <button className="ms-link" onClick={() => setDeleting(null)}>Cancel</button>}</td></>}</tr>)}
-            {levels && rows.length === 0 && <tr><td colSpan={page === 'levels' ? 6 : 5} className="ms-empty">No levels for this date view. Add a daily level to begin.</td></tr>}
+            {levels && rows.length === 0 && <tr><td colSpan={page === 'levels' ? 7 : 6} className="ms-empty">No levels for this date view. Add a daily level to begin.</td></tr>}
           </tbody>
         </table></div>}
         {page === 'dashboard' && <>

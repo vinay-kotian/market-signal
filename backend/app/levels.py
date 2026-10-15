@@ -17,7 +17,10 @@ def get_repository(request: Request) -> LevelRepository:
 
 @router.post("", response_model=Level, status_code=status.HTTP_201_CREATED)
 async def create_level(data: LevelInput, request: Request, repository: LevelRepository = Depends(get_repository)):
-    level = repository.create(data)
+    try:
+        level = repository.create(data)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
     request.app.state.websocket_hub.publish('LEVEL_UPDATED', dict(level=level))
     return level
 
@@ -25,6 +28,12 @@ async def create_level(data: LevelInput, request: Request, repository: LevelRepo
 @router.get("", response_model=List[Level])
 def list_levels(level_date: Optional[date] = None, repository: LevelRepository = Depends(get_repository)):
     return repository.list(level_date)
+
+
+@router.get('/timeframes', response_model=list[str])
+def configured_timeframes():
+    from app.timeframes import timeframe_options
+    return timeframe_options()
 
 
 @router.get("/{id}", response_model=Level)
@@ -40,7 +49,8 @@ async def update_level(
     id: LevelId, data: LevelInput, request: Request, repository: LevelRepository = Depends(get_repository)
 ):
     try:
-        level = repository.update(id, data)
+        async with request.app.state.level_monitor.mutation_lock:
+            level = repository.update(id, data)
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     if level is None:
@@ -52,7 +62,8 @@ async def update_level(
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_level(id: LevelId, request: Request, repository: LevelRepository = Depends(get_repository)):
     try:
-        deleted = repository.delete(id)
+        async with request.app.state.level_monitor.mutation_lock:
+            deleted = repository.delete(id)
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     if not deleted:

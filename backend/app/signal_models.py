@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import Literal, Optional
 
+from app.timeframes import Timeframe
+
 from pydantic import BaseModel
 
 
@@ -9,6 +11,7 @@ class SignalAnalysis(BaseModel):
     level_id: int
     instrument: str
     level: float
+    timeframe: Optional[Timeframe] = None
     trigger_price: float
     direction: Optional[Literal["FROM_ABOVE", "FROM_BELOW"]]
     approach_distance: Optional[float]

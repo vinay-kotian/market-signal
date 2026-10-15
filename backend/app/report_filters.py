@@ -3,7 +3,7 @@ from app.date_range import timestamp_scope
 
 
 def report_scope(connection, *, mode='PAPER', from_date=None, to_date=None, status=None,
-                 instrument=None, view='RAW', strategy_type=None):
+                 instrument=None, view='RAW', strategy_type=None, timeframe=None):
     if mode not in ('PAPER', 'BACKTEST'):
         raise ValueError('Unknown report mode')
     if from_date and to_date and from_date > to_date:
@@ -24,6 +24,11 @@ def report_scope(connection, *, mode='PAPER', from_date=None, to_date=None, stat
             raise ValueError('Unknown exit strategy')
         clauses.append('strategy_type = ?')
         values.append(strategy_type)
+    if timeframe == 'UNKNOWN':
+        clauses.append('timeframe IS NULL')
+    elif timeframe is not None:
+        clauses.append('timeframe = ?')
+        values.append(timeframe)
     if view == 'STRATEGY':
         clauses.append('exclude_from_strategy_metrics = 0')
     return ' AND '.join(clauses), values

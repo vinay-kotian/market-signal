@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import Literal, Optional
 
+from app.timeframes import Timeframe
+
 from pydantic import BaseModel
 
 
@@ -10,6 +12,7 @@ class LevelTriggered(BaseModel):
     level_id: int
     instrument: str
     level_price: float
+    timeframe: Optional[Timeframe] = None
     previous_price: Optional[float]
     current_price: float
     triggered_at: datetime

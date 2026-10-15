@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 from app.database import connect
 from app.indices import IndexInstrument
+from app.timeframes import Timeframe, validate_timeframe
 from app.levels import get_repository
 from app.level_repository import LevelRepository
 from app.models import Level, LevelInput
@@ -43,7 +44,14 @@ class ExternalLevelsInput(BaseModel):
     instrument: IndexInstrument
     levels: List[PositivePrice] = Field(min_length=1, max_length=1000)
     level_date: date
+    timeframe: Optional[Timeframe] = None
     source: str = Field(min_length=1, max_length=200)
+
+    @field_validator('timeframe')
+    @classmethod
+    def configured_timeframe(cls, value):
+        validate_timeframe(value)
+        return value
 
     @field_validator('level_date', mode='before')
     @classmethod
@@ -77,6 +85,7 @@ class LevelResult(BaseModel):
 class ExternalLevelsResponse(BaseModel):
     instrument: IndexInstrument
     level_date: date
+    timeframe: Optional[Timeframe] = None
     results: List[LevelResult]
 
 
@@ -88,7 +97,10 @@ class AuditedLevel(Level):
 
 
 def ingest(repository, data, idempotency_key):
-    payload = json.dumps(data.model_dump(mode='json'), sort_keys=True, separators=(',', ':'))
+    payload_data = data.model_dump(mode='json')
+    if data.timeframe is None:
+        payload_data.pop('timeframe')  # Keep pre-migration idempotency payloads identical.
+    payload = json.dumps(payload_data, sort_keys=True, separators=(',', ':'))
     created = []
     with connect(repository.database_path) as connection:
         # Serialize duplicate checks and commit levels, audit, and retry result together.
@@ -109,22 +121,22 @@ def ingest(repository, data, idempotency_key):
         results = []
         for price in data.levels:
             row = connection.execute(
-                'SELECT * FROM levels WHERE instrument = ? AND price = ? AND level_date = ? ORDER BY id LIMIT 1',
-                (data.instrument, price, data.level_date.isoformat()),
+                'SELECT * FROM levels WHERE instrument = ? AND price = ? AND level_date = ? AND timeframe IS ? ORDER BY id LIMIT 1',
+                (data.instrument, price, data.level_date.isoformat(), data.timeframe),
             ).fetchone()
             if row is not None:
                 level = Level(**dict(row))
                 status = 'DUPLICATE'
             else:
                 level = repository.create(LevelInput(instrument=data.instrument, price=price,
-                    enabled=True, level_date=data.level_date), connection=connection, timestamp=timestamp)
+                    enabled=True, level_date=data.level_date, timeframe=data.timeframe), connection=connection, timestamp=timestamp)
                 connection.execute("""INSERT INTO external_level_audit
                     (level_id, source, created_by, request_id, created_at) VALUES (?, ?, 'EXTERNAL_API', ?, ?)""",
                     (level.id, data.source, request_id, level.created_at.isoformat()))
                 created.append(level)
                 status = 'CREATED'
             results.append(LevelResult(level=price, status=status, level_id=level.id, level_state=level.status))
-        response = ExternalLevelsResponse(instrument=data.instrument, level_date=data.level_date, results=results)
+        response = ExternalLevelsResponse(instrument=data.instrument, level_date=data.level_date, timeframe=data.timeframe, results=results)
         connection.execute('INSERT INTO external_level_requests VALUES (?, ?, ?, ?, ?)',
             (request_id, idempotency_key, payload, response.model_dump_json(), timestamp.isoformat()))
     return response, created
@@ -152,7 +164,7 @@ def list_external_levels(instrument: Optional[IndexInstrument] = None,
             FROM levels l LEFT JOIN external_level_audit a ON a.level_id = l.id
             LEFT JOIN external_level_requests r ON r.request_id = a.request_id
             WHERE (? IS NULL OR l.instrument = ?) AND (? IS NULL OR l.level_date = ?)
-            AND (? IS NULL OR l.status = ?) ORDER BY l.id""",
+            AND (? IS NULL OR l.status = ?) ORDER BY l.price ASC, l.id ASC""",
             (instrument, instrument, level_date.isoformat() if level_date else None,
              level_date.isoformat() if level_date else None, status, status)).fetchall()
         return [AuditedLevel(**dict(row)) for row in rows]

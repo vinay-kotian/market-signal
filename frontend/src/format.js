@@ -17,6 +17,7 @@ export function levelStatus(level, events) {
   if (events === null) return 'UNAVAILABLE';
   return events.some(event => event.level_id === level.id
     && event.instrument === level.instrument && event.level_price === level.price
+    && (event.timeframe ?? null) === (level.timeframe ?? null)
     && Date.parse(event.triggered_at) >= Date.parse(level.updated_at))
     ? 'TRIGGERED' : 'WAITING';
 }
@@ -30,7 +31,8 @@ export function tradingDate(now = new Date()) {
 }
 
 export function levelsForDate(levels, today, view = 'TODAY') {
-  return levels.filter(level => view === 'ALL' || level.level_date === today);
+  return levels.filter(level => view === 'ALL' || level.level_date === today)
+    .sort((a, b) => Number(a.price) - Number(b.price) || a.id - b.id);
 }
 
 export function formatWatchChange(quote, live) {

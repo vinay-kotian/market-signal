@@ -117,6 +117,13 @@ def initialize_database(database_path, stop_loss_percentage=10, trade_settings=N
         )""")
 
         initialize_daily_levels(connection)
+        # Nullable snapshots: never infer a duration from current level data.
+        for table in ('levels', 'signals', 'trades'):
+            columns = {row['name'] for row in connection.execute(f'PRAGMA table_info({table})')}
+            if 'timeframe' not in columns:
+                connection.execute(f'ALTER TABLE {table} ADD COLUMN timeframe TEXT')
+        connection.execute('CREATE INDEX IF NOT EXISTS levels_identity ON levels(instrument, level_date, price, timeframe)')
+        connection.execute('CREATE INDEX IF NOT EXISTS signals_level_lookup ON signals(level_id)')
 
         from app.chart_data import initialize_charts
         initialize_charts(connection)

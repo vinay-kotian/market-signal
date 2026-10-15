@@ -40,7 +40,7 @@ class BacktestTimeline:
             levels = connection.execute('SELECT * FROM levels ORDER BY id').fetchall()
             for row in levels:
                 previous = self.previous_levels.get(row['id'])
-                payload = dict(level_id=row['id'], level=row['price'], instrument=row['instrument'],
+                payload = dict(level_id=row['id'], level=row['price'], timeframe=row['timeframe'], instrument=row['instrument'],
                                index_price=self.spot, status=row['status'], armed_from=row['armed_from'])
                 if tick and tick.instrument == row['instrument']:
                     self.record('LEVEL_OBSERVED', payload, connection=connection)

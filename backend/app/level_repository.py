@@ -1,9 +1,11 @@
 from contextlib import nullcontext
 from decimal import Decimal
+from datetime import date
 from math import isfinite
 from typing import List, Optional
 
 from app.database import connect
+from app.timeframes import validate_timeframe
 from app.index_settings import IndexSettingsRepository
 from app.models import Level, LevelInput, LevelEvent
 from app.trading_date import trading_date, utc_now
@@ -25,13 +27,15 @@ class LevelRepository:
         with context as connection:
             if owns_transaction:
                 connection.execute('BEGIN IMMEDIATE')
+            validate_timeframe(data.timeframe)
+            self._require_unique(connection, data.instrument, data.price, level_date, data.timeframe)
             current = self._latest_price(connection, data.instrument)
             distance = IndexSettingsRepository(self.database_path).distance(data.instrument, connection)
             status = 'EXPIRED' if level_date < today else self._initial_status(current, data.price, distance)
             cursor = connection.execute(
-                """INSERT INTO levels (instrument, price, enabled, created_at, updated_at, level_date, status, activation_reference_price, armed_from)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (data.instrument, data.price, data.enabled, now, now, level_date.isoformat(), status, current, self._arm_side(status, current, data.price)),
+                """INSERT INTO levels (instrument, price, enabled, created_at, updated_at, level_date, status, activation_reference_price, armed_from, timeframe)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (data.instrument, data.price, data.enabled, now, now, level_date.isoformat(), status, current, self._arm_side(status, current, data.price), data.timeframe),
             )
             row = connection.execute('SELECT * FROM levels WHERE id = ?', (cursor.lastrowid,)).fetchone()
             if level_date == today:
@@ -41,7 +45,7 @@ class LevelRepository:
     def list(self, level_date=None) -> List[Level]:
         with connect(self.database_path) as connection:
             rows = connection.execute(
-                'SELECT * FROM levels WHERE (? IS NULL OR level_date = ?) ORDER BY id',
+                'SELECT * FROM levels WHERE (? IS NULL OR level_date = ?) ORDER BY price ASC, id ASC',
                 (level_date.isoformat() if level_date else None,) * 2,
             ).fetchall()
             return [Level(**dict(row)) for row in rows]
@@ -69,17 +73,29 @@ class LevelRepository:
             if row is None:
                 return None
             self._require_editable(row, timestamp)
-            if data.level_date is not None and data.level_date.isoformat() != row['level_date']:
-                raise ValueError('A level date cannot be changed; create a new daily level')
+            level_date = data.level_date or date.fromisoformat(row['level_date'])
+            date_changed = level_date.isoformat() != row['level_date']
+            if date_changed:
+                if level_date < trading_date(timestamp):
+                    raise ValueError('A level date cannot be moved into the past')
+                if connection.execute('SELECT 1 FROM signals WHERE level_id = ? LIMIT 1', (level_id,)).fetchone():
+                    raise ValueError('Levels with existing signals or trades cannot change date; create a new level')
+            timeframe = data.timeframe if 'timeframe' in data.model_fields_set else row['timeframe']
+            if timeframe != row['timeframe']:
+                validate_timeframe(timeframe)
+            if (data.instrument, data.price, level_date.isoformat(), timeframe) != (
+                    row['instrument'], row['price'], row['level_date'], row['timeframe']):
+                self._require_unique(connection, data.instrument, data.price, level_date, timeframe, level_id)
             current = self._latest_price(connection, data.instrument)
             distance = IndexSettingsRepository(self.database_path).distance(data.instrument, connection)
             status = self._initial_status(current, data.price, distance)
             connection.execute(
-                """UPDATE levels SET instrument = ?, price = ?, enabled = ?, updated_at = ?, status = ?, activation_reference_price = ?, armed_from = ? WHERE id = ?""",
-                (data.instrument, data.price, data.enabled, timestamp.isoformat(), status, current, self._arm_side(status, current, data.price), level_id),
+                """UPDATE levels SET instrument = ?, price = ?, enabled = ?, updated_at = ?, status = ?, activation_reference_price = ?, armed_from = ?, level_date = ?, timeframe = ? WHERE id = ?""",
+                (data.instrument, data.price, data.enabled, timestamp.isoformat(), status, current, self._arm_side(status, current, data.price), level_date.isoformat(), timeframe, level_id),
             )
             updated = connection.execute('SELECT * FROM levels WHERE id = ?', (level_id,)).fetchone()
-            if row['status'] != 'ACTIVE' or not row['enabled'] or row['price'] != updated['price'] or row['instrument'] != updated['instrument']:
+            if level_date == trading_date(timestamp) and (date_changed or row['status'] != 'ACTIVE'
+                    or not row['enabled'] or row['price'] != updated['price'] or row['instrument'] != updated['instrument']):
                 record_arm(connection, updated, current, timestamp)
             return Level(**dict(updated))
 
@@ -92,6 +108,13 @@ class LevelRepository:
             self._require_editable(row, self.clock())
             connection.execute('DELETE FROM levels WHERE id = ?', (level_id,))
             return True
+
+    @staticmethod
+    def _require_unique(connection, instrument, price, level_date, timeframe, level_id=-1):
+        if connection.execute("""SELECT 1 FROM levels WHERE instrument = ? AND price = ?
+                AND level_date = ? AND timeframe IS ? AND id != ? LIMIT 1""",
+                (instrument, price, level_date.isoformat(), timeframe, level_id)).fetchone():
+            raise ValueError('A level already exists for this instrument, date, price and timeframe')
 
     @staticmethod
     def _require_editable(row, timestamp):

@@ -44,6 +44,11 @@ class LevelMonitor:
         self.on_expired = None
         self.on_armed = None
 
+    @property
+    def mutation_lock(self):
+        """Serialize API edits with a full tick, including async quote preparation."""
+        return self._lock
+
     def _expire(self, timestamp):
         changed = self._repository.expire_before(timestamp)
         if changed and self.on_expired:
@@ -104,6 +109,7 @@ class LevelMonitor:
                         level_id=level.id,
                         instrument=tick.instrument,
                         level_price=level.price,
+                        timeframe=level.timeframe,
                         previous_price=previous,
                         current_price=current,
                         triggered_at=timestamp,

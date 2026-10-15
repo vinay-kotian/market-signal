@@ -41,6 +41,7 @@ class SignalEngine:
             level_id=trigger.level_id,
             instrument=trigger.instrument,
             level=trigger.level_price,
+            timeframe=trigger.timeframe,
             trigger_price=trigger.current_price,
             direction=side,
             approach_distance=distance,

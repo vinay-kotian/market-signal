@@ -129,7 +129,7 @@ class PaperExecutor:
                                    'initial_arm_distance_points': IndexSettingsRepository(self.repository.database_path).distance(selection.instrument)},
                 trade_mode=self.settings.trade_mode,
                 signal_id=signal.id, option_selection_id=selection.id,
-                instrument=selection.instrument, trigger_level=signal.level,
+                instrument=selection.instrument, trigger_level=signal.level, timeframe=signal.timeframe,
                 direction=selection.direction, option_symbol=contract.symbol,
                 option_type=contract.option_type, strike=contract.strike, expiry=contract.expiry,
                 lot_size=contract.lot_size, number_of_lots=self.settings.number_of_lots,
