@@ -17,6 +17,7 @@ const InstrumentDetails = React.lazy(() => import('./InstrumentDetails'));
 
 function App() {
   const [levelView, setLevelView] = useState('TODAY');
+  const [levelSort, setLevelSort] = useState('ASC');
   const [today, setToday] = useState(() => tradingDate());
   useEffect(() => {
     const timer = setInterval(() => setToday(tradingDate()), 1000);
@@ -102,7 +103,8 @@ function App() {
     if (section) requestAnimationFrame(() => document.getElementById(section)?.focus());
   }
   function openInstrument(symbol) { navigate('dashboard'); setDetailsSymbol(symbol); }
-  const rows = visibleLevels.filter(level => level.instrument === selected);
+  const rows = visibleLevels.filter(level => level.instrument === selected)
+    .sort((a, b) => (Number(a.price) - Number(b.price)) * (levelSort === 'ASC' ? 1 : -1) || a.id - b.id);
   const live = connection?.market_data_mode === 'ZERODHA';
   const shownPrices = prices;
   const current = shownPrices[selected]?.price;
@@ -142,7 +144,7 @@ function App() {
         {page === 'levels' && <label className="ms-level-date-filter">Level dates <select value={levelView} title={levelView === 'TODAY' ? `${today} · Asia/Kolkata` : 'All dates, including expired levels'} onChange={event => { setLevelView(event.target.value); setEditor(null); }}><option value="TODAY">Today</option><option value="ALL">All dates</option></select></label>}
         <div className="ms-sectionhead"><span>Configured levels{page === 'levels' && selected ? ` · ${selected}` : ''}</span><span className="ms-sub">{rows.length} levels</span></div>
         {levels === null && !errors.levels ? <p>Loading levels…</p> : <div className="ms-tablewrap"><table>
-          <thead><tr><th>Level price</th><th>Timeframe</th><th>Trading date</th>{page === 'levels' && <th>Entered (IST)</th>}<th>Level state</th>{page === 'dashboard' ? <><th className="ms-num">Distance · pts</th><th>Status · recent</th></> : <><th>Enabled</th><th>Actions</th></>}</tr></thead>
+          <thead><tr><th scope="col" aria-sort={levelSort === 'ASC' ? 'ascending' : 'descending'}><button type="button" className="ms-link" onClick={() => setLevelSort(value => value === 'ASC' ? 'DESC' : 'ASC')} aria-label={`Sort level price ${levelSort === 'ASC' ? 'descending' : 'ascending'}`}>Level price {levelSort === 'ASC' ? '↑ ASC' : '↓ DESC'}</button></th><th>Timeframe</th><th>Trading date</th>{page === 'levels' && <th>Entered (IST)</th>}<th>Level state</th>{page === 'dashboard' ? <><th className="ms-num">Distance · pts</th><th>Status · recent</th></> : <><th>Enabled</th><th>Actions</th></>}</tr></thead>
           <tbody>{rows.map(level => <tr key={level.id}><td>{formatPrice(level.price)}</td><td>{level.timeframe ?? 'Not recorded'}</td><td>{level.level_date}</td>{page === 'levels' && <td>{level.created_at ? <time dateTime={level.created_at}>
             {new Date(level.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' })}
             <small className="ms-time">{new Date(level.created_at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}</small>
