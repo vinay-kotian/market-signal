@@ -3,7 +3,7 @@ import { datePopoverPosition } from './datePopover';
 import { tradingDate } from './format';
 import { addDays, monthDays, presetRange, rangeError, rangeLabel, selectDay, shiftMonth } from './dateRange';
 
-export default function DateRangeFilter({ range, onChange, onApply, singleDay = false, disabled = false, label = '' }) {
+export default function DateRangeFilter({ range, onChange, onApply, singleDay = false, disabled = false, label = '', allowAllDates = false, allDates = false }) {
   const [open, setOpen] = useState(false), [draft, setDraft] = useState(range);
   const initialMonth = rangeError(range) ? tradingDate().slice(0, 7) : range.fromDate.slice(0, 7);
   const [month, setMonth] = useState(initialMonth);
@@ -11,7 +11,9 @@ export default function DateRangeFilter({ range, onChange, onApply, singleDay = 
   const [draftPreset, setDraftPreset] = useState(null);
   const [selectingEnd, setSelectingEnd] = useState(false);
   const root = useRef(null), trigger = useRef(null), dialog = useRef(null);
-  const id = useId(), today = tradingDate(), error = rangeError(draft, today);
+  const id = useId(), today = tradingDate(), draftAll = draftPreset === 'ALL';
+  const error = draftAll ? '' : rangeError(draft, today);
+  const selectionLabel = allDates ? 'All dates' : rangeLabel(range, today);
   function close() { setOpen(false); trigger.current?.focus(); }
   useEffect(() => {
     if (!open) return;
@@ -53,18 +55,18 @@ export default function DateRangeFilter({ range, onChange, onApply, singleDay = 
   }
   return <div className="ms-date-filter" ref={root}>
     {label && <span className="ms-date-label">{label}</span>}
-    <button type="button" className="ms-button" ref={trigger} aria-label={label ? `${label}: ${rangeLabel(range, today)}` : undefined} disabled={disabled} aria-haspopup="dialog" aria-expanded={open} aria-controls={id} onClick={() => {
+    <button type="button" className="ms-button" ref={trigger} aria-label={label ? `${label}: ${selectionLabel}` : undefined} disabled={disabled} aria-haspopup="dialog" aria-expanded={open} aria-controls={id} onClick={() => {
       if (open) { close(); return; }
-      setDraft(range); setMonth(initialMonth); setSelectingEnd(false); setDraftPreset(null); setOpen(true);
-    }}>{rangeLabel(range, today)} ▾</button>
+      setDraft(range); setMonth(initialMonth); setSelectingEnd(false); setDraftPreset(allDates ? 'ALL' : null); setOpen(true);
+    }}>{selectionLabel} ▾</button>
     {open && <div id={id} ref={dialog} className="ms-date-popover" style={position} role="dialog" aria-label={singleDay ? 'Choose trading date' : 'Choose date range'} onKeyDown={keyboard}>
-      <div className="ms-date-presets">{['TODAY', 'YESTERDAY'].map(value => <button className="ms-button" type="button" key={value} aria-pressed={draft.fromDate === presetRange(value).fromDate && draft.toDate === draft.fromDate} onClick={() => preset(value)}>{value === 'TODAY' ? 'Today' : 'Yesterday'}</button>)}<button className="ms-button" type="button" onClick={() => { setSelectingEnd(false); dialog.current.querySelector('[data-day]:not(:disabled)')?.focus(); }}>Custom Range</button></div>
-      <p className="ms-sub" role="status">{singleDay ? 'Select a day' : selectingEnd ? 'Select the end date' : 'Select the start date'} · Asia/Kolkata</p>
+      <div className="ms-date-presets">{['TODAY', 'YESTERDAY'].map(value => <button className="ms-button" type="button" key={value} aria-pressed={!draftAll && draft.fromDate === presetRange(value).fromDate && draft.toDate === draft.fromDate} onClick={() => preset(value)}>{value === 'TODAY' ? 'Today' : 'Yesterday'}</button>)}<button className="ms-button" type="button" onClick={() => { setDraftPreset('CUSTOM'); setSelectingEnd(false); dialog.current.querySelector('[data-day]:not(:disabled)')?.focus(); }}>Custom Range</button>{allowAllDates && <button className="ms-button" type="button" aria-pressed={draftAll} onClick={() => { setDraftPreset('ALL'); setSelectingEnd(false); }}>All dates</button>}</div>
+      <p className="ms-sub" role="status">{draftAll ? 'All dates, including future levels' : singleDay ? 'Select a day' : selectingEnd ? 'Select the end date' : 'Select the start date'} · Asia/Kolkata</p>
       <div className="ms-date-navigation"><button type="button" className="ms-link" aria-label="Previous month" onClick={() => setMonth(shiftMonth(month, -1))}>←</button><button type="button" className="ms-link" aria-label="Next month" disabled={month >= today.slice(0, 7)} onClick={() => setMonth(shiftMonth(month, 1))}>→</button></div>
       <div className="ms-date-months">{[month, shiftMonth(month, 1)].map((value, index) => <section key={value} className={index ? 'ms-date-second' : ''} aria-label={value}>
         <strong>{new Date(`${value}-01T00:00:00Z`).toLocaleDateString('en-IN', { timeZone: 'UTC', month: 'long', year: 'numeric' })}</strong>
         <div className="ms-date-grid">{['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => <span key={day}>{day}</span>)}
-          {monthDays(value).map((day, i) => day ? <button type="button" key={day} data-day={day} disabled={day > today} aria-label={day} aria-pressed={day === draft.fromDate || day === draft.toDate} className={day === draft.fromDate || day === draft.toDate ? 'ms-date-selected' : day > draft.fromDate && day < draft.toDate ? 'ms-date-between' : ''} onClick={() => choose(day)} onKeyDown={event => {
+          {monthDays(value).map((day, i) => day ? <button type="button" key={day} data-day={day} disabled={day > today} aria-label={day} aria-pressed={!draftAll && (day === draft.fromDate || day === draft.toDate)} className={draftAll ? '' : day === draft.fromDate || day === draft.toDate ? 'ms-date-selected' : day > draft.fromDate && day < draft.toDate ? 'ms-date-between' : ''} onClick={() => choose(day)} onKeyDown={event => {
             const offset = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[event.key];
             if (!offset) return;
             event.preventDefault(); const next = addDays(day, offset);
@@ -74,7 +76,7 @@ export default function DateRangeFilter({ range, onChange, onApply, singleDay = 
           }}>{Number(day.slice(-2))}</button> : <span key={`blank-${i}`} />)}
         </div>
       </section>)}</div>
-      <p className="ms-sub">Selected: {draft.fromDate || '—'}{!singleDay && ` – ${draft.toDate || '—'}`}</p>
+      <p className="ms-sub">Selected: {draftAll ? 'All dates' : <>{draft.fromDate || '—'}{!singleDay && ` – ${draft.toDate || '—'}`}</>}</p>
       {error && <p className="ms-error" role="alert">{error}</p>}
       <div className="ms-date-footer"><button type="button" className="ms-link" onClick={() => preset('TODAY')}>Reset</button><button type="button" className="ms-link" onClick={close}>Cancel</button><button type="button" className="ms-button ms-primary" disabled={Boolean(error) || disabled} onClick={() => { onApply?.(draft, draftPreset); close(); }}>Apply</button></div>
     </div>}

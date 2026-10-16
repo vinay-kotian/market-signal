@@ -148,10 +148,11 @@ function App() {
           await request(editor.id ? `/levels/${editor.id}` : '/levels', { method: editor.id ? 'PUT' : 'POST', body: JSON.stringify(data) });
           setSelected(data.instrument); setEditor(null);
         })} />}
-        {page === 'levels' && <div className="ms-report-filters">
-          <label>Level dates<select value={levelView} onChange={event => { setLevelView(event.target.value); setEditor(null); }}><option value="RANGE">Selected dates</option><option value="ALL">All dates</option></select></label>
-          {!viewingAllDates && <DateRangeFilter label="Trading dates" range={levelRange} disabled={busy} onApply={(next, preset) => { setLevelRange(next, preset); setEditor(null); }} />}
-        </div>}
+        {page === 'levels' && <DateRangeFilter label="Level dates" range={levelRange} disabled={busy} allowAllDates allDates={viewingAllDates} onApply={(next, preset) => {
+          setLevelView(preset === 'ALL' ? 'ALL' : 'RANGE');
+          if (preset !== 'ALL') setLevelRange(next, preset);
+          setEditor(null);
+        }} />}
         <div className="ms-sectionhead"><span>Configured levels{page === 'levels' && selected ? ` · ${selected}` : ''}</span><span className="ms-sub">{rows.length} levels</span></div>
         {levels === null && !errors.levels ? <p>Loading levels…</p> : <div className="ms-tablewrap"><table>
           <thead><tr><th scope="col" aria-sort={levelSort === 'ASC' ? 'ascending' : 'descending'}><button type="button" className="ms-link" onClick={() => setLevelSort(value => value === 'ASC' ? 'DESC' : 'ASC')} aria-label={`Sort level price ${levelSort === 'ASC' ? 'descending' : 'ascending'}`}>Level price {levelSort === 'ASC' ? '↑ ASC' : '↓ DESC'}</button></th><th>Timeframe</th><th>Trading date</th>{page === 'levels' && <th>Entered (IST)</th>}<th>Level state</th>{page === 'dashboard' ? <><th className="ms-num">Distance · pts</th><th>Status · recent</th></> : <><th>Enabled</th><th>Actions</th></>}</tr></thead>

@@ -41,6 +41,7 @@ test('calendar drafts custom ranges, same-day selection, presets, future restric
   }
   await act(() => root.render(React.createElement(Harness)));
   await click(button('Today ▾'));
+  assert.equal(button('All dates'), undefined);
   assert.equal(document.querySelectorAll('.ms-date-months section').length, 2);
   assert.ok(document.querySelector('[data-day="2026-10-11"]').disabled);
   await click(document.querySelector('[data-day="2026-10-03"]'));
@@ -65,6 +66,51 @@ test('calendar drafts custom ranges, same-day selection, presets, future restric
   await click(button('Yesterday')); await click(button('Apply'));
   assert.equal(button('Yesterday ▾').getAttribute('aria-expanded'), 'false');
   assert.ok(changed.length >= 6);
+});
+
+test('one level date picker applies all dates, cancels drafts and returns to dated ranges', async t => {
+  const { server, root, click, button } = await setup(t);
+  const { default: Filter } = await server.ssrLoadModule('/src/DateRangeFilter.jsx');
+  const applied = [];
+  function Harness() {
+    const [range, setRange] = useState({ fromDate: '2026-10-10', toDate: '2026-10-10' });
+    const [allDates, setAllDates] = useState(false);
+    return React.createElement(Filter, { range, label: 'Level dates', allowAllDates: true, allDates,
+      onApply(next, preset) {
+        applied.push(preset);
+        setAllDates(preset === 'ALL');
+        if (preset !== 'ALL') setRange(next);
+      } });
+  }
+  await act(() => root.render(React.createElement(Harness)));
+  assert.equal(document.querySelectorAll('select').length, 0);
+  assert.equal(document.querySelectorAll('button').length, 1);
+  assert.equal(button('Today ▾').getAttribute('aria-label'), 'Level dates: Today');
+  await click(button('Today ▾'));
+  await click(document.querySelector('[data-day="2026-10-03"]'));
+  assert.ok(button('Apply').disabled);
+  await click(button('All dates'));
+  assert.equal(button('Apply').disabled, false);
+  await click(button('Apply'));
+  assert.deepEqual(applied, ['ALL']);
+  assert.equal(button('All dates ▾').getAttribute('aria-label'), 'Level dates: All dates');
+  await click(button('All dates ▾'));
+  assert.equal(button('All dates').getAttribute('aria-pressed'), 'true');
+  assert.equal(button('Today').getAttribute('aria-pressed'), 'false');
+  await click(button('Yesterday')); await click(button('Cancel'));
+  assert.ok(button('All dates ▾'));
+  assert.equal(applied.length, 1);
+  await click(button('All dates ▾'));
+  await click(button('Yesterday')); await click(button('Apply'));
+  assert.ok(button('Yesterday ▾'));
+  await click(button('Yesterday ▾'));
+  await click(button('All dates')); await click(button('Custom Range'));
+  assert.equal(button('All dates').getAttribute('aria-pressed'), 'false');
+  await click(document.querySelector('[data-day="2026-10-03"]'));
+  await click(document.querySelector('[data-day="2026-10-06"]'));
+  await click(button('Apply'));
+  assert.ok(button('3 Oct 2026 – 6 Oct 2026 ▾'));
+  assert.deepEqual(applied, ['ALL', 'YESTERDAY', 'CUSTOM']);
 });
 
 test('single-day calendar supports month navigation, arrow keys, escape and focus trapping', async t => {
