@@ -6,6 +6,22 @@ adds a dated historical catalogue and replaces those fills with pending
 historical execution. The optional Zerodha candle loader is described below;
 recorded tick archives remain upload/local-file based.
 
+## Saved levels in the Backtest form
+
+Selecting an index and trading date automatically fills Trading levels from the
+Levels page records for that exact instrument and `level_date`, including
+historical/expired levels. Prices are sorted numerically and timeframes are
+preserved as `price@timeframe`; unrecorded timeframes remain plain prices.
+Repeated identical price/timeframe pairs appear once.
+
+The field stays editable. Changing the index or trading date loads that selection's
+levels; changing exit settings or refreshing run history preserves edits. Reload
+saved levels explicitly restores the saved values. Loading failures or dates with
+no saved levels leave the field empty for manual entry. Slow responses cannot
+replace manual edits or a newer date selection. The synthetic demo retains its
+editable sample level. These inputs belong only to the backtest request and never
+update saved levels, signals or PAPER trades.
+
 ## Reused components and abstractions
 
 - `LevelMonitor`, `LevelRepository`, `SignalEngine`, `PriceHistory`: unchanged

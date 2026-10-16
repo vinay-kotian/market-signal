@@ -26,3 +26,18 @@ test('latest completed session uses IST close and skips weekends', async () => {
   assert.equal(latestCompletedSession(new Date('2026-10-12T10:00:00Z')), '2026-10-12');
   assert.equal(latestCompletedSession(new Date('2026-10-12T09:45:00Z'), '15:00'), '2026-10-12');
 });
+
+test('saved backtest levels use the selected index and trading date with exact timeframe identities', async () => {
+  const { savedLevelsText } = await import('./backtestInput.js');
+  const rows = [
+    { id: 1, instrument: 'NIFTY', level_date: '2026-10-09', price: 100, timeframe: '5m', status: 'EXPIRED' },
+    { id: 2, instrument: 'NIFTY', level_date: '2026-10-09', price: 9, timeframe: null },
+    { id: 3, instrument: 'NIFTY', level_date: '2026-10-09', price: 100, timeframe: '1h' },
+    { id: 4, instrument: 'NIFTY', level_date: '2026-10-09', price: 100, timeframe: '5m' },
+    { id: 5, instrument: 'SENSEX', level_date: '2026-10-09', price: 80000 },
+    { id: 6, instrument: 'NIFTY', level_date: '2026-10-08', price: 200 },
+  ];
+  assert.equal(savedLevelsText(rows, 'NIFTY', '2026-10-09'), '9\n100@5m\n100@1h');
+  assert.deepEqual(parseLevels(savedLevelsText(rows, 'NIFTY', '2026-10-09')), [9, { price: 100, timeframe: '5m' }, { price: 100, timeframe: '1h' }]);
+  assert.equal(savedLevelsText(rows, 'NIFTY', '2026-10-07'), '');
+});

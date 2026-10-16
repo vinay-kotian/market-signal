@@ -24,6 +24,12 @@ export function parseLevels(value) {
   return [...new Map(levels.map(item => [typeof item === 'number' ? `${item}@` : `${item.price}@${item.timeframe}`, item])).values()];
 }
 
+export function savedLevelsText(records, instrument, date) {
+  return [...new Set(records.filter(level => level.instrument === instrument && level.level_date === date)
+    .sort((a, b) => Number(a.price) - Number(b.price) || a.id - b.id)
+    .map(level => `${level.price}${level.timeframe ? `@${level.timeframe}` : ''}`))].join('\n');
+}
+
 export function parseHistoricalDataset(text) {
   const data = JSON.parse(text);
   if (!data || !Array.isArray(data.ticks) || !data.ticks.length || data.ticks.length > 100000

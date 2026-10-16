@@ -4,7 +4,7 @@ import { rangeQuery } from './dateRange';
 import React, { useEffect, useState, useRef } from 'react';
 import { request } from './api';
 import { formatPrice, formatExitReason } from './format';
-import { parseLevels, parseHistoricalDataset, eventsForTrade, latestCompletedSession } from './backtestInput';
+import { parseLevels, parseHistoricalDataset, eventsForTrade, latestCompletedSession, savedLevelsText } from './backtestInput';
 import { ConfigurationFields, StrategySelect } from './ExitStrategySettings';
 import { supportedIndices } from './indices';
 
@@ -16,7 +16,12 @@ export default function BacktestPage({ refreshKey }) {
   const [instrument, setInstrument] = useState('NIFTY');
   const [date, setDate] = useState(latestCompletedSession);
   const dateTouched = useRef(false), sourceTouched = useRef(false);
-  const [levels, setLevels] = useState('25000');
+  const [levels, setLevels] = useState('');
+  const levelsEdited = useRef(false);
+  const [levelsRevision, setLevelsRevision] = useState(0);
+  const [levelsLoading, setLevelsLoading] = useState(true);
+  const [levelsNote, setLevelsNote] = useState('');
+  const [levelsError, setLevelsError] = useState('');
   const [source, setSource] = useState('archive');
   const [dataset, setDataset] = useState(null);
   const [fileName, setFileName] = useState('');
@@ -42,6 +47,30 @@ export default function BacktestPage({ refreshKey }) {
 
   useEffect(() => {
     const controller = new AbortController();
+    levelsEdited.current = false;
+    setLevels(''); setLevelsNote(''); setLevelsError('');
+    if (source === 'demo') {
+      setLevels('25000'); setLevelsLoading(false); setLevelsNote('Synthetic demo level. You can edit it.');
+      return () => controller.abort();
+    }
+    if (!date) { setLevelsLoading(false); return () => controller.abort(); }
+    setLevelsLoading(true);
+    request(`/levels?${new URLSearchParams({ level_date: date })}`, { signal: controller.signal })
+      .then(records => {
+        if (controller.signal.aborted) return;
+        const text = savedLevelsText(records, instrument, date);
+        if (levelsEdited.current) return;
+        setLevels(text);
+        setLevelsNote(text ? `Saved levels for ${instrument} on ${date}. You can edit them before running.`
+          : `No saved levels for ${instrument} on ${date}. Enter levels manually.`);
+      })
+      .catch(error => { if (!controller.signal.aborted) setLevelsError(`Could not load saved levels: ${error.message}. Enter levels manually or retry.`); })
+      .finally(() => { if (!controller.signal.aborted) setLevelsLoading(false); });
+    return () => controller.abort();
+  }, [instrument, date, source === 'demo', levelsRevision]);
+
+  useEffect(() => {
+    const controller = new AbortController();
     setRuns(null); setHistoryError('');
     request(`/backtests?${rangeQuery(range)}`, { signal: controller.signal })
       .then(history => { if (!controller.signal.aborted) setRuns(history); })
@@ -51,6 +80,7 @@ export default function BacktestPage({ refreshKey }) {
 
   async function run(event, compare = false) {
     event.preventDefault(); setError('');
+    if (levelsLoading) return;
     let prices;
     try { prices = parseLevels(levels); } catch (error) { setError(error.message); return; }
     if (source === 'file' && !dataset) { setError('Choose a historical JSON dataset first.'); return; }
@@ -89,7 +119,11 @@ export default function BacktestPage({ refreshKey }) {
           }}><option value="zerodha">Zerodha historical · 1-minute candles</option><option value="archive">Historical archive</option><option value="file">Upload historical JSON</option><option value="demo">Synthetic NIFTY demo · 14 Sep 2026</option></select></label>
         </div>
         {atr && <details><summary>ATR exit configuration</summary><ConfigurationFields settings={atr} onChange={(key, value) => setAtr(previous => ({ ...previous, [key]: value }))} /></details>}
-        <label>Trading levels<textarea required rows="4" value={levels} placeholder={'59800\n60000\n60250'} onChange={event => setLevels(event.target.value)} /></label>
+        <label>Trading levels<textarea required rows="4" value={levels} placeholder={'59800\n60000\n60250'} onChange={event => { levelsEdited.current = true; setLevels(event.target.value); setLevelsNote('Edited levels will be used for this backtest.'); }} /></label>
+        {source !== 'demo' && <button type="button" className="ms-link" disabled={levelsLoading || !date} onClick={() => setLevelsRevision(value => value + 1)}>Reload saved levels</button>}
+        {levelsLoading && <p className="ms-sub" role="status">Loading saved levels…</p>}
+        {!levelsLoading && levelsNote && <p className="ms-sub" role="status">{levelsNote}</p>}
+        {levelsError && <p className="ms-error" role="alert">{levelsError}</p>}
         <p className="ms-sub">Enter one level per line, or separate levels with commas. Add a timeframe with @, for example 25000@5m and 25000@1h. Omitted timeframes remain not recorded.</p>
         {source === 'zerodha' && <p className="ms-sub">Connect Zerodha in Connection settings. Completed minute closes generate signals; entries use the next option open. Stops use conservative candle assumptions. Dated contract metadata and complete minute coverage are required. Holidays may need a different date.</p>}
         {source === 'file' && <label>Historical dataset<input type="file" accept=".json,application/json" onChange={async event => {
@@ -109,7 +143,7 @@ export default function BacktestPage({ refreshKey }) {
           <dl className="ms-backtest-grid">{currentSettings.map(([key, value]) => <div key={key}><dt>{key.replaceAll('_', ' ')}</dt><dd>{String(value)}</dd></div>)}</dl>
           <p className="ms-sub">A new run captures application settings at execution time. Saved runs keep their original snapshot.</p>
         </details>
-        <button className="ms-button ms-primary" type="submit">{busy ? 'Running…' : 'Run Backtest'}</button> <button className="ms-button" type="button" onClick={event => run(event, true)}>Compare Current and six ATR multipliers</button>
+        <button className="ms-button ms-primary" type="submit" disabled={levelsLoading}>{busy ? 'Running…' : 'Run Backtest'}</button> <button className="ms-button" type="button" disabled={levelsLoading} onClick={event => run(event, true)}>Compare Current and six ATR multipliers</button>
       </fieldset>
     </form>
     <div className="ms-sectionhead">Run history</div>

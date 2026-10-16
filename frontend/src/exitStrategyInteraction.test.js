@@ -102,6 +102,7 @@ test('backtest comparison sends selected ATR configuration and transaction costs
   const atr = Object.fromEntries(Object.entries(configuration).filter(([key]) => key.startsWith('atr_') && key !== 'atr_enabled'));
   const ui = await setup(t, async (path, options = {}) => {
     if (path.endsWith('/settings')) return response({ exit_configuration: atr });
+    if (path.includes('/levels?')) return response([{ instrument: 'NIFTY', price: 25000, level_date: new URL(path, 'http://localhost').searchParams.get('level_date') }]);
     if (options.method === 'POST') {
       writes.push({ path, data: JSON.parse(options.body) });
       return response({ runs: [], trading_date: '2026-09-14', instrument: 'NIFTY' });
