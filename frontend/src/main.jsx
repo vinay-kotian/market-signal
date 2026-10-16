@@ -2,7 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { request } from './api';
 import { createLiveFeed, marketSocketUrl, applyLiveEvent } from './liveFeed';
-import { formatPrice, formatWatchChange, levelStatus, tradingDate, levelsForDate } from './format';
+import { formatPrice, formatWatchChange, levelStatus, tradingDate, levelsForDate, levelsForRange } from './format';
+import DateRangeFilter from './DateRangeFilter';
+import { useDateRange } from './useDateRange';
+import { rangeLabel } from './dateRange';
 import SignalsTable from './SignalsTable';
 import OptionSelectionsTable from './OptionSelectionsTable';
 import LevelForm from './LevelForm';
@@ -16,7 +19,8 @@ import './styles.css';
 const InstrumentDetails = React.lazy(() => import('./InstrumentDetails'));
 
 function App() {
-  const [levelView, setLevelView] = useState('TODAY');
+  const [levelView, setLevelView] = useState('RANGE');
+  const [levelRange, setLevelRange] = useDateRange();
   const [levelSort, setLevelSort] = useState('ASC');
   const [today, setToday] = useState(() => tradingDate());
   useEffect(() => {
@@ -75,11 +79,14 @@ function App() {
     return () => { client.stop(); feed.current = null; };
   }, []);
   const viewingAllDates = page === 'levels' && levelView === 'ALL';
-  const visibleLevels = levelsForDate(levels ?? [], today, viewingAllDates ? 'ALL' : 'TODAY');
+  const visibleLevels = page === 'levels' && !viewingAllDates
+    ? levelsForRange(levels ?? [], levelRange)
+    : levelsForDate(levels ?? [], today, viewingAllDates ? 'ALL' : 'TODAY');
+  const levelDateLabel = viewingAllDates ? 'all dates' : page === 'levels' ? rangeLabel(levelRange, today) : 'today';
   const instruments = [...new Set(visibleLevels.map(level => level.instrument))];
   useEffect(() => {
     if (!instruments.includes(selected)) setSelected(instruments[0] ?? '');
-  }, [levels, today, viewingAllDates]);
+  }, [levels, today, viewingAllDates, page, levelRange.fromDate, levelRange.toDate]);
 
   async function mutate(action) {
     setBusy(true); setErrors(previous => ({ ...previous, action: null })); setMessage('');
@@ -116,10 +123,10 @@ function App() {
         <div className="ms-sidehead"><span className="ms-label">Watchlist</span><span className="ms-sub">{instruments.length} indices · {visibleOptionWatchlist(optionWatchlist, today).length} options</span></div>
         <div className="ms-search"><input type="search" aria-label="Search instruments" placeholder="Search instruments" value={search} onChange={event => setSearch(event.target.value)} /></div>
         <div className="ms-watchlist">{instruments.filter(symbol => symbol.toLowerCase().includes(search.toLowerCase())).map(symbol => <button className="ms-watch" aria-pressed={symbol === selected} key={symbol} disabled={busy} onClick={() => { setSelected(symbol); setEditor(null); if (page === 'dashboard') openInstrument(symbol); }}>
-          <span>{symbol}<small>{visibleLevels.filter(level => level.instrument === symbol).length} levels · {viewingAllDates ? 'all dates' : 'today'}</small></span>
+          <span>{symbol}<small>{visibleLevels.filter(level => level.instrument === symbol).length} levels · {levelDateLabel}</small></span>
           <span className="ms-quote">{formatPrice(shownPrices[symbol]?.price)}<small className={shownPrices[symbol]?.change == null ? '' : shownPrices[symbol].change >= 0 ? 'ms-up' : 'ms-down'}>{formatWatchChange(shownPrices[symbol], live)}</small></span>
         </button>)}</div>
-        {levels && !instruments.length && <p className="ms-sidefoot">{viewingAllDates ? 'No saved levels.' : 'No levels for today. Add a daily level in Levels.'}</p>}
+        {levels && !instruments.length && <p className="ms-sidefoot">{viewingAllDates ? 'No saved levels.' : page === 'levels' ? 'No levels for the selected dates.' : 'No levels for today. Add a daily level in Levels.'}</p>}
         <OptionWatchlist items={optionWatchlist} today={today} search={search} busy={busy} error={errors.optionWatchlist}
           onOpen={openInstrument}
           onRemove={symbol => mutate(() => request(`/watchlist/options/${encodeURIComponent(symbol)}`, { method: 'DELETE' }))} />
@@ -141,7 +148,10 @@ function App() {
           await request(editor.id ? `/levels/${editor.id}` : '/levels', { method: editor.id ? 'PUT' : 'POST', body: JSON.stringify(data) });
           setSelected(data.instrument); setEditor(null);
         })} />}
-        {page === 'levels' && <label className="ms-level-date-filter">Level dates <select value={levelView} title={levelView === 'TODAY' ? `${today} · Asia/Kolkata` : 'All dates, including expired levels'} onChange={event => { setLevelView(event.target.value); setEditor(null); }}><option value="TODAY">Today</option><option value="ALL">All dates</option></select></label>}
+        {page === 'levels' && <div className="ms-report-filters">
+          <label>Level dates<select value={levelView} onChange={event => { setLevelView(event.target.value); setEditor(null); }}><option value="RANGE">Selected dates</option><option value="ALL">All dates</option></select></label>
+          {!viewingAllDates && <DateRangeFilter label="Trading dates" range={levelRange} disabled={busy} onApply={(next, preset) => { setLevelRange(next, preset); setEditor(null); }} />}
+        </div>}
         <div className="ms-sectionhead"><span>Configured levels{page === 'levels' && selected ? ` · ${selected}` : ''}</span><span className="ms-sub">{rows.length} levels</span></div>
         {levels === null && !errors.levels ? <p>Loading levels…</p> : <div className="ms-tablewrap"><table>
           <thead><tr><th scope="col" aria-sort={levelSort === 'ASC' ? 'ascending' : 'descending'}><button type="button" className="ms-link" onClick={() => setLevelSort(value => value === 'ASC' ? 'DESC' : 'ASC')} aria-label={`Sort level price ${levelSort === 'ASC' ? 'descending' : 'ascending'}`}>Level price {levelSort === 'ASC' ? '↑ ASC' : '↓ DESC'}</button></th><th>Timeframe</th><th>Trading date</th>{page === 'levels' && <th>Entered (IST)</th>}<th>Level state</th>{page === 'dashboard' ? <><th className="ms-num">Distance · pts</th><th>Status · recent</th></> : <><th>Enabled</th><th>Actions</th></>}</tr></thead>

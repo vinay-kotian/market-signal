@@ -3,12 +3,33 @@ import assert from 'node:assert/strict';
 import React, { act } from 'react';
 import { createServer } from 'vite';
 import { JSDOM } from 'jsdom';
-import { levelsForDate } from './format.js';
+import { levelsForDate, levelsForRange } from './format.js';
 import { applyLiveEvent } from './liveFeed.js';
 import { parseLevels, eventsForTrade } from './backtestInput.js';
 import { loadReport, exportReport, loadStrategyComparison } from './reportFilters.js';
 
 const response = value => ({ ok: true, status: 200, json: async () => value });
+
+test('level ranges use inclusive trading dates and retain current dashboard and all-date scopes', () => {
+  const levels = [
+    { id: 1, price: 100, instrument: 'NIFTY', level_date: '2026-10-16', created_at: '2026-10-14T10:00:00Z' },
+    { id: 2, price: 9, instrument: 'NIFTY', level_date: '2026-10-14', created_at: '2026-10-16T10:00:00Z' },
+    { id: 3, price: 20, instrument: 'SENSEX', level_date: '2026-10-15' },
+    { id: 4, price: 2, instrument: 'NIFTY', level_date: '2026-10-17' },
+  ];
+  const range = { fromDate: '2026-10-14', toDate: '2026-10-15' };
+  assert.deepEqual(levelsForRange(levels, range).map(row => row.id), [2, 3]);
+  assert.deepEqual(levelsForRange(levels, range).filter(row => row.instrument === 'NIFTY').map(row => row.id), [2]);
+  assert.deepEqual(levelsForRange(levels, { fromDate: '2026-10-15', toDate: '2026-10-15' }).map(row => row.id), [3]);
+  assert.deepEqual(levelsForRange(levels, { fromDate: '2026-10-12', toDate: '2026-10-13' }), []);
+  assert.deepEqual(levelsForDate(levels, '2026-10-16').map(row => row.id), [1]);
+  assert.equal(levelsForDate(levels, '2026-10-16', 'ALL').length, 4);
+  const updated = applyLiveEvent({ levels }, { type: 'LEVEL_UPDATED', data: { level: { ...levels[0], level_date: '2026-10-15' } } });
+  assert.deepEqual(levelsForRange(updated.levels, range).map(row => row.id), [2, 3, 1]);
+  assert.deepEqual(levelsForRange([...updated.levels].reverse(), range).map(row => row.id), [2, 3, 1]);
+  assert.equal(levels[0].level_date, '2026-10-16');
+});
+
 async function setup(t, path, props = {}, fetch = async () => response(['5m', '15m', '1h', '1d']), name = 'default') {
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost' });
   const restore = [];

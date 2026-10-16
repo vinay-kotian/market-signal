@@ -35,6 +35,11 @@ export function levelsForDate(levels, today, view = 'TODAY') {
     .sort((a, b) => Number(a.price) - Number(b.price) || a.id - b.id);
 }
 
+export function levelsForRange(levels, { fromDate, toDate }) {
+  return levelsForDate(levels, null, 'ALL')
+    .filter(level => level.level_date >= fromDate && level.level_date <= toDate);
+}
+
 export function formatWatchChange(quote, live) {
   if (quote?.change == null) return live ? 'Previous close unavailable' : 'Waiting for next tick';
   const sign = quote.change >= 0 ? '+' : '';
