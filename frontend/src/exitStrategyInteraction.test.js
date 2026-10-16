@@ -103,9 +103,11 @@ test('backtest comparison sends selected ATR configuration and transaction costs
   const ui = await setup(t, async (path, options = {}) => {
     if (path.endsWith('/settings')) return response({ exit_configuration: atr });
     if (path.includes('/levels?')) return response([{ instrument: 'NIFTY', price: 25000, level_date: new URL(path, 'http://localhost').searchParams.get('level_date') }]);
+    if (path.endsWith('/result')) return response({ runs: [], trading_date: '2026-09-14', instrument: 'NIFTY' });
+    if (path.includes('/backtests/jobs/')) return response({ id: 'job', kind: 'COMPARE', status: 'COMPLETED' });
     if (options.method === 'POST') {
       writes.push({ path, data: JSON.parse(options.body) });
-      return response({ runs: [], trading_date: '2026-09-14', instrument: 'NIFTY' });
+      return response({ id: 'job', kind: 'COMPARE', status: 'COMPLETED' });
     }
     return response([]);
   }, '/src/BacktestPage.jsx');
@@ -117,7 +119,7 @@ test('backtest comparison sends selected ATR configuration and transaction costs
   });
   const button = [...document.querySelectorAll('button')].find(node => node.textContent === 'Compare Current and six ATR multipliers');
   await act(() => button.click());
-  assert.ok(writes[0].path.endsWith('/backtests/compare'));
+  assert.ok(writes[0].path.endsWith('/backtests/jobs?compare=true'));
   assert.equal(writes[0].data.exit_strategy, 'ATR');
   assert.equal(writes[0].data.transaction_cost_per_order, 2.5);
   assert.equal(writes[0].data.exit_configuration.atr_initial_multiplier, 1.5);

@@ -322,12 +322,17 @@ class BacktestRunner:
         if not path.is_file():
             return None
         with connect(path) as connection:
-            return json.loads(connection.execute('SELECT result FROM backtest_run').fetchone()['result'])
+            if not connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='backtest_run'").fetchone():
+                return None
+            row = connection.execute('SELECT result FROM backtest_run').fetchone()
+            return json.loads(row['result']) if row else None
 
     def list(self, from_date=None, to_date=None):
         results = []
         for path in self.directory.glob('*/results.sqlite3'):
             with connect(path) as connection:
+                if not connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='backtest_run'").fetchone():
+                    continue
                 clauses, values = timestamp_scope(connection, 'created_at', from_date, to_date)
                 where = ' WHERE ' + ' AND '.join(clauses) if clauses else ''
                 saved = connection.execute(f'SELECT result FROM backtest_run{where}', values).fetchone()
@@ -364,6 +369,37 @@ def merge_configuration(state, config):
     return BacktestInput.model_validate({**current, **overrides})
 
 
+async def execute_backtest(runner, validated, *, compare=False, threaded=False, progress=lambda message: None):
+    import asyncio
+    progress('Loading historical market data…')
+    bundle = await runner.prepare_dataset(validated)
+
+    async def replay(candidate):
+        if threaded:
+            return await asyncio.to_thread(lambda: asyncio.run(runner.run(candidate, bundle=bundle)))
+        return await runner.run(candidate, bundle=bundle)
+
+    if not compare:
+        progress('Replaying historical session…')
+        return await replay(validated)
+    runs = []
+    for strategy, multiplier in [('LEGACY', None)] + [('ATR', m) for m in (1, 1.25, 1.5, 1.75, 2, 2.5)]:
+        configuration = {**validated.exit_configuration.model_dump()}
+        if multiplier is not None:
+            configuration['atr_initial_multiplier'] = multiplier
+        candidate = validated.model_copy(update={'exit_strategy': strategy, 'exit_configuration': AtrSettings(**configuration)})
+        progress(f'Replaying comparison {len(runs) + 1}/7: {strategy}…')
+        result = await replay(candidate)
+        fields = ('id', 'status', 'dataset_hash', 'total_trades', 'closed_trades', 'winning_trades', 'losing_trades',
+                  'win_rate', 'average_profit', 'average_loss', 'profit_factor', 'net_pnl', 'max_drawdown',
+                  'average_r', 'sl_hits', 'transaction_costs', 'gross_pnl', 'error_message')
+        runs.append({**{key: result.get(key) for key in fields}, 'strategy': strategy, 'multiplier': multiplier})
+    return dict(runs=runs, trading_date=str(validated.trading_date), instrument=validated.instrument,
+                data_source=bundle.source, data_resolution=bundle.data_resolution,
+                execution_model=bundle.execution_model, data_warnings=bundle.warnings,
+                historical_data_coverage=bundle.coverage)
+
+
 router = APIRouter(tags=['backtests'])
 
 
@@ -372,23 +408,7 @@ async def compare_backtests(request: Request, config: dict = Body(...)):
     try:
         validated = merge_configuration(request.app.state, config)
         runner = request.app.state.backtest_runner
-        # Load the dataset once: every run has identical ticks, warmup and contracts.
-        bundle = await runner.prepare_dataset(validated)
-        runs = []
-        for strategy, multiplier in [('LEGACY', None)] + [('ATR', m) for m in (1, 1.25, 1.5, 1.75, 2, 2.5)]:
-            configuration = {**validated.exit_configuration.model_dump()}
-            if multiplier is not None:
-                configuration['atr_initial_multiplier'] = multiplier
-            candidate = validated.model_copy(update={'exit_strategy': strategy, 'exit_configuration': AtrSettings(**configuration)})
-            result = await runner.run(candidate, bundle=bundle)
-            fields = ('id', 'status', 'dataset_hash', 'total_trades', 'closed_trades', 'winning_trades', 'losing_trades',
-                      'win_rate', 'average_profit', 'average_loss', 'profit_factor', 'net_pnl', 'max_drawdown',
-                      'average_r', 'sl_hits', 'transaction_costs', 'gross_pnl', 'error_message')
-            runs.append({**{key: result.get(key) for key in fields}, 'strategy': strategy, 'multiplier': multiplier})
-        return dict(runs=runs, trading_date=str(validated.trading_date), instrument=validated.instrument,
-                    data_source=bundle.source, data_resolution=bundle.data_resolution,
-                    execution_model=bundle.execution_model, data_warnings=bundle.warnings,
-                    historical_data_coverage=bundle.coverage)
+        return await execute_backtest(runner, validated, compare=True)
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
 
@@ -419,6 +439,36 @@ async def run_backtest(request: Request, config: dict = Body(...)):
         return await request.app.state.backtest_runner.run(config)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.post('/backtests/jobs', status_code=202)
+async def start_backtest_job(request: Request, config: dict = Body(...), compare: bool = False):
+    try:
+        validated = merge_configuration(request.app.state, config)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    try:
+        return request.app.state.backtest_jobs.submit(validated, compare)
+    except ValueError as error:
+        raise HTTPException(409, str(error)) from error
+
+
+@router.get('/backtests/jobs/{job_id}')
+def backtest_job(job_id: UUID, request: Request):
+    job = request.app.state.backtest_jobs.get(job_id)
+    if job is None:
+        raise HTTPException(404, 'Backtest job not found')
+    return job
+
+
+@router.get('/backtests/jobs/{job_id}/result')
+def backtest_job_result(job_id: UUID, request: Request):
+    job = request.app.state.backtest_jobs.get(job_id)
+    if job is None:
+        raise HTTPException(404, 'Backtest job not found')
+    if job['status'] != 'COMPLETED':
+        raise HTTPException(409, job['error'] or job['message'])
+    return request.app.state.backtest_jobs.result(job_id)
 
 
 @router.get('/backtests/{run_id}')

@@ -304,3 +304,34 @@ or the exchange archive can supply the requested day's contracts/prices.
 
 Official API references: [historical candle data](https://kite.trade/docs/connect/v3/historical/)
 and [history rate limits/errors](https://kite.trade/docs/connect/v3/exceptions/).
+
+## Background jobs and gateway timeouts
+
+The Backtest UI submits `POST /backtests/jobs` (HTTP 202) and polls
+`GET /backtests/jobs/{id}`. It fetches the completed result separately from
+`GET /backtests/jobs/{id}/result`. Add `?compare=true` to submit the existing
+seven-candidate comparison. Each HTTP request is short; historical downloads and
+replay no longer hold open a request across the gateway's 120-second timeout.
+The existing synchronous run/compare APIs remain compatible for direct callers.
+
+Jobs report queued, loading historical data, replaying, completed or failed.
+Replay runs in a worker thread against its isolated BACKTEST database so API and
+PAPER market processing can continue. Historical downloads retain the existing
+read-only Zerodha loader and cache. Strategy decisions, fills, stop logic and
+comparison candidates are unchanged.
+
+One background job runs at a time for the deployed single-worker backend.
+Submitting the same configuration while it runs returns the existing job; a
+different submission receives HTTP 409. Job metadata persists in
+`backtests/jobs.sqlite3`, created automatically at backend startup. Completed run
+results stay in their existing isolated databases. Restarting the backend marks
+unfinished jobs as interrupted so they can be explicitly resubmitted; it does not
+silently replay them. Graceful shutdown waits for the active job, subject to the
+service manager's shutdown deadline.
+
+The browser tab remembers its active job ID in session storage and reconnects on
+returning to Backtest or refreshing. Closing the UI does not cancel server work.
+Historical-data failures display their actual reason instead of a generic gateway
+timeout. A lost connection retains the job ID for reconnection. Deploy both the
+backend and rebuilt frontend for this flow; changing the proxy timeout is not
+required.

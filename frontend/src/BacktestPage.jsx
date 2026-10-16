@@ -3,6 +3,7 @@ import DateRangeFilter from './DateRangeFilter';
 import { rangeQuery } from './dateRange';
 import React, { useEffect, useState, useRef } from 'react';
 import { request } from './api';
+import { startBacktestJob, followBacktestJob } from './backtestJobs';
 import { formatPrice, formatExitReason } from './format';
 import { parseLevels, parseHistoricalDataset, eventsForTrade, latestCompletedSession, savedLevelsText } from './backtestInput';
 import { ConfigurationFields, StrategySelect } from './ExitStrategySettings';
@@ -32,8 +33,40 @@ export default function BacktestPage({ refreshKey }) {
   const [result, setResult] = useState(null);
   const [selectedTrade, setSelectedTrade] = useState('');
   const [busy, setBusy] = useState(false);
+  const [jobMessage, setJobMessage] = useState('');
+  const jobController = useRef(null);
   const [reading, setReading] = useState(false);
   const [error, setError] = useState('');
+
+  function clearSavedJob() {
+    try { window.sessionStorage.removeItem('market-signal-backtest-job'); } catch { /* Storage is optional. */ }
+  }
+
+  function jobError(error) {
+    if (error.terminal) clearSavedJob();
+    setError(error.terminal ? error.message : `${error.message} Reload the page to reconnect if your backtest was accepted.`);
+  }
+
+  function displayResult(response, compare) {
+    if (compare) setComparison(response);
+    else { setResult(response); setSettings(response.settings_snapshot); setComparison(null); }
+    setHistoryRevision(value => value + 1);
+  }
+
+  useEffect(() => {
+    const controller = new AbortController();
+    jobController.current = controller;
+    let saved;
+    try { saved = JSON.parse(window.sessionStorage.getItem('market-signal-backtest-job')); } catch { /* Storage is optional. */ }
+    if (saved?.id) {
+      setBusy(true); setJobMessage('Reconnecting to your backtest…');
+      followBacktestJob(saved.id, { signal: controller.signal, onProgress: setJobMessage })
+        .then(response => { if (!controller.signal.aborted) { displayResult(response, saved.kind === 'COMPARE'); clearSavedJob(); } })
+        .catch(error => { if (!controller.signal.aborted) jobError(error); })
+        .finally(() => { if (!controller.signal.aborted) setBusy(false); });
+    }
+    return () => { controller.abort(); jobController.current?.abort(); };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -84,19 +117,22 @@ export default function BacktestPage({ refreshKey }) {
     let prices;
     try { prices = parseLevels(levels); } catch (error) { setError(error.message); return; }
     if (source === 'file' && !dataset) { setError('Choose a historical JSON dataset first.'); return; }
-    setBusy(true); setResult(null); setSelectedTrade('');
+    setBusy(true); setResult(null); setSelectedTrade(''); setJobMessage('Submitting backtest…');
+    const controller = new AbortController();
+    jobController.current = controller;
     try {
-      const response = await request(compare ? '/backtests/compare' : '/backtests/run', { method: 'POST', body: JSON.stringify({
+      const response = await startBacktestJob({
         trading_date: date, instrument, levels: prices, exit_strategy: strategy, ...(atr ? { exit_configuration: atr } : {}), transaction_cost_per_order: Number(fee),
         data_source: source === 'zerodha' ? 'ZERODHA_HISTORICAL' : source === 'demo' ? 'SIMULATED' : 'ARCHIVE',
         ...(source === 'demo' ? { fixture: 'nifty-demo' } : {}),
         ...(source === 'file' ? { dataset: dataset.ticks, contracts: dataset.contracts, candles: dataset.candles ?? [] } : {}),
-      }) });
-      if (compare) setComparison(response);
-      else { setResult(response); setSettings(response.settings_snapshot); setComparison(null); }
-      setHistoryRevision(value => value + 1);
-    } catch (error) { setError(error.message); }
-    finally { setBusy(false); }
+      }, { compare, signal: controller.signal, onProgress: setJobMessage, onAccepted(job) {
+        try { window.sessionStorage.setItem('market-signal-backtest-job', JSON.stringify({ id: job.id, kind: job.kind })); } catch { /* Storage is optional. */ }
+      } });
+      displayResult(response, compare);
+      clearSavedJob();
+    } catch (error) { if (!controller.signal.aborted) jobError(error); }
+    finally { if (!controller.signal.aborted) setBusy(false); }
   }
 
   const currentSettings = settings ? Object.entries(settings).filter(([key]) => !['contracts', 'index_settings', 'trade_mode', 'timezone', 'latest_completed_session', 'zerodha_historical_available'].includes(key)) : [];
@@ -160,7 +196,7 @@ export default function BacktestPage({ refreshKey }) {
       finally { setBusy(false); }
     }}><option value="">Select a run</option>{(runs ?? []).map(run => <option key={run.id} value={run.id}>{run.trading_date ?? 'Legacy run'} · {run.instrument} · {run.status} · {run.id.slice(0, 8)}</option>)}</select></label>
     {error && <p className="ms-error" role="alert">{error}</p>}
-    {busy && <p role="status">Loading backtest…</p>}
+    {busy && <p role="status">Loading backtest… {jobMessage} You can leave this page and return while the job runs.</p>}
     {comparison && <StrategyComparison comparison={comparison} />}
     {result && <BacktestResults result={result} selectedTrade={selectedTrade} setSelectedTrade={setSelectedTrade} />}
   </section>;

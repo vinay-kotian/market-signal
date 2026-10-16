@@ -4,8 +4,9 @@ import React, { act } from 'react';
 import { JSDOM } from 'jsdom';
 import { createServer } from 'vite';
 
-async function setup(t, send) {
+async function setup(t, send, storedJob) {
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost' });
+  if (storedJob) dom.window.sessionStorage.setItem('market-signal-backtest-job', JSON.stringify(storedJob));
   const restore = [];
   for (const [name, value] of Object.entries({ window: dom.window, document: dom.window.document,
     navigator: dom.window.navigator, HTMLElement: dom.window.HTMLElement, IS_REACT_ACT_ENVIRONMENT: true })) {
@@ -62,7 +63,7 @@ test('historical result displays coverage, warnings, gross/net costs and approxi
       symbols: { NIFTY: { complete: true, received_minutes: 375, expected_minutes: 375 } }, assumptions: ['No intraminute index path inferred'] },
     data_warnings: ['ATR warmup unavailable'], trades: [], signals: [], entry_results: [], option_selections: [], timeline: [],
     costs_supported: true, gross_pnl: 100, transaction_costs: 4, net_pnl: 96, ticks_processed: 375 };
-  const dom = await setup(t, async (path, options = {}) => response(path.endsWith('/settings') ? settings : path.includes('/levels?') ? saved(path) : options.method === 'POST' ? result : []));
+  const dom = await setup(t, async (path, options = {}) => response(path.endsWith('/settings') ? settings : path.includes('/levels?') ? saved(path) : path.endsWith('/result') ? result : path.includes('/backtests/jobs') ? { id: 'job', kind: 'RUN', status: 'COMPLETED' } : []));
   await act(() => document.querySelector('form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })));
   assert.match(document.body.textContent, /1_MINUTE_OHLC/);
   assert.match(document.body.textContent, /CANDLE_APPROXIMATION/);
@@ -151,4 +152,23 @@ test('slow saved-level responses cannot overwrite edits or another date, and loa
   await change(dom, 'textarea', '26000');
   assert.equal([...document.querySelectorAll('button')].find(node => node.textContent === 'Run Backtest').disabled, false);
   assert.equal(document.querySelector('textarea').value, '26000');
+});
+
+
+test('Backtest reconnects to its saved job after page reload without a new submission', async t => {
+  const paths = [];
+  const result = { id: 'resumed', status: 'COMPLETED', instrument: 'NIFTY', trading_date: '2026-10-09',
+    settings_snapshot: settings, trades: [], signals: [], entry_results: [], option_selections: [], timeline: [] };
+  await setup(t, async (path, options = {}) => {
+    paths.push({ path, method: options.method });
+    if (path.endsWith('/backtests/settings')) return response(settings);
+    if (path.endsWith('/result')) return response(result);
+    if (path.includes('/backtests/jobs/')) return response({ status: 'COMPLETED', message: 'Backtest completed' });
+    if (path.includes('/levels?')) return response(saved(path));
+    return response([]);
+  }, { id: 'existing', kind: 'RUN' });
+  assert.ok(paths.some(item => item.path === '/api/backtests/jobs/existing'));
+  assert.ok(paths.every(item => item.method !== 'POST'));
+  assert.match(document.querySelector('[aria-label="Backtest results"]').textContent, /resumed/);
+  assert.equal(window.sessionStorage.getItem('market-signal-backtest-job'), null);
 });

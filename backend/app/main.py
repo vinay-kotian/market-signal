@@ -161,6 +161,8 @@ def create_app(database_path=None, signal_settings=None,
         app.state.backtest_runner.zerodha_loader = ZerodhaHistoricalDataLoader(
             app.state.backtest_runner.data_source.directory,
             app.state.zerodha_instruments, app.state.kite, current_time)
+        from app.backtest_jobs import BacktestJobs
+        app.state.backtest_jobs = BacktestJobs(app.state.backtest_runner)
         await market_close.check()
         app.state.telegram_notifications = TelegramNotifications(app.state.database_path)
         telegram_task = asyncio.create_task(app.state.telegram_notifications.run())
@@ -169,6 +171,7 @@ def create_app(database_path=None, signal_settings=None,
         try:
             yield
         finally:
+            await app.state.backtest_jobs.close()
             telegram_task.cancel()
             with suppress(asyncio.CancelledError):
                 await telegram_task
