@@ -16,6 +16,8 @@ from app.trading_time import TradingTimeRules
 from app.exit_settings import AtrSettings, ExitSettingsRepository
 from app.exit_strategies import strategy_for
 from app.atr_data import AtrData
+from app.fixed_atr import entry_plan
+from app.fixed_atr_data import FixedAtrData
 
 
 class PaperExecutor:
@@ -31,6 +33,7 @@ class PaperExecutor:
         self.time_rules = TradingTimeRules(self.settings)
         self.exit_settings = exit_settings or ExitSettingsRepository(repository.database_path)
         self.atr_data = atr_data or AtrData(repository.database_path, 'SIMULATED')
+        self.fixed_atr_data = FixedAtrData(repository.database_path, self.atr_data.source)
         self.clock = clock or (lambda: datetime.now(timezone.utc))
 
     async def prepare(self, selection):
@@ -41,6 +44,8 @@ class PaperExecutor:
                     strategy, _ = self.exit_settings.resolve(selection.instrument, self.clock(), connection)
                 except ValueError:
                     strategy = None
+            if strategy == 'ATR_FIXED':
+                await self.fixed_atr_data.prepare(self.atr_data, selection.option_symbol)
             if strategy == 'ATR':
                 await self.atr_data.prepare(selection.option_symbol, selection.instrument)
         prepare = getattr(self.prices, 'prepare', None)
@@ -108,15 +113,24 @@ class PaperExecutor:
                 index_atr = self.atr_data.value(selection.instrument, timestamp, exit_settings.atr_period, connection)
                 configuration = (self.settings.model_dump(mode='json') if strategy == 'LEGACY' else
                                  {key: getattr(exit_settings, key) for key in AtrSettings.model_fields})
-                initial_stop = strategy_for(strategy).initial_stop(price, configuration, option_atr['value'])
+                fixed_plan = {}
+                if strategy == 'ATR_FIXED':
+                    configuration = exit_settings.strategy3.model_dump(mode='json')
+                    history = self.fixed_atr_data.candles(contract.symbol, timestamp, connection)
+                    fixed_plan = entry_plan(price, timestamp, contract.symbol, history, exit_settings.strategy3)
+                    option_atr = dict(value=fixed_plan['atr_value'], candle_end=history[-1].completed_at if history else None,
+                                      source=self.fixed_atr_data.source)
+                    initial_stop = Decimal(str(fixed_plan['initial_stop']))
+                else:
+                    initial_stop = strategy_for(strategy).initial_stop(price, configuration, option_atr['value'])
             except ValueError as error:
                 return fail(str(error))
             risk = Decimal(str(price)) - initial_stop
             risk_percent = float(risk / Decimal(str(price)) * 100)
-            if strategy == 'ATR':
+            if strategy in ('ATR', 'ATR_FIXED'):
                 initial_pct = risk_percent
             trade = self.repository.save(TradeEntry(
-                strategy_type=strategy, strategy_config_snapshot=configuration,
+                strategy3_entry=fixed_plan, strategy_type=strategy, strategy_config_snapshot=configuration,
                 option_atr_at_entry=option_atr['value'], index_atr_at_entry=index_atr['value'],
                 atr_candle_end=option_atr['candle_end'], atr_data_source=option_atr['source'],
                 initial_risk_per_unit=float(risk), initial_risk_percent=risk_percent,
@@ -139,8 +153,8 @@ class PaperExecutor:
                 initial_stop_loss=float(initial_stop),
                 highest_price=price,
                 current_stop_loss=float(initial_stop),
-                trailing_stop_percentage=(self.settings.trailing_stop_percentage if strategy == 'LEGACY' else exit_settings.atr_trailing_percentage),
-                breakeven_protection_enabled=(self.settings.breakeven_protection_enabled if strategy == 'LEGACY' else exit_settings.atr_breakeven_activation_mode != 'OFF'),
+                trailing_stop_percentage=(self.settings.trailing_stop_percentage if strategy == 'LEGACY' else 0 if strategy == 'ATR_FIXED' else exit_settings.atr_trailing_percentage),
+                breakeven_protection_enabled=(self.settings.breakeven_protection_enabled if strategy == 'LEGACY' else False if strategy == 'ATR_FIXED' else exit_settings.atr_breakeven_activation_mode != 'OFF'),
                 breakeven_activation_percent=self.settings.breakeven_activation_percent,
                 breakeven_lock_percent=self.settings.breakeven_lock_percent,
             ), connection)

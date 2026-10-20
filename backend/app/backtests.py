@@ -16,7 +16,7 @@ from app.backtest_executor import BacktestExecutor, HistoricalOptionPrices
 from app.backtest_summary import backtest_summary
 from app.database import connect, initialize_database
 from app.historical_market_data import (HistoricalMarketDataProvider, HistoricalTick,
-    HistoricalContract, HistoricalDataset, HistoricalOptionInstrumentSource, LocalHistoricalDataSource)
+    HistoricalContract, HistoricalDataset, MinuteCandle, HistoricalOptionInstrumentSource, LocalHistoricalDataSource)
 from app.level_monitor import LevelMonitor
 from app.index_settings import IndexSettingsInput, IndexSettingsRepository
 from app.level_repository import LevelRepository
@@ -34,6 +34,8 @@ from app.trading_time import TradingTimeRules
 from app.atr_data import AtrCandle, AtrData
 from app.exit_settings import AtrSettings, ExitSettings
 from app.exit_strategies import strategy_for
+from app.fixed_atr import FixedAtrSettings, prepare_candles, candle_exit
+from app.fixed_atr_data import FixedAtrData
 
 
 class BacktestLevel(BaseModel):
@@ -43,7 +45,9 @@ class BacktestLevel(BaseModel):
 
 class BacktestInput(TradeSettings, SignalSettings, OptionSettings):
     data_source: Literal['ARCHIVE', 'SIMULATED', 'ZERODHA_HISTORICAL'] = 'ARCHIVE'
-    exit_strategy: Literal['LEGACY', 'ATR'] = 'LEGACY'
+    exit_strategy: Literal['LEGACY', 'ATR', 'ATR_FIXED'] = 'LEGACY'
+    strategy3_configuration: FixedAtrSettings = Field(default_factory=FixedAtrSettings)
+    minute_candles: list[MinuteCandle] = Field(default_factory=list, max_length=100000)
     exit_configuration: AtrSettings = Field(default_factory=AtrSettings)
     transaction_cost_per_order: float = Field(default=0, ge=0, allow_inf_nan=False)
     candles: list[AtrCandle] = Field(default_factory=list, max_length=100000)
@@ -73,7 +77,7 @@ class BacktestInput(TradeSettings, SignalSettings, OptionSettings):
         if self.dataset is not None and self.fixture is not None:
             raise ValueError('Choose dataset or fixture, not both')
         if self.data_source == 'ZERODHA_HISTORICAL':
-            if self.dataset is not None or self.fixture or self.contracts or self.candles:
+            if self.dataset is not None or self.fixture or self.contracts or self.candles or self.minute_candles:
                 raise ValueError('Zerodha historical data cannot be combined with uploaded or simulated data')
             if self.instrument not in ('NIFTY', 'BANKNIFTY'):
                 raise ValueError('Zerodha historical backtesting supports NIFTY and BANKNIFTY')
@@ -122,7 +126,7 @@ class BacktestRunner:
             bundle = HistoricalDataset.model_validate_json(
                 (Path(__file__).with_name('fixtures') / 'nifty-demo.json').read_text())
         elif config.dataset is not None:
-            bundle = HistoricalDataset(contracts=config.contracts, ticks=config.dataset, candles=config.candles)
+            bundle = HistoricalDataset(contracts=config.contracts, ticks=config.dataset, candles=config.candles, minute_candles=config.minute_candles)
         else:
             bundle = self.data_source.load(config.trading_date, config.instrument)
         return bundle
@@ -143,9 +147,23 @@ class BacktestRunner:
             raise ValueError('Dataset contains an unknown instrument or option symbol')
         if any(row.symbol not in allowed for row in bundle.candles):
             raise ValueError('ATR candles contain an unknown instrument or option symbol')
+        minute_groups = {}
+        for candle in bundle.minute_candles:
+            if candle.symbol not in allowed:
+                raise ValueError('Minute candles contain an unknown contract')
+            minute_groups.setdefault(candle.symbol, []).append(candle)
+        for symbol, rows in minute_groups.items():
+            prepare_candles(rows, symbol)  # Explicit duplicate/contract/OHLC validation.
         start = max(config.start_time or session_start, session_start)
         end = min(config.end_time or session_end, session_end)
         records = sorted([row for row in bundle.ticks if start <= row.timestamp <= end], key=lambda row: row.timestamp)
+        if config.exit_strategy == 'ATR_FIXED':
+            existing = {(r.instrument, r.timestamp) for r in records if r.observation == 'OPTION_CANDLE'}
+            records.extend(HistoricalTick(instrument=c.symbol, timestamp=c.completed_at, price=c.close, observation='OPTION_CANDLE')
+                for c in bundle.minute_candles if c.symbol != config.instrument and start <= c.completed_at <= end
+                and (c.symbol, c.completed_at) not in existing)
+            priority = {'OPTION_CANDLE': 0, 'INDEX_CLOSE': 1, 'QUOTE': 2, 'OPTION_OPEN': 3}
+            records.sort(key=lambda r: (r.timestamp, priority[r.observation]))
         if not records or not any(row.instrument == config.instrument for row in records):
             raise ValueError('Selected session must include underlying instrument ticks')
         if any(row.price <= 0 for row in records if row.instrument == config.instrument):
@@ -161,6 +179,7 @@ class BacktestRunner:
         snapshot.update(timezone='Asia/Kolkata', index_settings={key: value.model_dump(mode='json')
                         for key, value in config.index_settings.items()},
                         contracts=[c.model_dump(mode='json') for c in bundle.contracts])
+        snapshot.update(strategy3_configuration=config.strategy3_configuration.model_dump(mode='json'))
         snapshot.update(exit_strategy=config.exit_strategy, exit_configuration=config.exit_configuration.model_dump(mode='json'),
                         transaction_cost_per_order=config.transaction_cost_per_order, data_source=bundle.source,
                         data_resolution=bundle.data_resolution, execution_model=bundle.execution_model)
@@ -178,10 +197,11 @@ class BacktestRunner:
         initialize_database(path, config.stop_loss_percentage, config.model_dump())
         atr_data = AtrData(path, 'BACKTEST')
         atr_data.cache(bundle.candles)
+        FixedAtrData(path, 'BACKTEST').cache(bundle.minute_candles)
         for tick in sorted((row for row in bundle.ticks if row.timestamp < start), key=lambda row: row.timestamp):
             atr_data.observe(tick.instrument, tick.price, tick.timestamp)
         with connect(path) as connection:
-            exit_settings = ExitSettings(**config.exit_configuration.model_dump(), default_exit_strategy=config.exit_strategy)
+            exit_settings = ExitSettings(**config.exit_configuration.model_dump(), default_exit_strategy=config.exit_strategy, strategy3=config.strategy3_configuration)
             connection.execute('UPDATE exit_settings SET settings=? WHERE id=1', (exit_settings.model_dump_json(),))
             connection.execute('''CREATE TABLE backtest_run (
                 id TEXT PRIMARY KEY, trading_date TEXT, instrument TEXT, status TEXT,
@@ -224,10 +244,11 @@ class BacktestRunner:
                 executor.expire_pending(timestamp)
                 await monitor.reconcile()
 
+            fixed_next_minute = {}
             candle_lookup = {(c.symbol, c.completed_at): c for c in bundle.minute_candles}
 
             async def consume(tick, observation='QUOTE'):
-                if not executor.candle_approximation:
+                if not executor.candle_approximation and observation != 'OPTION_CANDLE':
                     atr_data.observe(tick.instrument, tick.price, clock())
                 if tick.instrument == config.instrument:
                     timeline.spot = tick.price
@@ -238,12 +259,37 @@ class BacktestRunner:
                         # Only completed OHLC is used. Test the adverse low before
                         # crediting a high, then retest low against any raised stop.
                         # Shared protection decides every transition; no inferred path.
+                        with connect(path) as connection:
+                            for trade in trades.open_for_symbol(tick.instrument, connection):
+                                if trade.strategy_type != 'ATR_FIXED':
+                                    continue
+                                entry_minute = trade.entry_time.replace(second=0, microsecond=0)
+                                partial = trade.entry_time != entry_minute
+                                policy = trade.strategy_config_snapshot['entry_candle_policy']
+                                expected = fixed_next_minute.get(trade.trade_id, entry_minute +
+                                    (timedelta(minutes=1) if partial and policy == 'SKIP_PARTIAL_ENTRY_CANDLE' else timedelta(0)))
+                                if candle.timestamp < expected:
+                                    continue
+                                cutoff = rules.exit_deadline(trade)
+                                if candle.completed_at > cutoff:
+                                    continue
+                                if candle.timestamp > expected:
+                                    raise ValueError('DATA_INCOMPLETE: missing post-entry minute candle')
+                                fixed_next_minute[trade.trade_id] = candle.completed_at
+                                hit = candle_exit(candle, trade.entry_time, trade.strategy3_entry)
+                                if hit:
+                                    reason, price = hit
+                                    trades.close(trade, price, clock(), reason, connection)
+                                elif candle.completed_at == cutoff:
+                                    trades.close(trade, candle.close, cutoff, 'EOD', connection)
                         for price in (candle.low, candle.high, candle.low, candle.close):
                             with connect(path) as connection:
                                 open_positions = trades.open_for_symbol(tick.instrument, connection)
                                 if not open_positions:
                                     break
                                 for trade in open_positions:
+                                    if trade.strategy_type == 'ATR_FIXED':
+                                        continue
                                     strategy_for(trade.strategy_type).protect(positions, trade, price, clock(), connection)
                             timeline.capture(monitor=monitor)
                         return
@@ -256,7 +302,7 @@ class BacktestRunner:
                             reason='Valid for exits; cannot fill an entry'))
                 timeline.capture(tick, monitor)
 
-            if executor.candle_approximation:
+            if executor.candle_approximation or config.exit_strategy == 'ATR_FIXED':
                 import asyncio
                 for record in records:
                     await advance(record.timestamp)
@@ -282,13 +328,15 @@ class BacktestRunner:
             timeline.capture(monitor=monitor)
             with connect(path) as connection:
                 open_trades = trades.all_open(connection)
+            if any(t.strategy_type == 'ATR_FIXED' for t in open_trades):
+                raise ValueError('DATA_INCOMPLETE: Strategy 3 has no complete exit data through its EOD cutoff')
             if failed_entries or missing_entries or (open_trades and end >= datetime.combine(config.trading_date, settings.mandatory_exit_time, rules.timezone)):
                 raise ValueError('Historical option data incomplete: an entry or mandatory exit has no valid quote '
                                  'at or after its trigger within the selected session')
             result['status'] = 'COMPLETED'
         except Exception as error:
             logging.getLogger(__name__).exception('Backtest %s failed', run_id)
-            result.update(status='FAILED', error_message=str(error) if isinstance(error, ValueError)
+            result.update(status='DATA_INCOMPLETE' if isinstance(error, ValueError) and str(error).startswith('DATA_INCOMPLETE') else 'FAILED', error_message=str(error) if isinstance(error, ValueError)
                           else 'Replay failed; inspect backend logs')
             result['error'] = result['error_message']
             timeline.record('RUN_FAILED', dict(reason=result['error_message']))
@@ -300,6 +348,9 @@ class BacktestRunner:
             levels=[level.model_dump(mode='json') for level in levels.list()],
             trades=[{**trade.model_dump(mode='json'), 'signal_timestamp': signals[trade.signal_id].timestamp.isoformat(),
                      'instrument_token': catalogue[trade.option_symbol].instrument_token,
+                     'simulation_status': 'CLOSED' if trade.status == 'CLOSED' else 'DATA_INCOMPLETE' if trade.strategy_type == 'ATR_FIXED' else 'OPEN',
+                     'realized_r_multiple': (trade.exit_price-trade.entry_price)/trade.initial_risk_per_unit if trade.status == 'CLOSED' and trade.initial_risk_per_unit else None,
+                     'holding_duration_seconds': (trade.exit_time-trade.entry_time).total_seconds() if trade.exit_time else None,
                      'gross_pnl': trade.realised_pnl,
                      'transaction_costs': config.transaction_cost_per_order * (2 if trade.status == 'CLOSED' else 1),
                      'net_pnl': trade.realised_pnl - 2*config.transaction_cost_per_order if trade.status == 'CLOSED' else None}
@@ -350,6 +401,7 @@ def current_snapshot(state):
     return {**executor.signal_settings.model_dump(mode='json'), **executor.option_settings.model_dump(mode='json'),
             **executor.settings.model_dump(mode='json'), 'trade_mode': 'BACKTEST',
             'exit_strategy': exit_settings.default_exit_strategy,
+            'strategy3_configuration': exit_settings.strategy3.model_dump(mode='json'),
             'exit_configuration': {key: getattr(exit_settings, key) for key in AtrSettings.model_fields},
             'transaction_cost_per_order': 0,
             'index_settings': {row.instrument: {'initial_arm_distance_points': row.initial_arm_distance_points}

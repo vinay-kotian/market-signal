@@ -5,6 +5,7 @@ from typing import Literal, Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator, create_model
 
+from app.fixed_atr import FixedAtrSettings
 from app.settings import TradeSettings
 from app.progressive_stop import ProgressiveSettings
 from app.database import connect
@@ -12,7 +13,7 @@ from app.indices import IndexInstrument, SUPPORTED_INDICES
 from app.trading_date import trading_date
 
 
-StrategyType = Literal['LEGACY', 'ATR']
+StrategyType = Literal['LEGACY', 'ATR', 'ATR_FIXED']
 
 
 class AtrSettings(BaseModel):
@@ -38,6 +39,7 @@ class AtrSettings(BaseModel):
 
 
 class ExitSettings(AtrSettings):
+    strategy3: FixedAtrSettings = Field(default_factory=FixedAtrSettings)
     atr_enabled: StrictBool = True
     default_exit_strategy: StrategyType = 'LEGACY'
     instrument_overrides: dict[IndexInstrument, StrategyType] = Field(default_factory=dict)
@@ -81,7 +83,7 @@ class ExitSettingsRepository:
         strategy = (override or (queued[0] if queued else None)
                     or daily.instrument_overrides.get(instrument) or settings.instrument_overrides.get(instrument)
                     or daily.default_exit_strategy or settings.default_exit_strategy)
-        if strategy not in ('LEGACY', 'ATR'):
+        if strategy not in ('LEGACY', 'ATR', 'ATR_FIXED'):
             raise ValueError('UNKNOWN_EXIT_STRATEGY')
         if strategy == 'ATR' and not settings.atr_enabled:
             raise ValueError('ATR_STRATEGY_DISABLED')

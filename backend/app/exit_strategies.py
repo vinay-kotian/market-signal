@@ -75,7 +75,20 @@ class AtrExit:
             monitor.trades.close_at_stop(trade, price, timestamp, connection, effective_stop=effective)
 
 
-STRATEGIES = {'LEGACY': LegacyExit(), 'ATR': AtrExit()}
+class FixedAtrExit:
+    def protect(self, monitor, trade, price, timestamp, connection):
+        # Tick observations are post-entry. Levels never move; paper fills use
+        # observed prices, historical baseline fills use the fixed threshold.
+        plan = trade.strategy3_entry
+        if price <= plan['initial_stop']:
+            monitor.trades.close(trade, plan['initial_stop'] if trade.trade_mode == 'BACKTEST' else price,
+                                 timestamp, 'SL', connection)
+        elif price >= plan['target']:
+            monitor.trades.close(trade, plan['target'] if trade.trade_mode == 'BACKTEST' else price,
+                                 timestamp, 'TARGET', connection)
+
+
+STRATEGIES = {'LEGACY': LegacyExit(), 'ATR': AtrExit(), 'ATR_FIXED': FixedAtrExit()}
 
 
 def strategy_for(strategy_type):

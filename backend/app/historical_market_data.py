@@ -25,7 +25,7 @@ class MinuteCandle(BaseModel):
     high: float = Field(gt=0, allow_inf_nan=False)
     low: float = Field(ge=0, allow_inf_nan=False)
     close: float = Field(ge=0, allow_inf_nan=False)
-    volume: float = Field(ge=0, allow_inf_nan=False)
+    volume: float = Field(default=0, ge=0, allow_inf_nan=False)
 
     @model_validator(mode='after')
     def valid_candle(self):

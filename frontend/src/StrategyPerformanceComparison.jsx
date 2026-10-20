@@ -9,10 +9,11 @@ export const comparisonMetrics = [
 ];
 
 export function ComparisonTable({ comparison }) {
+  const strategies = ['LEGACY', 'ATR', ...(comparison.strategies.ATR_FIXED ? ['ATR_FIXED'] : [])];
   return <div className="ms-tablewrap"><table>
-    <thead><tr><th scope="col">Metric</th><th scope="col">LEGACY</th><th scope="col">ATR</th></tr></thead>
+    <thead><tr><th scope="col">Metric</th>{strategies.map(strategy => <th scope="col" key={strategy}>{strategy === 'ATR_FIXED' ? 'Strategy 3' : strategy}</th>)}</tr></thead>
     <tbody>{comparisonMetrics.map(([label, key, suffix = '']) => <tr key={key}>
-      <th scope="row">{label}</th>{['LEGACY', 'ATR'].map(strategy => {
+      <th scope="row">{label}</th>{strategies.map(strategy => {
         const value = comparison.strategies[strategy][key];
         return <td className="ms-num" key={strategy}>{value == null ? '—' : `${formatPrice(value)}${suffix}`}</td>;
       })}
@@ -37,7 +38,7 @@ export default function StrategyPerformanceComparison({ fromDate, toDate, view, 
   }, [fromDate, toDate, view, status, instrument, timeframe, refreshKey, retry, validation]);
   return <section className="ms-strategy-comparison" aria-label="Strategy Performance Comparison">
     <h3 className="ms-sectionhead">Strategy Performance Comparison</h3>
-    <p className="ms-sub">Both PAPER strategies over the selected entry dates, report view, status and instrument. The history's strategy selector applies to history and its summary; this comparison always shows both strategies.</p>
+    <p className="ms-sub">PAPER exit strategies over the selected entry dates, report view, status and instrument. The history's strategy selector applies to history and its summary; this comparison shows all strategies.</p>
     {error && <p className="ms-error" role="alert">Comparison unavailable. {error} <button className="ms-link" onClick={() => setRetry(value => value+1)}>Retry</button></p>}
     {!comparison && !error && !validation && <p role="status">Loading strategy comparison…</p>}
     {comparison && !validation && <><ComparisonTable comparison={comparison} />

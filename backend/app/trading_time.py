@@ -31,6 +31,10 @@ class TradingTimeRules:
         return None
 
     def exit_deadline(self, trade):
+        if getattr(trade, 'strategy_type', 'LEGACY') == 'ATR_FIXED':
+            from datetime import time
+            return datetime.combine(self.local(trade.entry_time).date(),
+                time.fromisoformat(trade.strategy_config_snapshot['eod_exit_time']), self.timezone)
         return datetime.combine(self.local(trade.entry_time).date(),
                                 self.settings.mandatory_exit_time, self.timezone)
 
@@ -56,6 +60,8 @@ class MarketCloseService:
                     price = self.prices.current_price(trade.option_symbol)
                 if price is not None and (not isfinite(price) or price < 0):
                     price = None
+                if getattr(trade, 'strategy_type', 'LEGACY') == 'ATR_FIXED':
+                    continue  # PositionMonitor exits on an actual observed cutoff quote.
                 if price is None:
                     # Every existing position has at least its observed entry quote.
                     price = trade.entry_price

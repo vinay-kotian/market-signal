@@ -11,7 +11,7 @@ from app.settings import TradeSettings
 
 ValidityStatus = Literal["VALID", "INVALID_STRATEGY_BUG", "INVALID_DATA_ISSUE",
                          "INVALID_EXECUTION_ISSUE", "MANUAL_REVIEW"]
-ExitReason = Literal['STOP_LOSS', 'TRAILING_STOP_LOSS', 'MARKET_CLOSE', 'MARKET_CLOSING_EXIT', 'MANUAL_SQUARE_OFF']
+ExitReason = Literal['STOP_LOSS', 'TRAILING_STOP_LOSS', 'MARKET_CLOSE', 'MARKET_CLOSING_EXIT', 'MANUAL_SQUARE_OFF', 'SL', 'TARGET', 'EOD']
 
 
 class TradeClassification(BaseModel):
@@ -26,7 +26,8 @@ class BulkTradeClassification(TradeClassification):
 
 
 class TradeEntry(BaseModel):
-    strategy_type: Literal['LEGACY', 'ATR'] = 'LEGACY'
+    strategy3_entry: dict = Field(default_factory=dict)
+    strategy_type: Literal['LEGACY', 'ATR', 'ATR_FIXED'] = 'LEGACY'
     strategy_config_snapshot: dict = Field(default_factory=dict)
     option_atr_at_entry: Optional[float] = None
     index_atr_at_entry: Optional[float] = None
@@ -41,7 +42,7 @@ class TradeEntry(BaseModel):
     exclude_from_strategy_metrics: bool = False
     settings_snapshot: dict
 
-    @field_validator("settings_snapshot", "strategy_config_snapshot", mode="before")
+    @field_validator("settings_snapshot", "strategy_config_snapshot", "strategy3_entry", mode="before")
     @classmethod
     def decode_snapshot(cls, value):
         return json.loads(value) if isinstance(value, str) else value

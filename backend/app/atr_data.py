@@ -63,6 +63,8 @@ class AtrData:
     def observe(self, symbol, price, timestamp):
         if not isfinite(price) or price < 0:
             return
+        from app.fixed_atr_data import FixedAtrData
+        FixedAtrData(self.path, self.source).observe(symbol, price, timestamp)
         start = int(timestamp.timestamp()) // 300 * 300
         with connect(self.path) as connection:
             connection.execute('''INSERT INTO atr_candles VALUES (?,?,?,?,?,?,?,?,?,?)

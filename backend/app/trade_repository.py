@@ -30,6 +30,7 @@ class TradeRepository:
         context = connect(self.database_path) if connection is None else nullcontext(connection)
         with context as connection:
             values = entry.model_dump(mode="json")
+            values['strategy3_entry'] = json.dumps(values['strategy3_entry'])
             values['settings_snapshot'] = json.dumps(values['settings_snapshot'])
             values['strategy_config_snapshot'] = json.dumps(values['strategy_config_snapshot'])
             # Column names come only from the fixed model, never from request data.
@@ -106,7 +107,7 @@ class TradeRepository:
             from app.option_watchlist import watch_trade_closed
             watch_trade_closed(trade, timestamp, connection)
             events = TradeEventRepository(self.database_path)
-            trigger = {'STOP_LOSS': 'STOP_LOSS_HIT', 'TRAILING_STOP_LOSS': 'STOP_LOSS_HIT',
+            trigger = {'SL': 'STOP_LOSS_HIT', 'EOD': 'MARKET_CLOSING_EXIT_TRIGGERED', 'STOP_LOSS': 'STOP_LOSS_HIT', 'TRAILING_STOP_LOSS': 'STOP_LOSS_HIT',
                        'MARKET_CLOSE': 'MARKET_CLOSING_EXIT_TRIGGERED',
                        'MARKET_CLOSING_EXIT': 'MARKET_CLOSING_EXIT_TRIGGERED'}.get(reason)
             if trigger:

@@ -113,3 +113,12 @@ Do not treat deduplicating recorded trades as a corrected backtest.
 
 No corrected results or performance improvement are claimed. Neither a future
 replay nor reclassification should rewrite the original execution history.
+
+## Strategy 3 — fixed option ATR stop and risk/reward target
+
+Added the separately selectable `ATR_FIXED` strategy for PAPER and BACKTEST.
+One-minute pre-entry SMA ATR, percentage fallback, optional risk rejection,
+immutable stop/target/settings, conservative same-candle collisions, explicit
+partial-entry policy and incomplete-data outcomes follow the supplied Strategy 3
+specification. Entry rules and existing exits remain unchanged. See
+[strategy-3.md](strategy-3.md) for data requirements and API fields.

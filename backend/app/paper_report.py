@@ -41,7 +41,7 @@ class PaperReportingService:
         filters.pop('strategy_type', None)
         rows = self.trades.performance_rows(**filters)
         comparison = {}
-        for strategy in ('LEGACY', 'ATR'):
+        for strategy in ('LEGACY', 'ATR', 'ATR_FIXED'):
             group = [row for row in rows if row['strategy_type'] == strategy]
             report = calculate_report(group, view).model_dump(mode='json')
             closed = [row for row in group if row['status'] == 'CLOSED'
@@ -103,4 +103,4 @@ def realised_risk_metrics(closed, pnls):
     return dict(max_drawdown=float(drawdown),
                 average_r=float(sum(rs, Decimal(0))/len(rs)) if rs else None,
                 average_r_sample_size=len(rs),
-                sl_hits=sum(row['exit_reason'] in ('STOP_LOSS', 'TRAILING_STOP_LOSS') for row in closed))
+                sl_hits=sum(row['exit_reason'] in ('STOP_LOSS', 'TRAILING_STOP_LOSS', 'SL') for row in closed))

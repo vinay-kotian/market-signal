@@ -13,6 +13,7 @@ const localTime = value => value ? new Date(value).toLocaleTimeString('en-IN', {
 
 export default function BacktestPage({ refreshKey }) {
   const [strategy, setStrategy] = useState('LEGACY'), [atr, setAtr] = useState(null);
+  const [fixed, setFixed] = useState(null);
   const [fee, setFee] = useState(0), [comparison, setComparison] = useState(null);
   const [instrument, setInstrument] = useState('NIFTY');
   const [date, setDate] = useState(latestCompletedSession);
@@ -71,7 +72,7 @@ export default function BacktestPage({ refreshKey }) {
   useEffect(() => {
     let active = true;
     request('/backtests/settings').then(snapshot => { if (active) {
-      setSettings(snapshot); setAtr(snapshot.exit_configuration); setStrategy(snapshot.exit_strategy ?? 'LEGACY');
+      setSettings(snapshot); setAtr(snapshot.exit_configuration); setFixed(snapshot.strategy3_configuration); setStrategy(snapshot.exit_strategy ?? 'LEGACY');
       if (!dateTouched.current && snapshot.latest_completed_session) setDate(snapshot.latest_completed_session);
       if (!sourceTouched.current && snapshot.zerodha_historical_available) setSource('zerodha');
     } }).catch(error => { if (active) setError(error.message); });
@@ -122,10 +123,10 @@ export default function BacktestPage({ refreshKey }) {
     jobController.current = controller;
     try {
       const response = await startBacktestJob({
-        trading_date: date, instrument, levels: prices, exit_strategy: strategy, ...(atr ? { exit_configuration: atr } : {}), transaction_cost_per_order: Number(fee),
+        trading_date: date, instrument, levels: prices, exit_strategy: strategy, ...(atr ? { exit_configuration: atr } : {}), transaction_cost_per_order: Number(fee), ...(fixed ? { strategy3_configuration: fixed } : {}),
         data_source: source === 'zerodha' ? 'ZERODHA_HISTORICAL' : source === 'demo' ? 'SIMULATED' : 'ARCHIVE',
         ...(source === 'demo' ? { fixture: 'nifty-demo' } : {}),
-        ...(source === 'file' ? { dataset: dataset.ticks, contracts: dataset.contracts, candles: dataset.candles ?? [] } : {}),
+        ...(source === 'file' ? { dataset: dataset.ticks, contracts: dataset.contracts, candles: dataset.candles ?? [], minute_candles: dataset.minute_candles ?? [] } : {}),
       }, { compare, signal: controller.signal, onProgress: setJobMessage, onAccepted(job) {
         try { window.sessionStorage.setItem('market-signal-backtest-job', JSON.stringify({ id: job.id, kind: job.kind })); } catch { /* Storage is optional. */ }
       } });
@@ -154,6 +155,7 @@ export default function BacktestPage({ refreshKey }) {
             if (event.target.value === 'zerodha' && instrument === 'SENSEX') setInstrument('NIFTY');
           }}><option value="zerodha">Zerodha historical · 1-minute candles</option><option value="archive">Historical archive</option><option value="file">Upload historical JSON</option><option value="demo">Synthetic NIFTY demo · 14 Sep 2026</option></select></label>
         </div>
+        {strategy === 'ATR_FIXED' && fixed && <details open><summary>Strategy 3 configuration</summary><ConfigurationFields settings={fixed} onChange={(key, value) => setFixed(previous => ({ ...previous, [key]: value }))} /><p className="ms-sub">Fixed SL and target, one-minute SMA ATR. Same candle: SL first. OHLC fills are theoretical; fees are separate. Missing exit coverage is reported as DATA_INCOMPLETE.</p></details>}
         {atr && <details><summary>ATR exit configuration</summary><ConfigurationFields settings={atr} onChange={(key, value) => setAtr(previous => ({ ...previous, [key]: value }))} /></details>}
         <label>Trading levels<textarea required rows="4" value={levels} placeholder={'59800\n60000\n60250'} onChange={event => { levelsEdited.current = true; setLevels(event.target.value); setLevelsNote('Edited levels will be used for this backtest.'); }} /></label>
         {source !== 'demo' && <button type="button" className="ms-link" disabled={levelsLoading || !date} onClick={() => setLevelsRevision(value => value + 1)}>Reload saved levels</button>}
@@ -208,7 +210,7 @@ export function BacktestResults({ result, selectedTrade = '', setSelectedTrade }
   const timeline = eventsForTrade(result?.timeline ?? [], trade);
   return <section className="ms-report-timeline" aria-label="Backtest results">
       <div className="ms-sectionhead">{result.status} · {result.instrument} · {result.trading_date}</div><p className="ms-sub">Run ID: {result.id} · Source: {result.data_source}</p>
-      {result.status === 'FAILED' && <p className="ms-error" role="alert">{result.error_message ?? result.error}</p>}
+      {['FAILED', 'DATA_INCOMPLETE'].includes(result.status) && <p className="ms-error" role="alert">{result.error_message ?? result.error}</p>}
       {result.execution_model && <p className="ms-sub">Resolution: {result.data_resolution} · Execution: {result.execution_model} · Strategy: {result.settings_snapshot?.exit_strategy}</p>}
       {result.data_warnings?.length > 0 && <ul aria-label="Historical data warnings">{result.data_warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
       {result.historical_data_coverage?.symbols && <details><summary>Historical data coverage and execution assumptions</summary>
@@ -222,8 +224,8 @@ export function BacktestResults({ result, selectedTrade = '', setSelectedTrade }
       <div className="ms-tablewrap"><table><thead><tr>{['Signal time', 'Level', 'Timeframe', 'Direction', 'Option', 'Exit strategy', 'Entry', 'Exit', 'Exit reason', 'Quantity', 'P&L', 'Return %'].map(label => <th key={label}>{label}</th>)}</tr></thead>
         <tbody>{result.trades.map(row => <tr key={row.trade_id} onClick={() => setSelectedTrade(String(row.trade_id))}>
           <td>{localTime(row.signal_timestamp)}</td><td>{formatPrice(row.trigger_level)}</td><td>{row.timeframe ?? 'Not recorded'}</td><td>{row.direction}</td><td>{row.option_symbol}<small className="ms-time">{row.expiry} · Strike {row.strike}</small></td>
-          <td>{row.strategy_type === 'ATR' ? 'ATR' : 'Current'}</td><td>{formatPrice(row.entry_price)}<small className="ms-time">{localTime(row.entry_time)}</small></td><td>{formatPrice(row.exit_price)}<small className="ms-time">{localTime(row.exit_time)}</small></td>
-          <td>{row.exit_reason ? formatExitReason(row.exit_reason) : row.status}</td><td>{row.quantity}</td><td>{formatPrice(row.realised_pnl)}{row.net_pnl != null && <small className="ms-time">Net {formatPrice(row.net_pnl)} · Costs {formatPrice(row.transaction_costs)}</small>}</td><td>{formatPrice(row.realised_pnl_percentage)}</td>
+          <td>{row.strategy_type === 'ATR_FIXED' ? 'Strategy 3' : row.strategy_type === 'ATR' ? 'ATR' : 'Current'}</td><td>{formatPrice(row.entry_price)}{row.strategy3_entry?.target != null && <small className="ms-time">SL {formatPrice(row.initial_stop_loss)} · Target {formatPrice(row.strategy3_entry.target)} · {row.strategy3_entry.stop_source} · ATR n={row.strategy3_entry.atr_sample_count}</small>}<small className="ms-time">{localTime(row.entry_time)}</small></td><td>{formatPrice(row.exit_price)}<small className="ms-time">{localTime(row.exit_time)}</small></td>
+          <td>{row.exit_reason ? formatExitReason(row.exit_reason) : row.simulation_status ?? row.status}</td><td>{row.quantity}</td><td>{formatPrice(row.realised_pnl)}{row.net_pnl != null && <small className="ms-time">Net {formatPrice(row.net_pnl)} · Costs {formatPrice(row.transaction_costs)}</small>}</td><td>{formatPrice(row.realised_pnl_percentage)}</td>
         </tr>)}{result.trades.length === 0 && <tr><td colSpan="12">No trades created. Inspect the timeline and entry results.</td></tr>}</tbody>
       </table></div>
       <details className="ms-backtest-settings"><summary>Signal and entry results</summary>
@@ -231,6 +233,7 @@ export function BacktestResults({ result, selectedTrade = '', setSelectedTrade }
         <ul>{result.option_selections.filter(selection => selection.status === 'FAILED').map(selection => <li key={selection.id}>Selection #{selection.id} · {selection.failure_reason}</li>)}</ul>
         <ul>{result.entry_results.map(entry => <li key={entry.option_selection_id}>Selection #{entry.option_selection_id} · {entry.failure_reason ?? 'Trade created'}</li>)}</ul>
       </details>
+      {trade?.strategy3_entry?.target != null && <details open><summary>Strategy 3 · Frozen entry plan and data quality</summary><pre>{JSON.stringify(trade.strategy3_entry, null, 2)}</pre></details>}
       <div className="ms-sectionhead">Event Timeline</div>
       <label>Trade<select value={selectedTrade} onChange={event => setSelectedTrade(event.target.value)}><option value="">Whole session</option>{result.trades.map(row => <option key={row.trade_id} value={row.trade_id}>Trade #{row.trade_id} · Level {row.trigger_level} · {row.timeframe ?? 'Not recorded'} · {row.option_symbol}</option>)}</select></label>
       <div className="ms-tablewrap"><table><thead><tr>{['Time', 'Event', 'Level / Index', 'Option price', 'Highest / Stop', 'Return %', 'Details'].map(label => <th key={label}>{label}</th>)}</tr></thead>

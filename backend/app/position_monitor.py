@@ -23,8 +23,10 @@ class PositionMonitor:
             connection.execute('BEGIN IMMEDIATE')
             self.trades.record_option_price(tick.instrument, tick.price, timestamp, connection)
             for trade in self.trades.open_for_symbol(tick.instrument, connection):
+                if trade.strategy_type == 'ATR_FIXED' and trade.trade_mode == 'BACKTEST' and self.time_rules.exit_due(trade, timestamp):
+                    continue  # Historical EOD uses the completed cutoff candle, not a later tick.
                 if self.time_rules and self.time_rules.exit_due(trade, timestamp):
-                    self.trades.close(trade, tick.price, timestamp, 'MARKET_CLOSE', connection)
+                    self.trades.close(trade, tick.price, timestamp, 'EOD' if trade.strategy_type == 'ATR_FIXED' else 'MARKET_CLOSE', connection)
                     continue
                 strategy_for(trade.strategy_type).protect(self, trade, tick.price, timestamp, connection)
 

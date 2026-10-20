@@ -125,3 +125,49 @@ test('backtest comparison sends selected ATR configuration and transaction costs
   assert.equal(writes[0].data.exit_configuration.atr_initial_multiplier, 1.5);
   assert.ok(document.querySelector('[aria-label="Exit strategy comparison"]'));
 });
+
+const strategy3 = { atr_period: 14, atr_multiplier: .75, atr_method: 'SMA', min_pre_entry_candles: 2,
+  fallback_sl_pct: 20, risk_reward_ratio: 2, eod_exit_time: '15:25:00', max_initial_risk_pct: null,
+  slippage_model: 'none', entry_candle_policy: 'SKIP_PARTIAL_ENTRY_CANDLE' };
+
+test('Strategy 3 settings persist independently with optional risk and explicit entry policy', async t => {
+  let saved = { ...structuredClone(initial), configuration: { ...configuration, strategy3 } };
+  const writes = [];
+  const ui = await setup(t, async (path, options = {}) => {
+    if (path.endsWith('/legacy')) return response({ stop_strategy: 'LEGACY' });
+    if (options.method === 'PUT') {
+      writes.push(JSON.parse(options.body)); saved = { ...saved, configuration: writes.at(-1) };
+    }
+    return response(saved);
+  });
+  await ui.choose('Persistent default', 'ATR_FIXED');
+  await ui.choose('entry candle policy', 'FULL_CANDLE_APPROXIMATION');
+  const risk = [...document.querySelectorAll('label')].find(node => node.textContent === 'max initial risk pct').querySelector('input');
+  assert.equal(risk.required, false);
+  assert.equal(risk.value, '');
+  assert.equal(document.querySelector('input[type="time"]').value, '15:25');
+  await ui.submit('Save exit settings');
+  assert.equal(writes[0].default_exit_strategy, 'ATR_FIXED');
+  assert.equal(writes[0].strategy3.atr_multiplier, .75);
+  assert.equal(writes[0].strategy3.max_initial_risk_pct, null);
+  assert.equal(writes[0].strategy3.entry_candle_policy, 'FULL_CANDLE_APPROXIMATION');
+  assert.equal(writes[0].atr_initial_multiplier, 1.5);
+});
+
+test('Strategy 3 backtest sends its settings and shows incomplete data explicitly', async t => {
+  const writes = [];
+  const ui = await setup(t, async (path, options = {}) => {
+    if (path.endsWith('/settings')) return response({ strategy3_configuration: strategy3 });
+    if (path.includes('/levels?')) return response([{ instrument: 'NIFTY', price: 25000, level_date: new URL(path, 'http://localhost').searchParams.get('level_date') }]);
+    if (path.endsWith('/result')) return response({ status: 'DATA_INCOMPLETE', error_message: 'Missing cutoff candle',
+      trades: [], signals: [], option_selections: [], entry_results: [], timeline: [] });
+    if (path.includes('/backtests/jobs/')) return response({ id: 'job', kind: 'RUN', status: 'COMPLETED' });
+    if (options.method === 'POST') { writes.push(JSON.parse(options.body)); return response({ id: 'job', kind: 'RUN', status: 'COMPLETED' }); }
+    return response([]);
+  }, '/src/BacktestPage.jsx');
+  await ui.choose('Exit strategy', 'ATR_FIXED');
+  await ui.submit('Run Backtest');
+  assert.equal(writes[0].exit_strategy, 'ATR_FIXED');
+  assert.deepEqual(writes[0].strategy3_configuration, strategy3);
+  assert.match(document.querySelector('[role="alert"]').textContent, /Missing cutoff candle/);
+});

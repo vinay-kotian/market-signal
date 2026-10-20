@@ -1498,3 +1498,11 @@ transaction costs remain available in Backtesting. This section does not change
 strategy selection or establish trading profitability; LEGACY remains the default.
 
 Level dates, timeframe configuration, migration and historical safeguards are documented in [Level management](docs/level-management.md).
+
+### Strategy 3: fixed ATR stop and risk/reward target
+
+Select **Strategy 3 · ATR fixed SL / target** for PAPER entries or backtests.
+Uses completed option minute candles and SMA ATR, a frozen stop/target, fallback
+SL and optional risk guard. Historical OHLC collisions resolve to SL first;
+missing exit coverage returns `DATA_INCOMPLETE`. Full configuration, trade-record
+reuse and backtest API examples: [Strategy 3](docs/strategy-3.md).

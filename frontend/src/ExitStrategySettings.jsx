@@ -5,11 +5,12 @@ import { supportedIndices } from './indices';
 
 export function StrategySelect({ value, onChange, atrEnabled = true, optional = false, disabled = false, label, className }) {
   return <label className={className}><span>{label}</span><select value={value ?? ''} disabled={disabled} onChange={event => onChange(event.target.value || null)}>
-    {optional && <option value="">Use default</option>}<option value="LEGACY">Current / Legacy</option><option value="ATR" disabled={!atrEnabled}>ATR</option>
+    {optional && <option value="">Use default</option>}<option value="LEGACY">Current / Legacy</option><option value="ATR" disabled={!atrEnabled}>ATR</option><option value="ATR_FIXED">Strategy 3 · ATR fixed SL / target</option>
   </select></label>;
 }
 
 export const atrChoices = {
+  atr_method: ['SMA'], slippage_model: ['none'], entry_candle_policy: ['SKIP_PARTIAL_ENTRY_CANDLE', 'FULL_CANDLE_APPROXIMATION'],
   atr_timeframe: ['5minute'], atr_trailing_mode: ['OFF', 'PERCENTAGE', 'ATR'],
   atr_breakeven_activation_mode: ['OFF', 'PERCENTAGE', 'ATR', 'R'],
 };
@@ -18,7 +19,8 @@ export function ConfigurationFields({ settings, onChange, choices = atrChoices }
     {key.replaceAll('_', ' ')}
     {choices[key] ? <select value={value} onChange={event => onChange(key, event.target.value)}>{choices[key].map(choice => <option key={choice}>{choice}</option>)}</select>
       : typeof value === 'boolean' ? <input type="checkbox" checked={value} onChange={event => onChange(key, event.target.checked)} />
-        : <input type="number" step={key === 'atr_period' ? '1' : 'any'} value={value ?? ''} required={key !== 'atr_max_sl_percent'} onChange={event => onChange(key, event.target.value === '' ? (key === 'atr_max_sl_percent' ? null : '') : Number(event.target.value))} />}
+        : typeof value === 'string' && key === 'eod_exit_time' ? <input type="time" required value={value.slice(0, 5)} onChange={event => onChange(key, event.target.value)} />
+        : <input type="number" step={key === 'atr_period' ? '1' : 'any'} value={value ?? ''} required={!['atr_max_sl_percent', 'max_initial_risk_pct'].includes(key)} onChange={event => onChange(key, event.target.value === '' ? (['atr_max_sl_percent', 'max_initial_risk_pct'].includes(key) ? null : '') : Number(event.target.value))} />}
   </label>)}</div>;
 }
 
@@ -73,6 +75,10 @@ export default function ExitStrategySettings() {
         <h4>ATR configuration</h4>
         <ConfigurationFields settings={atr} onChange={change} />
         <p className="ms-sub">Option ATR uses completed 5-minute candles with Wilder smoothing. Entry ATR is frozen, including for ATR trailing. Leave maximum SL percent empty to remove the risk guard. A stop above the guard skips entry. Breakeven thresholds use the selected unit (percent, ATR multiples or initial risk R).</p>
+        {configuration.strategy3 && <details><summary>Strategy 3 · Fixed ATR stop and risk/reward target</summary>
+          <ConfigurationFields settings={configuration.strategy3} onChange={(key, value) => change('strategy3', { ...configuration.strategy3, [key]: value })} />
+          <p className="ms-sub">Completed option minute candles, SMA true range, fixed stop and target. Insufficient history uses the configured fallback stop. No trailing or breakeven adjustments. Maximum initial risk is optional. PAPER exits use observed quotes.</p>
+        </details>}
         <details><summary>Persistent instrument overrides</summary><div className="ms-exit-overrides">{supportedIndices.map(instrument => <StrategySelect key={instrument} className="ms-exit-instrument-row" label={instrument} optional atrEnabled={configuration.atr_enabled} value={configuration.instrument_overrides[instrument]} onChange={value => setConfiguration(previous => override(previous, instrument, value))} />)}</div></details>
         <div className="ms-exit-actions"><button className="ms-button">Save exit settings</button></div>
       </fieldset>

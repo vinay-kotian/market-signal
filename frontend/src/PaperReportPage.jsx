@@ -108,7 +108,7 @@ export default function PaperReportPage({ refreshKey }) {
     <fieldset className="ms-trade-filters" disabled={bulkBusy || Boolean(validation)}>
     <form className="ms-report-filters" onSubmit={event => { event.preventDefault(); setChecked([]); setInstrument(draft.trim().toUpperCase()); setPage(1); setSelected(null); }}>
       <TimeframeSelect filter value={timeframe} disabled={bulkBusy} onChange={value => { setTimeframe(value); setPage(1); setSelected(null); }} />
-      <label>Exit strategy<select value={strategyType} onChange={event => { setStrategyType(event.target.value); setPage(1); setSelected(null); }}><option value="">All strategies</option><option value="LEGACY">Current / Legacy</option><option value="ATR">ATR</option></select></label>
+      <label>Exit strategy<select value={strategyType} onChange={event => { setStrategyType(event.target.value); setPage(1); setSelected(null); }}><option value="">All strategies</option><option value="LEGACY">Current / Legacy</option><option value="ATR">ATR</option><option value="ATR_FIXED">Strategy 3</option></select></label>
       <label>Status<select value={status} onChange={event => { setStatus(event.target.value); setChecked([]); setPage(1); setSelected(null); }}><option value="">All statuses</option><option>OPEN</option><option>CLOSED</option></select></label>
       <label>Instrument<input list="report-instruments" value={draft} onChange={event => setDraft(event.target.value)} placeholder="All indices" /><datalist id="report-instruments">{supportedIndices.map(symbol => <option key={symbol} value={symbol} />)}</datalist></label>
       <button className="ms-button">Apply filter</button>
@@ -127,7 +127,7 @@ export default function PaperReportPage({ refreshKey }) {
           <td className="ms-report-trade"><div><button className="ms-link" onClick={() => setSelected(trade.trade_id)} aria-label={`View trade ${trade.trade_id} timeline`}>#{trade.trade_id}</button><time dateTime={trade.entry_time}>{new Date(trade.entry_time).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}</time></div><small className="ms-time">{new Date(trade.entry_time).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' })}</small></td>
           <td>{trade.instrument}<small className="ms-time">Level {formatPrice(trade.trigger_level)}</small></td>
           <td>{trade.timeframe ?? 'Not recorded'}</td>
-          <td className="ms-report-option">{trade.option_symbol}</td><td>{trade.strategy_type === 'ATR' ? 'ATR' : 'Current / Legacy'}</td>
+          <td className="ms-report-option">{trade.option_symbol}</td><td>{trade.strategy_type === 'ATR_FIXED' ? 'Strategy 3' : trade.strategy_type === 'ATR' ? 'ATR' : 'Current / Legacy'}</td>
           <td className="ms-num">{trade.quantity}</td>
           <td className="ms-num">{formatPrice(trade.entry_price)}</td>
           <td className="ms-num">{formatPrice(trade.highest_price)}</td>
@@ -183,7 +183,7 @@ function TradeClassification({ trade, onSaved }) {
       <button className="ms-button" disabled={saving}>{saving ? 'Saving…' : 'Save classification'}</button>
     </form>
     {error && <p className="ms-error" role="alert">{error}</p>}
-    <details><summary>Exit strategy snapshot at entry</summary><pre>{JSON.stringify({ strategy: trade.strategy_type, configuration: trade.strategy_config_snapshot, option_atr: trade.option_atr_at_entry, index_atr: trade.index_atr_at_entry, initial_risk: trade.initial_risk_amount }, null, 2)}</pre></details>
+    <details><summary>Exit strategy snapshot at entry</summary><pre>{JSON.stringify({ strategy: trade.strategy_type, configuration: trade.strategy_config_snapshot, strategy3: trade.strategy3_entry, option_atr: trade.option_atr_at_entry, index_atr: trade.index_atr_at_entry, initial_risk: trade.initial_risk_amount }, null, 2)}</pre></details>
     <details><summary>Settings snapshot at entry</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify(trade.settings_snapshot, null, 2)}</pre></details>
   </section>;
 }

@@ -123,7 +123,7 @@ class BacktestTimeline:
                 deadline = rules.exit_deadline(trade)
                 if deadline <= until and trade.trade_id not in self.deadlines_seen:
                     self.record('MANDATORY_EXIT', dict(option_symbol=trade.option_symbol,
-                        level=trade.trigger_level, reason='Awaiting first option quote at or after deadline'),
+                        level=trade.trigger_level, reason='Awaiting completed cutoff candle' if trade.strategy_type == 'ATR_FIXED' else 'Awaiting first option quote at or after deadline'),
                         trade_id=trade.trade_id, timestamp=deadline, connection=connection)
                     self.deadlines_seen.add(trade.trade_id)
 

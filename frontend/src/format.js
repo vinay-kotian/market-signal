@@ -3,6 +3,7 @@ export const formatPrice = value => value == null ? '—' : value.toLocaleString
 });
 
 export const formatExitReason = reason => ({
+  SL: 'Stop Loss', TARGET: 'Target', EOD: 'End of Day',
   STOP_LOSS: 'Stop Loss',
   TRAILING_STOP_LOSS: 'Trailing Stop Loss',
   MARKET_CLOSE: 'Market Close',

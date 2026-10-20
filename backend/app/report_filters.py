@@ -20,7 +20,7 @@ def report_scope(connection, *, mode='PAPER', from_date=None, to_date=None, stat
         clauses.append('instrument = ?')
         values.append(instrument.strip().upper())
     if strategy_type is not None:
-        if strategy_type not in ('LEGACY', 'ATR'):
+        if strategy_type not in ('LEGACY', 'ATR', 'ATR_FIXED'):
             raise ValueError('Unknown exit strategy')
         clauses.append('strategy_type = ?')
         values.append(strategy_type)

@@ -17,7 +17,7 @@ class OptionWatchlistItem(BaseModel):
     expiry: str
     option_type: Literal['CE', 'PE']
     trade_id: int
-    strategy_type: Literal['LEGACY', 'ATR'] = 'LEGACY'
+    strategy_type: Literal['LEGACY', 'ATR', 'ATR_FIXED'] = 'LEGACY'
     trade_mode: Literal['PAPER', 'LIVE']
     entry_time: datetime
     entry_price: float
