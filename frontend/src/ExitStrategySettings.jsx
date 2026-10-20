@@ -5,7 +5,7 @@ import { supportedIndices } from './indices';
 
 export function StrategySelect({ value, onChange, atrEnabled = true, optional = false, disabled = false, label, className }) {
   return <label className={className}><span>{label}</span><select value={value ?? ''} disabled={disabled} onChange={event => onChange(event.target.value || null)}>
-    {optional && <option value="">Use default</option>}<option value="LEGACY">Current / Legacy</option><option value="ATR" disabled={!atrEnabled}>ATR</option><option value="ATR_FIXED">Strategy 3 · ATR fixed SL / target</option>
+    {optional && <option value="">Use default</option>}<option value="LEGACY">Current / Legacy</option><option value="ATR" disabled={!atrEnabled}>ATR</option><option value="ATR_FIXED">Strategy 3 · Fixed ATR</option>
   </select></label>;
 }
 
@@ -14,10 +14,18 @@ export const atrChoices = {
   atr_timeframe: ['5minute'], atr_trailing_mode: ['OFF', 'PERCENTAGE', 'ATR'],
   atr_breakeven_activation_mode: ['OFF', 'PERCENTAGE', 'ATR', 'R'],
 };
+const choiceLabels = {
+  '5minute': '5 minutes', SMA: 'Simple average (SMA)', none: 'None',
+  OFF: 'Off', PERCENTAGE: 'Percentage', ATR: 'ATR multiple', R: 'Risk multiple (R)',
+  LEGACY: 'Percentage stops', PROGRESSIVE: 'Progressive protection',
+  SKIP_PARTIAL_ENTRY_CANDLE: 'Skip partial entry minute',
+  FULL_CANDLE_APPROXIMATION: 'Use full entry minute',
+};
+
 export function ConfigurationFields({ settings, onChange, choices = atrChoices }) {
   return <div className="ms-backtest-grid">{Object.entries(settings).map(([key, value]) => <label key={key}>
     {key.replaceAll('_', ' ')}
-    {choices[key] ? <select value={value} onChange={event => onChange(key, event.target.value)}>{choices[key].map(choice => <option key={choice}>{choice}</option>)}</select>
+    {choices[key] ? <select value={value} onChange={event => onChange(key, event.target.value)}>{choices[key].map(choice => <option key={choice} value={choice}>{choiceLabels[choice] ?? choice}</option>)}</select>
       : typeof value === 'boolean' ? <input type="checkbox" checked={value} onChange={event => onChange(key, event.target.checked)} />
         : typeof value === 'string' && key === 'eod_exit_time' ? <input type="time" required value={value.slice(0, 5)} onChange={event => onChange(key, event.target.value)} />
         : <input type="number" step={key === 'atr_period' ? '1' : 'any'} value={value ?? ''} required={!['atr_max_sl_percent', 'max_initial_risk_pct'].includes(key)} onChange={event => onChange(key, event.target.value === '' ? (['atr_max_sl_percent', 'max_initial_risk_pct'].includes(key) ? null : '') : Number(event.target.value))} />}

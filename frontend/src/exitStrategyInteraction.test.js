@@ -141,7 +141,10 @@ test('Strategy 3 settings persist independently with optional risk and explicit 
     return response(saved);
   });
   await ui.choose('Persistent default', 'ATR_FIXED');
+  assert.equal(ui.select('Persistent default').selectedOptions[0].textContent, 'Strategy 3 · Fixed ATR');
+  assert.match(ui.select('entry candle policy').textContent, /Skip partial entry minute/);
   await ui.choose('entry candle policy', 'FULL_CANDLE_APPROXIMATION');
+  assert.equal(ui.select('entry candle policy').selectedOptions[0].textContent, 'Use full entry minute');
   const risk = [...document.querySelectorAll('label')].find(node => node.textContent === 'max initial risk pct').querySelector('input');
   assert.equal(risk.required, false);
   assert.equal(risk.value, '');

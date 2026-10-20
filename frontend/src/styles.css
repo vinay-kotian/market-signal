@@ -269,7 +269,7 @@ html,body{margin:0;background:#f7f9f7}
 #ms-design .ms-settings-panel[open] > summary{border-bottom:1px solid #e0e7df;margin-bottom:16px}
 #ms-design .ms-settings-panel > :not(summary){margin-left:16px;margin-right:16px}
 #ms-design .ms-settings-panel > :last-child{margin-bottom:16px}
-#ms-design .ms-settings-panel .ms-backtest-grid{padding:0;grid-template-columns:repeat(2,minmax(0,1fr))}
+#ms-design .ms-settings-panel .ms-backtest-grid{padding:0;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr))}
 #ms-design .ms-settings-daily{border-top:1px solid #e0e7df;padding-top:22px;margin-top:22px}
 #ms-design .ms-settings-mobile-nav{display:none}
 @media(max-width:800px){
@@ -285,4 +285,34 @@ html,body{margin:0;background:#f7f9f7}
 @media(max-width:480px){
   #ms-design .ms-settings-panel .ms-backtest-grid{grid-template-columns:minmax(0,1fr)}
   #ms-design .ms-settings-content > section,#ms-design .ms-settings-card{padding:16px}
+}
+
+
+/* A consistent single-select control, including Safari's closed value rendering.
+   Reserve space for the inset arrow so selected text cannot run underneath it. */
+#ms-design select:not([multiple]):not([size]){
+  appearance:none;
+  -webkit-appearance:none;
+  box-sizing:border-box;
+  max-width:100%;
+  min-width:0;
+  min-height:42px;
+  padding:10px 40px 10px 12px;
+  background-color:#fff;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23506558' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;
+  background-position:right 13px center;
+  background-size:16px 16px;
+  color:#26332e;
+  -webkit-text-fill-color:currentColor;
+  line-height:1.4;
+  text-align:start;
+  text-overflow:ellipsis;
+  cursor:pointer;
+}
+#ms-design select:not([multiple]):not([size]):disabled{opacity:.6;cursor:not-allowed}
+#ms-design select option,#ms-design select optgroup{color:#26332e;background:#fff}
+#ms-design .ms-settings .ms-backtest-grid label{min-width:0}
+@media(forced-colors:active){
+  #ms-design select:not([multiple]):not([size]){appearance:auto;-webkit-appearance:auto;background-image:none;padding-right:12px}
 }
