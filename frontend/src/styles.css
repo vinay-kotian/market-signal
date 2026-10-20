@@ -236,3 +236,53 @@ html,body{margin:0;background:#f7f9f7}
 #ms-design .ms-strategy-comparison { margin: 28px 0; }
 #ms-design .ms-strategy-comparison thead th:not(:first-child) { text-align: right; }
 #ms-design .ms-strategy-comparison tbody th { background: transparent; font-size: 12px; color: #26332e; }
+
+/* Clip overflow without creating a scroll container, so section navigation
+   sticks to the window while the document scrolls. */
+#ms-design.ms-settings-shell{overflow:clip}
+#ms-design .ms-shell-settings main{max-width:1400px;margin-inline:auto}
+#ms-design .ms-settings summary:focus-visible{outline:2px solid #367a58;outline-offset:3px}
+/* Settings keeps its own navigation in place of the instrument watchlist. */
+#ms-design .ms-shell-settings{grid-template-columns:minmax(0,1fr)}
+#ms-design .ms-settings{grid-template-columns:220px minmax(0,1fr);gap:36px;align-items:start;max-width:1320px;margin:0 auto}
+#ms-design .ms-settings-nav{position:sticky;top:24px;display:block;align-self:start;margin:0;padding:8px 16px 16px 0;border:0;border-right:1px solid #dfe5df;max-height:calc(100vh - 48px);overflow-y:auto}
+#ms-design .ms-settings-nav-title{font-size:15px;font-weight:600;color:#263c30}
+#ms-design .ms-settings-nav-intro{font-size:11px;color:#788079;margin:6px 0 24px;line-height:1.5}
+#ms-design .ms-settings-nav-group{margin-top:20px}
+#ms-design .ms-settings-nav-group .ms-label{display:block;padding:0 12px;margin-bottom:8px;font-size:9px;letter-spacing:1px}
+#ms-design .ms-settings-nav a{display:block;padding:10px 12px;margin:3px 0;border-radius:7px;border-left:3px solid transparent;color:#4e5f53;text-decoration:none;font-size:12px;line-height:1.4}
+#ms-design .ms-settings-nav a small{display:block;margin-top:3px;font-size:10px;color:#7a867e}
+#ms-design .ms-settings-nav a:hover{background:#f0f4ef;color:#285f45}
+#ms-design .ms-settings-nav a[aria-current=location]{background:#e8f1e9;border-left-color:#367a58;color:#255c43;font-weight:600}
+#ms-design .ms-settings-nav a[aria-current=location] small{font-weight:400;color:#54735e}
+#ms-design .ms-settings-content{display:grid;gap:24px;min-width:0;padding-bottom:20vh}
+#ms-design .ms-settings-intro{padding:4px 0 0}
+#ms-design .ms-settings-intro h3{margin:8px 0;font-size:22px;letter-spacing:-.5px;font-weight:500}
+#ms-design .ms-settings-intro p{font-size:12px;color:#738078;line-height:1.7;margin:0 0 14px}
+#ms-design .ms-settings-location{display:inline-flex;padding:5px 9px;border:1px solid #dce6dc;border-radius:5px;background:#edf4ed;color:#3e654b;font-size:10px}
+#ms-design .ms-settings-content > section,#ms-design .ms-settings-card{min-width:0;padding:24px;background:#fff;border:1px solid #dfe5df;border-radius:10px}
+#ms-design .ms-settings [id]{scroll-margin-top:32px}
+#ms-design .ms-settings [tabindex="-1"]:focus-visible{outline:2px solid #367a58;outline-offset:4px}
+#ms-design .ms-settings-panel{border:1px solid #e0e7df;border-radius:8px;margin:18px 0;background:#fafcf9;min-width:0}
+#ms-design .ms-settings-panel > summary{padding:16px;font-size:12px;font-weight:600;color:#34533e;cursor:pointer;line-height:1.7}
+#ms-design .ms-settings-panel > summary small{display:block;margin:4px 0 0 17px;font-weight:400;font-size:10px;color:#7a867e}
+#ms-design .ms-settings-panel[open] > summary{border-bottom:1px solid #e0e7df;margin-bottom:16px}
+#ms-design .ms-settings-panel > :not(summary){margin-left:16px;margin-right:16px}
+#ms-design .ms-settings-panel > :last-child{margin-bottom:16px}
+#ms-design .ms-settings-panel .ms-backtest-grid{padding:0;grid-template-columns:repeat(2,minmax(0,1fr))}
+#ms-design .ms-settings-daily{border-top:1px solid #e0e7df;padding-top:22px;margin-top:22px}
+#ms-design .ms-settings-mobile-nav{display:none}
+@media(max-width:800px){
+  #ms-design .ms-settings{grid-template-columns:minmax(0,1fr);gap:20px}
+  #ms-design .ms-settings-nav{display:none}
+  #ms-design .ms-settings-mobile-nav{display:block;position:sticky;top:0;z-index:5;padding:12px 0;background:#f7f9f5;border-bottom:1px solid #dfe5df}
+  #ms-design .ms-settings-mobile-nav label{font-size:11px;color:#3e654b;font-weight:500}
+  #ms-design .ms-settings-mobile-nav select{min-height:42px;font-size:13px}
+  #ms-design .ms-settings [id]{scroll-margin-top:112px}
+  #ms-design .ms-settings-content > section,#ms-design .ms-settings-card{padding:18px}
+  #ms-design .ms-settings-intro h3{font-size:20px}
+}
+@media(max-width:480px){
+  #ms-design .ms-settings-panel .ms-backtest-grid{grid-template-columns:minmax(0,1fr)}
+  #ms-design .ms-settings-content > section,#ms-design .ms-settings-card{padding:16px}
+}

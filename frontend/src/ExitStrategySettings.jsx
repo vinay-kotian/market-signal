@@ -57,7 +57,7 @@ export default function ExitStrategySettings() {
     } catch (error) { setError(error.message); }
     finally { setBusy(false); }
   }
-  if (!snapshot) return <section aria-label="Exit Strategy"><h3 className="ms-sectionhead">Exit Strategy</h3>{error ? <p role="alert">{error} <button onClick={load}>Retry</button></p> : <p>Loading exit settings…</p>}</section>;
+  if (!snapshot) return <section id="exit-strategy" tabIndex={-1} aria-label="Exit Strategy"><h3 className="ms-sectionhead">Exit Strategy</h3>{error ? <p role="alert">{error} <button onClick={load}>Retry</button></p> : <p>Loading exit settings…</p>}</section>;
   const atr = Object.fromEntries(Object.entries(configuration).filter(([key]) => key.startsWith('atr_') && key !== 'atr_enabled'));
   const change = (key, value) => setConfiguration(previous => ({ ...previous, [key]: value }));
   const override = (previous, instrument, strategy) => {
@@ -65,17 +65,17 @@ export default function ExitStrategySettings() {
     if (strategy) overrides[instrument] = strategy; else delete overrides[instrument];
     return { ...previous, instrument_overrides: overrides };
   };
-  return <section aria-label="Exit Strategy">
+  return <section id="exit-strategy" tabIndex={-1} aria-label="Exit Strategy">
     <h3 className="ms-sectionhead">Exit Strategy <span className="ms-sub">PAPER</span></h3>
     <p className="ms-sub">Selections affect future entries. Open trades retain their strategy and configuration. Disabling ATR keeps existing ATR positions monitored; new ATR entries are skipped.</p>
     <form onSubmit={event => { event.preventDefault(); save('', configuration, 'Exit settings'); }}>
       <fieldset disabled={busy} className="ms-backtest-fields">
         <label className="ms-toggle"><input type="checkbox" role="switch" checked={configuration.atr_enabled} onChange={event => change('atr_enabled', event.target.checked)} /><span className="ms-toggle-track" aria-hidden="true" /><span>Enable ATR strategy for selection</span></label>
         <StrategySelect label="Persistent default" value={configuration.default_exit_strategy} atrEnabled={configuration.atr_enabled} onChange={value => change('default_exit_strategy', value)} />
-        <h4>ATR configuration</h4>
+        <details id="exit-atr" tabIndex={-1} className="ms-settings-panel"><summary>ATR strategy <small>Five-minute ATR · trailing and breakeven</small></summary>
         <ConfigurationFields settings={atr} onChange={change} />
-        <p className="ms-sub">Option ATR uses completed 5-minute candles with Wilder smoothing. Entry ATR is frozen, including for ATR trailing. Leave maximum SL percent empty to remove the risk guard. A stop above the guard skips entry. Breakeven thresholds use the selected unit (percent, ATR multiples or initial risk R).</p>
-        {configuration.strategy3 && <details><summary>Strategy 3 · Fixed ATR stop and risk/reward target</summary>
+        <p className="ms-sub">Option ATR uses completed 5-minute candles with Wilder smoothing. Entry ATR is frozen, including for ATR trailing. Leave maximum SL percent empty to remove the risk guard. A stop above the guard skips entry. Breakeven thresholds use the selected unit (percent, ATR multiples or initial risk R).</p></details>
+        {configuration.strategy3 && <details id="exit-fixed" tabIndex={-1} className="ms-settings-panel"><summary>Strategy 3 · Fixed ATR stop and risk/reward target<small>One-minute SMA ATR · fixed levels</small></summary>
           <ConfigurationFields settings={configuration.strategy3} onChange={(key, value) => change('strategy3', { ...configuration.strategy3, [key]: value })} />
           <p className="ms-sub">Completed option minute candles, SMA true range, fixed stop and target. Insufficient history uses the configured fallback stop. No trailing or breakeven adjustments. Maximum initial risk is optional. PAPER exits use observed quotes.</p>
         </details>}
@@ -83,7 +83,7 @@ export default function ExitStrategySettings() {
         <div className="ms-exit-actions"><button className="ms-button">Save exit settings</button></div>
       </fieldset>
     </form>
-    <form onSubmit={event => { event.preventDefault(); save('/daily', daily, 'Daily selection'); }}>
+    <form id="exit-daily" tabIndex={-1} className="ms-settings-daily" onSubmit={event => { event.preventDefault(); save('/daily', daily, 'Daily selection'); }}>
       <fieldset disabled={busy} className="ms-backtest-fields">
         <h4>Today's selection · {snapshot.daily.trading_date} · Asia/Kolkata</h4>
         <StrategySelect label="Today's default" optional atrEnabled={snapshot.configuration.atr_enabled} value={daily.default_exit_strategy} onChange={value => setDaily(previous => ({ ...previous, default_exit_strategy: value }))} />
@@ -92,9 +92,9 @@ export default function ExitStrategySettings() {
         <div className="ms-exit-actions"><button className="ms-button">Save today's selection</button></div>
       </fieldset>
     </form>
-    <details><summary>Next trade overrides</summary><p className="ms-sub">Applies to one successful entry today, taking priority over instrument and daily selections.</p><div className="ms-exit-overrides">{supportedIndices.map(instrument => <StrategySelect key={instrument} className="ms-exit-instrument-row" label={`${instrument} next trade`} disabled={busy} optional atrEnabled={snapshot.configuration.atr_enabled} value={snapshot.next_trade_overrides[instrument]} onChange={value => save(`/next-trade/${instrument}`, { strategy: value }, 'Next trade override')} />)}</div></details>
+    <details className="ms-settings-panel"><summary>Next trade overrides</summary><p className="ms-sub">Applies to one successful entry today, taking priority over instrument and daily selections.</p><div className="ms-exit-overrides">{supportedIndices.map(instrument => <StrategySelect key={instrument} className="ms-exit-instrument-row" label={`${instrument} next trade`} disabled={busy} optional atrEnabled={snapshot.configuration.atr_enabled} value={snapshot.next_trade_overrides[instrument]} onChange={value => save(`/next-trade/${instrument}`, { strategy: value }, 'Next trade override')} />)}</div></details>
     <p>Effective strategy for new entries: {Object.entries(snapshot.effective).map(([instrument, strategy]) => `${instrument}: ${strategy === 'LEGACY' ? 'Current' : strategy}`).join(' · ')}</p>
-    {legacy && <form onSubmit={event => { event.preventDefault(); save('/legacy', legacy, 'Current configuration'); }}><fieldset disabled={busy} className="ms-backtest-fields"><h4>Current / Legacy configuration</h4><ConfigurationFields settings={legacy} choices={{ stop_strategy: ['PROGRESSIVE', 'LEGACY'] }} onChange={(key, value) => setLegacy(previous => ({ ...previous, [key]: value }))} /><p className="ms-sub">PROGRESSIVE retains profit lock and step-based tightening. LEGACY retains percentage trailing and breakeven.</p><button className="ms-button">Save current configuration</button></fieldset></form>}
+    {legacy && <details id="exit-legacy" tabIndex={-1} className="ms-settings-panel"><summary>Legacy strategy<small>Percentage stops and progressive protection</small></summary><form onSubmit={event => { event.preventDefault(); save('/legacy', legacy, 'Current configuration'); }}><fieldset disabled={busy} className="ms-backtest-fields"><h4>Current / Legacy configuration</h4><ConfigurationFields settings={legacy} choices={{ stop_strategy: ['PROGRESSIVE', 'LEGACY'] }} onChange={(key, value) => setLegacy(previous => ({ ...previous, [key]: value }))} /><p className="ms-sub">PROGRESSIVE retains profit lock and step-based tightening. LEGACY retains percentage trailing and breakeven.</p><button className="ms-button">Save current configuration</button></fieldset></form></details>}
     {notice && <p role="status">{notice}</p>}{error && <p className="ms-error" role="alert">{error}</p>}
   </section>;
 }

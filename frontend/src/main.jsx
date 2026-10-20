@@ -116,10 +116,10 @@ function App() {
   const shownPrices = prices;
   const current = shownPrices[selected]?.price;
 
-  return <div id="ms-design">
+  return <div id="ms-design" className={page === 'settings' ? 'ms-settings-shell' : undefined}>
     <header><span className="ms-logo" aria-hidden="true">π</span><span className="ms-brand">Market Signal</span><span className="ms-env">PAPER · {connection?.market_data_mode ?? 'LOADING'} DATA</span><button className="ms-link" disabled={busy} onClick={() => navigate('settings', 'connection')} aria-label="Open connection settings">Connection: {errors.connection ? 'ERROR' : live ? (connection?.connection_status ?? 'LOADING') : feedStatus}</button></header>
-    <div className="ms-shell">
-      <aside aria-label="Instrument watchlist">
+    <div className={`ms-shell${page === 'settings' ? ' ms-shell-settings' : ''}`}>
+      {page !== 'settings' && <aside aria-label="Instrument watchlist">
         <div className="ms-sidehead"><span className="ms-label">Watchlist</span><span className="ms-sub">{instruments.length} indices · {visibleOptionWatchlist(optionWatchlist, today).length} options</span></div>
         <div className="ms-search"><input type="search" aria-label="Search instruments" placeholder="Search instruments" value={search} onChange={event => setSearch(event.target.value)} /></div>
         <div className="ms-watchlist">{instruments.filter(symbol => symbol.toLowerCase().includes(search.toLowerCase())).map(symbol => <button className="ms-watch" aria-pressed={symbol === selected} key={symbol} disabled={busy} onClick={() => { setSelected(symbol); setEditor(null); if (page === 'dashboard') openInstrument(symbol); }}>
@@ -132,7 +132,7 @@ function App() {
           onRemove={symbol => mutate(() => request(`/watchlist/options/${encodeURIComponent(symbol)}`, { method: 'DELETE' }))} />
         {errors.action && <p className="ms-sidefoot ms-error" role="alert">{errors.action}</p>}
         <div className="ms-sidefoot">{live ? 'Live Zerodha prices' : 'Simulated prices received by the backend'}<br />{live ? 'Change from previous trading day’s close' : 'Movement since previous submitted tick'}</div>
-      </aside>
+      </aside>}
       <main className={page === 'report' || page === 'trades' ? 'ms-report-main' : undefined}>
         <nav aria-label="Pages">{['dashboard', 'levels', 'trades', 'report', 'backtest', 'settings'].map(name => <button className="ms-tab" key={name} aria-pressed={page === name} disabled={busy} onClick={() => navigate(name)}>{name[0].toUpperCase() + name.slice(1)}</button>)}</nav>
         <div className="ms-heading"><h2>{page[0].toUpperCase() + page.slice(1)}</h2><div className="ms-actions"><button className="ms-link" disabled={busy} onClick={() => mutate(async () => {})}>Refresh</button>{(page === 'dashboard' || page === 'levels') && <button className="ms-button" disabled={busy} onClick={() => page === 'dashboard' ? navigate('levels') : setEditor({})}>{page === 'dashboard' ? 'Manage levels ↗' : '+ Add level'}</button>}</div></div>
