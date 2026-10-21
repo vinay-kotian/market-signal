@@ -1212,10 +1212,9 @@ continues using its previous address. Local backend URLs omit `/api`.
 
 Each new PAPER option entry while enabled sends `POST` to the configured URL
 (default `https://jayantpanhalkar.pythonanywhere.com/api/telegram`) with JSON
-`{"message": "..."}`. Messages include the trade ID, index, touched level,
-direction, option symbol/type/strike/expiry, entry premium, lots/quantity, entry
-value, initial stop premium, entry time in Asia/Kolkata, signal/selection IDs
-and strategy version. BACKTEST trades and unsuccessful entries never notify.
+`{"message": "..."}`. Messages contain only the trade ID, index/strike/option type, expiry, entry
+price (two decimal places) and entry time in Asia/Kolkata (day, month, year, hour
+and minute). BACKTEST trades and unsuccessful entries never notify.
 
 The alert is queued in the trade transaction and becomes deliverable only after
 commit. One background asyncio worker sends alerts, with a 10-second timeout

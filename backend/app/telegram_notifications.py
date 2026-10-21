@@ -40,21 +40,13 @@ def entry_message(trade):
     timestamp = trade.entry_time
     if timestamp.tzinfo is None:
         timestamp = timestamp.replace(tzinfo=timezone.utc)
-    timestamp = timestamp.astimezone(TRADING_TIMEZONE).strftime('%d %b %Y %H:%M:%S IST')
+    timestamp = timestamp.astimezone(TRADING_TIMEZONE).strftime('%d %b %Y %H:%M')
     return '\n'.join([
-        f'PAPER option entry · Trade #{trade.trade_id}',
-        f'Index: {trade.instrument}',
-        f'Index level touched: {trade.trigger_level:,.2f}',
-        f'Direction: {trade.direction.replace("_", " ")}',
-        f'Option: {trade.option_symbol}',
-        f'Contract: {trade.option_type} · Strike {trade.strike} · Expiry {trade.expiry}',
-        f'Entry premium: ₹{trade.entry_price:,.2f}',
-        f'Quantity: {trade.quantity} ({trade.number_of_lots} lots × {trade.lot_size})',
-        f'Entry value: ₹{trade.entry_price * trade.quantity:,.2f}',
-        f'Initial stop premium: ₹{trade.initial_stop_loss:,.2f}',
+        f'#{trade.trade_id}',
+        f'{trade.instrument} {trade.strike} {trade.option_type}',
+        f'Expiry {trade.expiry}',
+        f'Entry price: ₹{trade.entry_price:,.2f}',
         f'Entry time: {timestamp}',
-        f'Signal #{trade.signal_id} · Selection #{trade.option_selection_id}',
-        f'Strategy: {trade.strategy_version}',
     ])
 
 

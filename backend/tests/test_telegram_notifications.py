@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from active_level_fixture import create_active_level
 from app.database import connect
 from app.main import create_app
-from app.telegram_notifications import TelegramNotifications, TELEGRAM_URL
+from app.telegram_notifications import TelegramNotifications, TELEGRAM_URL, entry_message
 from app.trade_models import TradeEntry
 from app.trade_repository import TradeRepository
 from test_paper_report import add_trade
@@ -127,11 +127,10 @@ def test_entry_message_details_and_duplicate_saves(client):
     assert request.headers['content-type'] == 'application/json'
     payload = json.loads(request.content)
     assert list(payload) == ['message']
-    for text in [f'Trade #{trade.trade_id}', 'Index: NIFTY', 'Index level touched: 25,000.00',
-                 f'Option: {trade.option_symbol}', 'Entry premium: ₹100.00',
-                 'Quantity: 10 (1 lots × 10)', 'Initial stop premium: ₹90.00',
-                 '14 Sep 2026 10:00:00 IST', 'FROM BELOW', 'Expiry 2026-09-17']:
-        assert text in payload['message']
+    assert payload['message'] == '\n'.join([
+        f'#{trade.trade_id}', f'{trade.instrument} {trade.strike} {trade.option_type}',
+        'Expiry 2026-09-17', 'Entry price: ₹100.00', 'Entry time: 14 Sep 2026 10:00',
+    ])
     assert rows(client)[0]['status'] == 'SENT'
     assert rows(client)[0]['attempts'] == 1
 
@@ -218,7 +217,10 @@ def test_real_simulated_entry_enqueues_once(client):
     trades = client.get('/trades').json()
     assert len(trades) == len(rows(client)) == 1
     assert rows(client)[0]['trade_id'] == trades[0]['trade_id']
-    assert 'Index level touched: 25,000.00' in rows(client)[0]['message']
+    message_lines = rows(client)[0]['message'].splitlines()
+    assert len(message_lines) == 5
+    assert message_lines[0] == f"#{trades[0]['trade_id']}"
+    assert message_lines[1] == f"NIFTY {trades[0]['strike']} {trades[0]['option_type']}"
 
 
 def test_background_worker_delivers_without_delaying_entry(tmp_path, monkeypatch):
@@ -247,3 +249,14 @@ def test_background_worker_delivers_without_delaying_entry(tmp_path, monkeypatch
         assert len(requests) == 1
     # Lifespan waits for cancellation and closes the sender on exit.
     assert client.app.state.telegram_notifications.client.is_closed
+
+
+def test_entry_message_matches_requested_sample_and_converts_to_ist():
+    from datetime import date, datetime, timezone
+    from types import SimpleNamespace
+    trade = SimpleNamespace(trade_id=318, instrument='SENSEX', strike=71700, option_type='CE',
+        expiry=date(2026, 10, 15), entry_price=562.40,
+        entry_time=datetime(2026, 10, 12, 8, 44, tzinfo=timezone.utc))
+    assert entry_message(trade) == (
+        '#318\nSENSEX 71700 CE\nExpiry 2026-10-15\n'
+        'Entry price: ₹562.40\nEntry time: 12 Oct 2026 14:14')

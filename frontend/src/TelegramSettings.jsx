@@ -38,7 +38,7 @@ export default function TelegramSettings() {
   }
   return <section aria-label="Telegram notifications">
     <h3 className="ms-sectionhead">Telegram notifications <ContextHelp topicId="settings/notifications" /></h3>
-    <p className="ms-sub">Send a message to your Telegram channel when a PAPER option trade opens, including the touched index level, option contract, entry premium, quantity and initial stop. Backtests send no messages.</p>
+    <p className="ms-sub">Send a message to your Telegram channel when a PAPER option trade opens, showing only the trade ID, index/strike/option type, expiry, entry price and entry time in IST. Backtests send no messages.</p>
     {settings ? <><label className="ms-toggle">
       <input type="checkbox" role="switch" checked={settings.enabled} disabled={busy}
         onChange={event => toggle(event.target.checked)} />
