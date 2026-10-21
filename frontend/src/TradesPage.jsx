@@ -1,3 +1,4 @@
+import ContextHelp, { DecisionHelp } from './help/ContextHelp';
 import { useDateRange } from './useDateRange';
 import React, { useEffect, useState } from 'react';
 import DateRangeFilter from './DateRangeFilter';
@@ -44,7 +45,7 @@ export default function TradesPage({ refreshKey, tradeUpdates, results, resultsE
       </div>
     </>}
     {resultsError && <div className="ms-error" role="alert">Entry results unavailable. {resultsError} <button className="ms-link" onClick={onRetry}>Retry</button></div>}
-    {failures.length > 0 && <div className="ms-signals"><div className="ms-sectionhead">Entry failures</div><ul>{failures.map(result => <li key={result.option_selection_id}>Selection #{result.option_selection_id}: {result.failure_reason.replaceAll('_', ' ').toLowerCase()}</li>)}</ul></div>}
+    {failures.length > 0 && <div className="ms-signals"><div className="ms-sectionhead">Entry failures</div><ul>{failures.map(result => <li key={result.option_selection_id}>Selection #{result.option_selection_id}: {result.failure_reason?.replaceAll('_', ' ').toLowerCase()} <DecisionHelp code={result.failure_reason} entry={result} /></li>)}</ul></div>}
   </section>;
 }
 
@@ -55,13 +56,13 @@ export function TradesTable({ trades }) {
         <td>{trade.instrument}<small className="ms-time">Level {formatPrice(trade.trigger_level)}</small></td>
         <td>{trade.timeframe ?? 'Not recorded'}</td>
         <td><span className="ms-contract">{trade.option_symbol}</span><small className="ms-time">Trade #{trade.trade_id} · Signal #{trade.signal_id}</small></td>
-        <td>{trade.strategy_type === 'ATR_FIXED' ? 'Strategy 3' : trade.strategy_type === 'ATR' ? 'ATR' : 'Current / Legacy'}{trade.strategy_type === 'ATR' && <small className="ms-time">ATR {formatPrice(trade.option_atr_at_entry)} · Risk {formatPrice(trade.initial_risk_percent)}%</small>}</td>
+        <td>{trade.strategy_type === 'ATR_FIXED' ? 'Strategy 3' : trade.strategy_type === 'ATR' ? 'ATR' : 'Current / Legacy'}<DecisionHelp code="STRATEGY_SELECTED" trade={trade} />{trade.strategy_type === 'ATR' && <small className="ms-time">ATR {formatPrice(trade.option_atr_at_entry)} · Risk {formatPrice(trade.initial_risk_percent)}%</small>}</td>
         <td className="ms-num">{trade.quantity}<small className="ms-time">{trade.number_of_lots} × {trade.lot_size}</small></td>
-        <td className="ms-num">{formatPrice(trade.entry_price)}<small className="ms-time">High {formatPrice(trade.highest_price)}</small><small className="ms-time">Stop {formatPrice(trade.current_stop_loss)}</small><small className="ms-time">Initial {formatPrice(trade.initial_stop_loss)}</small>{trade.strategy3_entry?.target != null && <small className="ms-time">Target {formatPrice(trade.strategy3_entry.target)} · {trade.strategy3_entry.stop_source}</small>}{(trade.strategy_type ?? 'LEGACY') === 'LEGACY' && trade.settings_snapshot?.stop_strategy === 'PROGRESSIVE' && <small className="ms-time">{trade.profit_lock_activated ? `Profit locked · Trail ${trade.trailing_pct}% · Step ${trade.trailing_step}` : 'Awaiting profit trigger'}</small>}</td>
+        <td className="ms-num">{formatPrice(trade.entry_price)}<small className="ms-time">High {formatPrice(trade.highest_price)}</small><small className="ms-time">Stop {formatPrice(trade.current_stop_loss)}</small><small className="ms-time">Initial {formatPrice(trade.initial_stop_loss)} <DecisionHelp code="INITIAL_STOP" trade={trade} /></small>{trade.strategy3_entry?.target != null && <small className="ms-time">Target {formatPrice(trade.strategy3_entry.target)} · {trade.strategy3_entry.stop_source} <DecisionHelp code={trade.strategy3_entry.stop_source === 'FALLBACK' ? trade.strategy3_entry.fallback_reason ?? 'ATR_FALLBACK' : 'FIXED_PLAN'} trade={trade} /></small>}{(trade.strategy_type ?? 'LEGACY') === 'LEGACY' && trade.settings_snapshot?.stop_strategy === 'PROGRESSIVE' && <small className="ms-time">{trade.profit_lock_activated ? `Profit locked · Trail ${trade.trailing_pct}% · Step ${trade.trailing_step}` : 'Awaiting profit trigger'}</small>}</td>
         <td><small className="ms-time">{new Date(trade.entry_time).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</small></td>
         <td><span className={`ms-status ${trade.status === 'CLOSED' ? 'disabled' : 'triggered'}`}>{trade.status}</span><small className="ms-time">{trade.trade_mode}</small>{(trade.strategy_type !== 'ATR_FIXED' && (trade.strategy_type === 'ATR' || trade.settings_snapshot?.stop_strategy !== 'PROGRESSIVE')) && <small className="ms-time">Breakeven: {trade.breakeven_activated ? 'Active' : trade.breakeven_protection_enabled ? 'Waiting' : 'Disabled'}</small>}</td>
         <td className="ms-num">{formatPrice(trade.exit_price)}<small className="ms-time">P&amp;L {formatPrice(trade.realised_pnl)}{trade.realised_pnl_percentage == null ? '' : ` (${formatPrice(trade.realised_pnl_percentage)}%)`}</small></td>
-        <td title={trade.exit_reason ?? undefined}>{formatExitReason(trade.exit_reason)}</td>
+        <td title={trade.exit_reason ?? undefined}>{formatExitReason(trade.exit_reason)}{trade.exit_reason && <DecisionHelp code={trade.exit_reason} trade={trade} />}</td>
       </tr>)}{trades?.length === 0 && <tr><td colSpan="10" className="ms-empty">No paper trades match the selected date range.</td></tr>}</tbody>
     </table></div>;
 }

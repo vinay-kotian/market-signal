@@ -1,3 +1,5 @@
+import { eventReason } from './help/reasons';
+import ContextHelp, { DecisionHelp } from './help/ContextHelp';
 import { useDateRange } from './useDateRange';
 import DateRangeFilter from './DateRangeFilter';
 import React, { useEffect, useRef, useState } from 'react';
@@ -25,7 +27,7 @@ export function EventDetails({ event, tooltip = false }) {
     ['Realized P&L (%)', event.realised_pnl_percentage == null ? null : percentage(event.realised_pnl_percentage)],
     ['Duration', event.duration_seconds == null ? null : `${Math.floor(event.duration_seconds / 60)}m ${Number((event.duration_seconds % 60).toFixed(3))}s`]];
   return <div className="ms-chart-event-details" role={tooltip ? 'tooltip' : undefined}>
-    <strong>{markerTypes[event.event_type]?.[0] ?? event.event_type}</strong>
+    <strong>{markerTypes[event.event_type]?.[0] ?? event.event_type}</strong>{!tooltip && <DecisionHelp code={eventReason(event)} event={event} trade={event.trade_context} signal={event.event_type?.startsWith('SIGNAL_') ? event : undefined} />}
     <dl>{rows.filter(([, value]) => value != null).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
   </div>;
 }
@@ -133,7 +135,7 @@ export default function InstrumentDetails({ symbol, today = tradingDate(), price
     {!activeData ? <p role="status">{error ? 'Chart data could not be loaded. Use Reload chart data to retry.' : 'Loading chart data…'}</p> : <ChartPair panels={panels} day={day} enabled={enabled} onSelect={setSelected} />}
     {unplotted > 0 && <p className="ms-sub">{unplotted} enabled events outside the chart session are available in the event list.</p>}
     {!option && info && <p className="ms-sub">No associated PAPER option trades for this date.</p>}
-    <div className="ms-sectionhead">Recorded events · {allEvents.length}</div>
+    <div className="ms-sectionhead">Recorded events · {allEvents.length} <ContextHelp topicId="dashboard/charts" /></div>
     <p className="ms-sub">Initial arm and touch/cross details are recorded from this version onward. Older signals and executions remain available.</p>
     <div className="ms-chart-events"><div className="ms-chart-event-list">{allEvents.filter(event => enabled[event.event_type]).map(event => <button className="ms-chart-event" key={event.id} aria-pressed={selected?.id === event.id} onClick={() => setSelected(event)}><time>{istTime(event.timestamp)}</time> {markerTypes[event.event_type]?.[0] ?? event.event_type} {event.trade_id ? `· Trade #${event.trade_id}` : ''}</button>)}{activeData && !allEvents.length && <p>{panels.some(panel => panel.eventsError) ? 'Trading events unavailable. Reload chart data to retry.' : 'No recorded events for this date.'}</p>}</div><EventDetails event={selected} /></div>
   </section>;

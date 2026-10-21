@@ -1,3 +1,6 @@
+import { fieldTopic } from './help/registry';
+import { eventReason } from './help/reasons';
+import ContextHelp, { DecisionHelp } from './help/ContextHelp';
 import { useDateRange } from './useDateRange';
 import DateRangeFilter from './DateRangeFilter';
 import { rangeQuery } from './dateRange';
@@ -144,7 +147,7 @@ export default function BacktestPage({ refreshKey }) {
       <fieldset disabled={busy || reading} className="ms-backtest-fields">
         <div className="ms-report-filters">
           <StrategySelect label="Exit strategy" value={strategy} onChange={setStrategy} />
-          <label>Transaction cost per order<input type="number" min="0" step="any" value={fee} onChange={event => setFee(event.target.value)} /></label>
+          <label>Transaction cost per order<ContextHelp topicId="backtesting/costs" /><input type="number" min="0" step="any" value={fee} onChange={event => setFee(event.target.value)} /></label>
           <label>Trading date<input required type="date" value={date} onChange={event => { dateTouched.current = true; setDate(event.target.value); }} /></label>
           <label>Instrument<select value={instrument} onChange={event => {
             setInstrument(event.target.value); if (event.target.value !== 'NIFTY' && source === 'demo') setSource('archive');
@@ -155,7 +158,7 @@ export default function BacktestPage({ refreshKey }) {
             if (event.target.value === 'zerodha' && instrument === 'SENSEX') setInstrument('NIFTY');
           }}><option value="zerodha">Zerodha historical · 1-minute candles</option><option value="archive">Historical archive</option><option value="file">Upload historical JSON</option><option value="demo">Synthetic NIFTY demo · 14 Sep 2026</option></select></label>
         </div>
-        {strategy === 'ATR_FIXED' && fixed && <details open><summary>Strategy 3 configuration</summary><ConfigurationFields settings={fixed} onChange={(key, value) => setFixed(previous => ({ ...previous, [key]: value }))} /><p className="ms-sub">Fixed SL and target, one-minute SMA ATR. Same candle: SL first. OHLC fills are theoretical; fees are separate. Missing exit coverage is reported as DATA_INCOMPLETE.</p></details>}
+        {strategy === 'ATR_FIXED' && fixed && <details open><summary>Strategy 3 configuration</summary><ConfigurationFields strategy="ATR_FIXED" settings={fixed} onChange={(key, value) => setFixed(previous => ({ ...previous, [key]: value }))} /><p className="ms-sub">Fixed SL and target, one-minute SMA ATR. Same candle: SL first. OHLC fills are theoretical; fees are separate. Missing exit coverage is reported as DATA_INCOMPLETE.</p></details>}
         {atr && <details><summary>ATR exit configuration</summary><ConfigurationFields settings={atr} onChange={(key, value) => setAtr(previous => ({ ...previous, [key]: value }))} /></details>}
         <label>Trading levels<textarea required rows="4" value={levels} placeholder={'59800\n60000\n60250'} onChange={event => { levelsEdited.current = true; setLevels(event.target.value); setLevelsNote('Edited levels will be used for this backtest.'); }} /></label>
         {source !== 'demo' && <button type="button" className="ms-link" disabled={levelsLoading || !date} onClick={() => setLevelsRevision(value => value + 1)}>Reload saved levels</button>}
@@ -178,7 +181,7 @@ export default function BacktestPage({ refreshKey }) {
         <p className="ms-sub">Historical data must include recorded index prices, option prices, and that day's option contracts with expiry and lot size. Missing option quotes are reported as data gaps. The demo uses synthetic data.</p>
         <details className="ms-backtest-settings"><summary>Current settings{result ? ' / last run snapshot' : ''}</summary>
           <p>Initial arm distance: {formatPrice(settings?.index_settings?.[instrument]?.initial_arm_distance_points)} points</p>
-          <dl className="ms-backtest-grid">{currentSettings.map(([key, value]) => <div key={key}><dt>{key.replaceAll('_', ' ')}</dt><dd>{String(value)}</dd></div>)}</dl>
+          <dl className="ms-backtest-grid">{currentSettings.map(([key, value]) => <div key={key}><dt>{key.replaceAll('_', ' ')}<ContextHelp topicId={fieldTopic(key, strategy)} /></dt><dd>{String(value)}</dd></div>)}</dl>
           <p className="ms-sub">A new run captures application settings at execution time. Saved runs keep their original snapshot.</p>
         </details>
         <button className="ms-button ms-primary" type="submit" disabled={levelsLoading}>{busy ? 'Running…' : 'Run Backtest'}</button> <button className="ms-button" type="button" disabled={levelsLoading} onClick={event => run(event, true)}>Compare Current and six ATR multipliers</button>
@@ -197,7 +200,7 @@ export default function BacktestPage({ refreshKey }) {
       catch (error) { setError(error.message); }
       finally { setBusy(false); }
     }}><option value="">Select a run</option>{(runs ?? []).map(run => <option key={run.id} value={run.id}>{run.trading_date ?? 'Legacy run'} · {run.instrument} · {run.status} · {run.id.slice(0, 8)}</option>)}</select></label>
-    {error && <p className="ms-error" role="alert">{error}</p>}
+    {error && <p className="ms-error" role="alert">{error} <DecisionHelp code="BACKTEST_REQUEST_ERROR" message={error} /></p>}
     {busy && <p role="status">Loading backtest… {jobMessage} You can leave this page and return while the job runs.</p>}
     {comparison && <StrategyComparison comparison={comparison} />}
     {result && <BacktestResults result={result} selectedTrade={selectedTrade} setSelectedTrade={setSelectedTrade} />}
@@ -210,9 +213,9 @@ export function BacktestResults({ result, selectedTrade = '', setSelectedTrade }
   const timeline = eventsForTrade(result?.timeline ?? [], trade);
   return <section className="ms-report-timeline" aria-label="Backtest results">
       <div className="ms-sectionhead">{result.status} · {result.instrument} · {result.trading_date}</div><p className="ms-sub">Run ID: {result.id} · Source: {result.data_source}</p>
-      {['FAILED', 'DATA_INCOMPLETE'].includes(result.status) && <p className="ms-error" role="alert">{result.error_message ?? result.error}</p>}
-      {result.execution_model && <p className="ms-sub">Resolution: {result.data_resolution} · Execution: {result.execution_model} · Strategy: {result.settings_snapshot?.exit_strategy}</p>}
-      {result.data_warnings?.length > 0 && <ul aria-label="Historical data warnings">{result.data_warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
+      {['FAILED', 'DATA_INCOMPLETE'].includes(result.status) && <p className="ms-error" role="alert">{result.error_message ?? result.error} <DecisionHelp code={result.error_code ?? 'BACKTEST_REPLAY_ERROR'} run={result} message={result.error_message ?? result.error} /></p>}
+      {result.execution_model && <p className="ms-sub">Resolution: {result.data_resolution} · Execution: {result.execution_model} · Strategy: {result.settings_snapshot?.exit_strategy} <DecisionHelp code={result.execution_model === 'CANDLE_APPROXIMATION' ? 'CANDLE_APPROXIMATION' : 'BACKTEST_WARNING'} run={result} /></p>}
+      {result.data_warnings?.length > 0 && <ul aria-label="Historical data warnings">{result.data_warnings.map((warning, index) => <li key={index}>{warning} <DecisionHelp code={result.warning_details?.find(item => item.warning_index === index)?.code ?? 'BACKTEST_WARNING'} run={result} message={warning} /></li>)}</ul>}
       {result.historical_data_coverage?.symbols && <details><summary>Historical data coverage and execution assumptions</summary>
         <p>Catalogue observed: {result.historical_data_coverage.catalogue_observed_at}</p>
         <ul>{Object.entries(result.historical_data_coverage.symbols).map(([symbol, coverage]) => <li key={symbol}>{symbol}: {coverage.complete ? `${coverage.received_minutes}/${coverage.expected_minutes} minutes · complete` : coverage.error}</li>)}</ul>
@@ -224,20 +227,20 @@ export function BacktestResults({ result, selectedTrade = '', setSelectedTrade }
       <div className="ms-tablewrap"><table><thead><tr>{['Signal time', 'Level', 'Timeframe', 'Direction', 'Option', 'Exit strategy', 'Entry', 'Exit', 'Exit reason', 'Quantity', 'P&L', 'Return %'].map(label => <th key={label}>{label}</th>)}</tr></thead>
         <tbody>{result.trades.map(row => <tr key={row.trade_id} onClick={() => setSelectedTrade(String(row.trade_id))}>
           <td>{localTime(row.signal_timestamp)}</td><td>{formatPrice(row.trigger_level)}</td><td>{row.timeframe ?? 'Not recorded'}</td><td>{row.direction}</td><td>{row.option_symbol}<small className="ms-time">{row.expiry} · Strike {row.strike}</small></td>
-          <td>{row.strategy_type === 'ATR_FIXED' ? 'Strategy 3' : row.strategy_type === 'ATR' ? 'ATR' : 'Current'}</td><td>{formatPrice(row.entry_price)}{row.strategy3_entry?.target != null && <small className="ms-time">SL {formatPrice(row.initial_stop_loss)} · Target {formatPrice(row.strategy3_entry.target)} · {row.strategy3_entry.stop_source} · ATR n={row.strategy3_entry.atr_sample_count}</small>}<small className="ms-time">{localTime(row.entry_time)}</small></td><td>{formatPrice(row.exit_price)}<small className="ms-time">{localTime(row.exit_time)}</small></td>
-          <td>{row.exit_reason ? formatExitReason(row.exit_reason) : row.simulation_status ?? row.status}</td><td>{row.quantity}</td><td>{formatPrice(row.realised_pnl)}{row.net_pnl != null && <small className="ms-time">Net {formatPrice(row.net_pnl)} · Costs {formatPrice(row.transaction_costs)}</small>}</td><td>{formatPrice(row.realised_pnl_percentage)}</td>
+          <td>{row.strategy_type === 'ATR_FIXED' ? 'Strategy 3' : row.strategy_type === 'ATR' ? 'ATR' : 'Current'}<DecisionHelp code="STRATEGY_SELECTED" trade={row} /></td><td>{formatPrice(row.entry_price)}{row.strategy3_entry?.target != null && <small className="ms-time">SL {formatPrice(row.initial_stop_loss)} · Target {formatPrice(row.strategy3_entry.target)} · {row.strategy3_entry.stop_source} · ATR n={row.strategy3_entry.atr_sample_count}<DecisionHelp code={row.strategy3_entry.stop_source === 'FALLBACK' ? row.strategy3_entry.fallback_reason ?? 'ATR_FALLBACK' : 'FIXED_PLAN'} trade={row} /></small>}<small className="ms-time">{localTime(row.entry_time)}</small></td><td>{formatPrice(row.exit_price)}<small className="ms-time">{localTime(row.exit_time)}</small></td>
+          <td>{row.exit_reason ? formatExitReason(row.exit_reason) : row.simulation_status ?? row.status}<DecisionHelp code={row.exit_reason ?? row.simulation_status ?? 'UNKNOWN_REASON'} trade={row} run={result} /></td><td>{row.quantity}</td><td>{formatPrice(row.realised_pnl)}{row.net_pnl != null && <small className="ms-time">Net {formatPrice(row.net_pnl)} · Costs {formatPrice(row.transaction_costs)}</small>}</td><td>{formatPrice(row.realised_pnl_percentage)}</td>
         </tr>)}{result.trades.length === 0 && <tr><td colSpan="12">No trades created. Inspect the timeline and entry results.</td></tr>}</tbody>
       </table></div>
       <details className="ms-backtest-settings"><summary>Signal and entry results</summary>
-        <ul>{result.signals.map(signal => <li key={signal.id}>{localTime(signal.timestamp)} · Level {signal.level} · Timeframe {signal.timeframe ?? 'Not recorded'} · {signal.direction} · {signal.valid ? 'VALID' : `REJECTED: ${signal.rejection_reason}`}</li>)}</ul>
-        <ul>{result.option_selections.filter(selection => selection.status === 'FAILED').map(selection => <li key={selection.id}>Selection #{selection.id} · {selection.failure_reason}</li>)}</ul>
-        <ul>{result.entry_results.map(entry => <li key={entry.option_selection_id}>Selection #{entry.option_selection_id} · {entry.failure_reason ?? 'Trade created'}</li>)}</ul>
+        <ul>{result.signals.map(signal => <li key={signal.id}>{localTime(signal.timestamp)} · Level {signal.level} · Timeframe {signal.timeframe ?? 'Not recorded'} · {signal.direction} · {signal.valid ? 'VALID' : `REJECTED: ${signal.rejection_reason}`} <DecisionHelp code={signal.rejection_reason ?? 'SIGNAL_ACCEPTED'} signal={signal} /></li>)}</ul>
+        <ul>{result.option_selections.filter(selection => selection.status === 'FAILED').map(selection => <li key={selection.id}>Selection #{selection.id} · {selection.failure_reason} <DecisionHelp code={selection.failure_reason} /></li>)}</ul>
+        <ul>{result.entry_results.map(entry => <li key={entry.option_selection_id}>Selection #{entry.option_selection_id} · {entry.failure_reason ?? 'Trade created'} <DecisionHelp code={entry.failure_reason ?? 'POSITION_OPENED'} entry={entry} /></li>)}</ul>
       </details>
-      {trade?.strategy3_entry?.target != null && <details open><summary>Strategy 3 · Frozen entry plan and data quality</summary><pre>{JSON.stringify(trade.strategy3_entry, null, 2)}</pre></details>}
+      {trade?.strategy3_entry?.target != null && <details open><summary>Strategy 3 · Frozen entry plan and data quality <DecisionHelp code="FIXED_PLAN" trade={trade} /></summary><pre>{JSON.stringify(trade.strategy3_entry, null, 2)}</pre></details>}
       <div className="ms-sectionhead">Event Timeline</div>
       <label>Trade<select value={selectedTrade} onChange={event => setSelectedTrade(event.target.value)}><option value="">Whole session</option>{result.trades.map(row => <option key={row.trade_id} value={row.trade_id}>Trade #{row.trade_id} · Level {row.trigger_level} · {row.timeframe ?? 'Not recorded'} · {row.option_symbol}</option>)}</select></label>
       <div className="ms-tablewrap"><table><thead><tr>{['Time', 'Event', 'Level / Index', 'Option price', 'Highest / Stop', 'Return %', 'Details'].map(label => <th key={label}>{label}</th>)}</tr></thead>
-        <tbody>{timeline.map(event => <tr key={event.id}><td>{localTime(event.timestamp)}</td><td>{event.event_type}</td><td>{formatPrice(event.payload.level)} / {formatPrice(event.payload.index_price)}</td><td>{formatPrice(event.payload.option_price)}</td><td>{formatPrice(event.payload.highest_price)} / {formatPrice(event.payload.stop_price)}</td><td>{formatPrice(event.payload.return_percent)}</td><td>{event.payload.reason ?? event.payload.failure_reason ?? event.payload.rejection_reason ?? event.payload.status ?? event.payload.armed_from}<details><summary>Event details</summary><pre>{JSON.stringify(event.payload, null, 2)}</pre></details></td></tr>)}</tbody>
+        <tbody>{timeline.map(event => <tr key={event.id}><td>{localTime(event.timestamp)}</td><td>{event.event_type}<DecisionHelp code={eventReason(event)} event={event} trade={event.payload?.strategy_type ? event.payload : undefined} run={result} /></td><td>{formatPrice(event.payload.level)} / {formatPrice(event.payload.index_price)}</td><td>{formatPrice(event.payload.option_price)}</td><td>{formatPrice(event.payload.highest_price)} / {formatPrice(event.payload.stop_price)}</td><td>{formatPrice(event.payload.return_percent)}</td><td>{event.payload.reason ?? event.payload.failure_reason ?? event.payload.rejection_reason ?? event.payload.status ?? event.payload.armed_from}<details><summary>Event details</summary><pre>{JSON.stringify(event.payload, null, 2)}</pre></details></td></tr>)}</tbody>
       </table></div>
     </section>;
 }
@@ -246,6 +249,6 @@ export function BacktestResults({ result, selectedTrade = '', setSelectedTrade }
 function StrategyComparison({ comparison }) {
   const metrics = ['total_trades', 'win_rate', 'average_profit', 'average_loss', 'profit_factor', 'net_pnl', 'max_drawdown', 'average_r', 'sl_hits', 'transaction_costs'];
   return <section aria-label="Exit strategy comparison"><h3>Current and ATR · {comparison.trading_date}</h3><p className="ms-sub">Identical historical data and entry rules; each run stores a separate snapshot. Review entry failures in saved runs when data is insufficient. {comparison.data_source} · {comparison.data_resolution} · {comparison.execution_model}</p>
-    {comparison.data_warnings?.length > 0 && <ul aria-label="Historical data warnings">{comparison.data_warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
-    <div className="ms-tablewrap"><table><thead><tr><th>Strategy</th><th>Status</th>{metrics.map(key => <th key={key}>{key.replaceAll('_', ' ')}</th>)}</tr></thead><tbody>{comparison.runs.map(run => <tr key={run.id}><td>{run.strategy === 'ATR' ? `ATR × ${run.multiplier}` : 'Current'}</td><td>{run.status}</td>{metrics.map(key => <td key={key}>{formatPrice(run[key])}</td>)}</tr>)}</tbody></table></div></section>;
+    {comparison.data_warnings?.length > 0 && <ul aria-label="Historical data warnings">{comparison.data_warnings.map((warning, index) => <li key={index}>{warning} <DecisionHelp code={comparison.warning_details?.find(item => item.warning_index === index)?.code ?? 'BACKTEST_WARNING'} run={comparison} message={warning} /></li>)}</ul>}
+    <div className="ms-tablewrap"><table><thead><tr><th>Strategy</th><th>Status</th>{metrics.map(key => <th key={key}>{key.replaceAll('_', ' ')}</th>)}</tr></thead><tbody>{comparison.runs.map(run => <tr key={run.id}><td>{run.strategy === 'ATR' ? `ATR × ${run.multiplier}` : 'Current'}</td><td>{run.status}{['FAILED', 'DATA_INCOMPLETE'].includes(run.status) && <DecisionHelp code={run.error_code ?? 'BACKTEST_REPLAY_ERROR'} message={run.error_message} run={run} />}</td>{metrics.map(key => <td key={key}>{formatPrice(run[key])}</td>)}</tr>)}</tbody></table></div></section>;
 }

@@ -32,11 +32,12 @@ def record_chart_event(connection, instrument, event_type, timestamp, **data):
                        (instrument, event_type, timestamp.isoformat(), json.dumps(data)))
 
 
-def record_arm(connection, row, price, timestamp):
+def record_arm(connection, row, price, timestamp, distance=None):
     if row['enabled'] and row['status'] == 'ACTIVE':
         record_chart_event(connection, row['instrument'], 'LEVEL_ARMED', timestamp,
                            level_id=row['id'], level=row['price'], price=price,
-                           direction='FROM_ABOVE' if price >= row['price'] else 'FROM_BELOW')
+                           direction='FROM_ABOVE' if price >= row['price'] else 'FROM_BELOW',
+                           initial_arm_distance_points=distance)
 
 
 def session_bounds(day):

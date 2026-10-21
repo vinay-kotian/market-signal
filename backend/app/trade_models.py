@@ -26,6 +26,7 @@ class BulkTradeClassification(TradeClassification):
 
 
 class TradeEntry(BaseModel):
+    decision_context: dict = Field(default_factory=dict)
     strategy3_entry: dict = Field(default_factory=dict)
     strategy_type: Literal['LEGACY', 'ATR', 'ATR_FIXED'] = 'LEGACY'
     strategy_config_snapshot: dict = Field(default_factory=dict)
@@ -42,7 +43,7 @@ class TradeEntry(BaseModel):
     exclude_from_strategy_metrics: bool = False
     settings_snapshot: dict
 
-    @field_validator("settings_snapshot", "strategy_config_snapshot", "strategy3_entry", mode="before")
+    @field_validator("settings_snapshot", "strategy_config_snapshot", "strategy3_entry", "decision_context", mode="before")
     @classmethod
     def decode_snapshot(cls, value):
         return json.loads(value) if isinstance(value, str) else value
@@ -90,6 +91,13 @@ class Trade(TradeEntry):
 
 
 class TradeEntryResult(BaseModel):
+    decision_context: dict = Field(default_factory=dict)
+
+    @field_validator('decision_context', mode='before')
+    @classmethod
+    def decode_context(cls, value):
+        return json.loads(value) if isinstance(value, str) else value
+
     option_selection_id: int
     trade_id: Optional[int]
     status: Literal["OPEN", "CLOSED", "FAILED"]

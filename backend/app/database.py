@@ -122,6 +122,11 @@ def initialize_database(database_path, stop_loss_percentage=10, trade_settings=N
             columns = {row['name'] for row in connection.execute(f'PRAGMA table_info({table})')}
             if 'timeframe' not in columns:
                 connection.execute(f'ALTER TABLE {table} ADD COLUMN timeframe TEXT')
+        # Additive audit metadata only. Never reconstruct old decisions from defaults.
+        for table in ('signals', 'trade_entry_results'):
+            columns = {row['name'] for row in connection.execute(f'PRAGMA table_info({table})')}
+            if 'decision_context' not in columns:
+                connection.execute(f"ALTER TABLE {table} ADD COLUMN decision_context TEXT NOT NULL DEFAULT '{{}}'")
         connection.execute('CREATE INDEX IF NOT EXISTS levels_identity ON levels(instrument, level_date, price, timeframe)')
         connection.execute('CREATE INDEX IF NOT EXISTS signals_level_lookup ON signals(level_id)')
 

@@ -11,6 +11,8 @@ from zoneinfo import ZoneInfo
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.decision_context import DecisionRejection
+
 IST = ZoneInfo('Asia/Kolkata')
 MINUTE = timedelta(minutes=1)
 
@@ -126,11 +128,13 @@ def entry_plan(entry_price, entry_time, symbol, candles, settings=None):
     risk = entry-stop
     risk_pct = risk/entry*100
     if settings.max_initial_risk_pct is not None and risk_pct > dec(settings.max_initial_risk_pct):
-        raise ValueError('MAX_INITIAL_RISK_EXCEEDED')
+        raise DecisionRejection('MAX_INITIAL_RISK_EXCEEDED', dict(initial_stop=float(stop),
+            initial_risk_percent=float(risk_pct), option_atr=float(atr) if atr is not None else None,
+            attempted_stop_source='FALLBACK' if reason else 'ATR', fallback_reason=reason))
     target = entry+risk*dec(settings.risk_reward_ratio)
     if not target.is_finite() or not isfinite(float(target)):
         raise ValueError('TARGET_INVALID')
-    return dict(atr_value=float(atr) if atr is not None else None, atr_sample_count=len(samples),
+    return dict(pre_entry_candle_count=len(rows), valid_tr_count=len(trs), atr_value=float(atr) if atr is not None else None, atr_sample_count=len(samples),
         atr_multiplier=settings.atr_multiplier, stop_source='FALLBACK' if reason else 'ATR',
         initial_stop=float(stop), stop_distance=float(risk), initial_risk_pct=float(risk_pct),
         target=float(target), risk_reward_ratio=settings.risk_reward_ratio, fallback_reason=reason,

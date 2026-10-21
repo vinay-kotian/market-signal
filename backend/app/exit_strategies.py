@@ -2,6 +2,7 @@
 from decimal import Decimal
 from typing import Protocol
 
+from app.decision_context import DecisionRejection
 from app.exit_settings import AtrSettings
 from app.trade_events import TradeEventRepository
 from app.trade_schema import stop_price
@@ -36,7 +37,8 @@ class AtrExit:
         if risk >= entry:
             raise ValueError('ATR_STOP_INVALID')
         if settings.atr_max_sl_percent is not None and risk / entry * 100 > decimal(settings.atr_max_sl_percent):
-            raise ValueError('ATR_MAX_SL_EXCEEDED')
+            raise DecisionRejection('ATR_MAX_SL_EXCEEDED', dict(initial_stop=float(entry-risk),
+                initial_risk_percent=float(risk/entry*100)))
         activation = self.activation_distance(entry, atr, risk, settings)
         if activation is not None and entry * decimal(settings.atr_breakeven_lock_percent) / 100 >= activation:
             raise ValueError('ATR_BREAKEVEN_CONFIGURATION_INVALID')

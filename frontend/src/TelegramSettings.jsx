@@ -1,3 +1,4 @@
+import ContextHelp from './help/ContextHelp';
 import React, { useEffect, useState } from 'react';
 import { request } from './api';
 
@@ -36,7 +37,7 @@ export default function TelegramSettings() {
     finally { setBusy(false); }
   }
   return <section aria-label="Telegram notifications">
-    <h3 className="ms-sectionhead">Telegram notifications</h3>
+    <h3 className="ms-sectionhead">Telegram notifications <ContextHelp topicId="settings/notifications" /></h3>
     <p className="ms-sub">Send a message to your Telegram channel when a PAPER option trade opens, including the touched index level, option contract, entry premium, quantity and initial stop. Backtests send no messages.</p>
     {settings ? <><label className="ms-toggle">
       <input type="checkbox" role="switch" checked={settings.enabled} disabled={busy}

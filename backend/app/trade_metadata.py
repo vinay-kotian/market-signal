@@ -21,6 +21,7 @@ def initialize_trade_metadata(connection):
             connection.execute("UPDATE sqlite_sequence SET seq=? WHERE name='trades'", (sequence[0],))
     columns = {row['name'] for row in connection.execute('PRAGMA table_info(trades)')}
     additions = {
+        'decision_context': "TEXT NOT NULL DEFAULT '{}'",
         'strategy3_entry': "TEXT NOT NULL DEFAULT '{}'",
         'strategy_type': "TEXT NOT NULL DEFAULT 'LEGACY' CHECK(strategy_type IN ('LEGACY','ATR','ATR_FIXED'))",
         'strategy_config_snapshot': "TEXT NOT NULL DEFAULT '{}'",

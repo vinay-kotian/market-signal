@@ -10,6 +10,8 @@ import SignalsTable from './SignalsTable';
 import OptionSelectionsTable from './OptionSelectionsTable';
 import LevelForm from './LevelForm';
 import SettingsPage from './SettingsPage';
+import HelpCenter from './help/HelpCenter';
+import ContextHelp, { DecisionHelp } from './help/ContextHelp';
 import TradesPage from './TradesPage';
 import PaperReportPage from './PaperReportPage';
 import BacktestPage from './BacktestPage';
@@ -116,10 +118,10 @@ function App() {
   const shownPrices = prices;
   const current = shownPrices[selected]?.price;
 
-  return <div id="ms-design" className={page === 'settings' ? 'ms-settings-shell' : undefined}>
+  return <div id="ms-design" className={['settings', 'help'].includes(page) ? 'ms-settings-shell' : undefined}>
     <header><span className="ms-logo" aria-hidden="true">π</span><span className="ms-brand">Market Signal</span><span className="ms-env">PAPER · {connection?.market_data_mode ?? 'LOADING'} DATA</span><button className="ms-link" disabled={busy} onClick={() => navigate('settings', 'connection')} aria-label="Open connection settings">Connection: {errors.connection ? 'ERROR' : live ? (connection?.connection_status ?? 'LOADING') : feedStatus}</button></header>
-    <div className={`ms-shell${page === 'settings' ? ' ms-shell-settings' : ''}`}>
-      {page !== 'settings' && <aside aria-label="Instrument watchlist">
+    <div className={`ms-shell${['settings', 'help'].includes(page) ? ' ms-shell-settings' : ''}`}>
+      {!['settings', 'help'].includes(page) && <aside aria-label="Instrument watchlist">
         <div className="ms-sidehead"><span className="ms-label">Watchlist</span><span className="ms-sub">{instruments.length} indices · {visibleOptionWatchlist(optionWatchlist, today).length} options</span></div>
         <div className="ms-search"><input type="search" aria-label="Search instruments" placeholder="Search instruments" value={search} onChange={event => setSearch(event.target.value)} /></div>
         <div className="ms-watchlist">{instruments.filter(symbol => symbol.toLowerCase().includes(search.toLowerCase())).map(symbol => <button className="ms-watch" aria-pressed={symbol === selected} key={symbol} disabled={busy} onClick={() => { setSelected(symbol); setEditor(null); if (page === 'dashboard') openInstrument(symbol); }}>
@@ -134,8 +136,9 @@ function App() {
         <div className="ms-sidefoot">{live ? 'Live Zerodha prices' : 'Simulated prices received by the backend'}<br />{live ? 'Change from previous trading day’s close' : 'Movement since previous submitted tick'}</div>
       </aside>}
       <main className={page === 'report' || page === 'trades' ? 'ms-report-main' : undefined}>
-        <nav aria-label="Pages">{['dashboard', 'levels', 'trades', 'report', 'backtest', 'settings'].map(name => <button className="ms-tab" key={name} aria-pressed={page === name} disabled={busy} onClick={() => navigate(name)}>{name[0].toUpperCase() + name.slice(1)}</button>)}</nav>
-        <div className="ms-heading"><h2>{page[0].toUpperCase() + page.slice(1)}</h2><div className="ms-actions"><button className="ms-link" disabled={busy} onClick={() => mutate(async () => {})}>Refresh</button>{(page === 'dashboard' || page === 'levels') && <button className="ms-button" disabled={busy} onClick={() => page === 'dashboard' ? navigate('levels') : setEditor({})}>{page === 'dashboard' ? 'Manage levels ↗' : '+ Add level'}</button>}</div></div>
+        <nav aria-label="Pages">{['dashboard', 'levels', 'trades', 'report', 'backtest', 'settings', 'help'].map(name => <button className="ms-tab" key={name} aria-pressed={page === name} disabled={busy} onClick={() => navigate(name)}>{name === 'help' ? 'Help & Guide' : name[0].toUpperCase() + name.slice(1)}</button>)}</nav>
+        <div className="ms-heading"><h2>{page === 'help' ? 'Help & Guide' : page[0].toUpperCase() + page.slice(1)}</h2><div className="ms-actions"><button className="ms-link" disabled={busy} onClick={() => mutate(async () => {})}>Refresh</button>{(page === 'dashboard' || page === 'levels') && <button className="ms-button" disabled={busy} onClick={() => page === 'dashboard' ? navigate('levels') : setEditor({})}>{page === 'dashboard' ? 'Manage levels ↗' : '+ Add level'}</button>}</div></div>
+        {page === 'help' && <HelpCenter />}
         {page === 'settings' && <SettingsPage indexes={liveState.indexes} error={errors.indexes} onRefresh={refresh} connection={connection} connectionError={errors.connection} feedStatus={feedStatus} lastUiEvent={lastUiEvent} />}
         {page === 'backtest' && <BacktestPage refreshKey={refreshKey} />}
         {page === 'report' && <PaperReportPage refreshKey={refreshKey} />}
@@ -143,7 +146,7 @@ function App() {
         {page === 'dashboard' && detailsSymbol && <React.Suspense fallback={<p>Loading Instrument Details…</p>}><InstrumentDetails key={detailsSymbol} symbol={detailsSymbol} today={today} prices={prices} chartCandles={liveState.chartCandles} revision={`${refreshKey}-${liveState.chartRevision ?? 0}`} onBack={() => setDetailsSymbol(null)} /></React.Suspense>}
         {((page === 'dashboard' && !detailsSymbol) || page === 'levels') && <>
         {(errors.levels || errors.events || errors.action) && <div className="ms-error" role="alert">{errors.action || errors.levels || `Trigger status unavailable: ${errors.events}`} <button className="ms-link" disabled={busy} onClick={() => mutate(async () => {})}>Retry refresh</button></div>}
-        {page === 'dashboard' && <div className="ms-pricebar"><div className="ms-instrument">{selected || 'No instrument selected'}</div><div><div className="ms-current">{formatPrice(current)}</div><div className="ms-sub">{live ? 'Latest received Zerodha price' : 'Latest simulated price'}</div></div></div>}
+        {page === 'dashboard' && <div className="ms-pricebar"><div className="ms-instrument">{selected || 'No instrument selected'}</div><div><div className="ms-current">{formatPrice(current)}</div><div className="ms-sub">{live ? 'Latest received Zerodha price' : 'Latest simulated price'} <ContextHelp topicId="dashboard/quotes" /></div></div></div>}
         {editor && <LevelForm key={editor.id ?? 'new'} level={editor.id ? editor : null} instrument={selected} instrumentOptions={connection?.available_instruments ?? []} live={live} busy={busy} onCancel={() => setEditor(null)} onSave={data => mutate(async () => {
           await request(editor.id ? `/levels/${editor.id}` : '/levels', { method: editor.id ? 'PUT' : 'POST', body: JSON.stringify(data) });
           setSelected(data.instrument); setEditor(null);
@@ -155,11 +158,11 @@ function App() {
         }} />}
         <div className="ms-sectionhead"><span>Configured levels{page === 'levels' && selected ? ` · ${selected}` : ''}</span><span className="ms-sub">{rows.length} levels</span></div>
         {levels === null && !errors.levels ? <p>Loading levels…</p> : <div className="ms-tablewrap"><table>
-          <thead><tr><th scope="col" aria-sort={levelSort === 'ASC' ? 'ascending' : 'descending'}><button type="button" className="ms-link" onClick={() => setLevelSort(value => value === 'ASC' ? 'DESC' : 'ASC')} aria-label={`Sort level price ${levelSort === 'ASC' ? 'descending' : 'ascending'}`}>Level price {levelSort === 'ASC' ? '↑ ASC' : '↓ DESC'}</button></th><th>Timeframe</th><th>Trading date</th>{page === 'levels' && <th>Entered (IST)</th>}<th>Level state</th>{page === 'dashboard' ? <><th className="ms-num">Distance · pts</th><th>Status · recent</th></> : <><th>Enabled</th><th>Actions</th></>}</tr></thead>
+          <thead><tr><th scope="col" aria-sort={levelSort === 'ASC' ? 'ascending' : 'descending'}><button type="button" className="ms-link" onClick={() => setLevelSort(value => value === 'ASC' ? 'DESC' : 'ASC')} aria-label={`Sort level price ${levelSort === 'ASC' ? 'descending' : 'ascending'}`}>Level price {levelSort === 'ASC' ? '↑ ASC' : '↓ DESC'}</button></th><th>Timeframe <ContextHelp topicId="levels/timeframe" /></th><th>Trading date <ContextHelp topicId="levels/lifecycle" /></th>{page === 'levels' && <th>Entered (IST)</th>}<th>Level state</th>{page === 'dashboard' ? <><th className="ms-num">Distance · pts</th><th>Status · recent</th></> : <><th>Enabled</th><th>Actions</th></>}</tr></thead>
           <tbody>{rows.map(level => <tr key={level.id}><td>{formatPrice(level.price)}</td><td>{level.timeframe ?? 'Not recorded'}</td><td>{level.level_date}</td>{page === 'levels' && <td>{level.created_at ? <time dateTime={level.created_at}>
             {new Date(level.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' })}
             <small className="ms-time">{new Date(level.created_at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}</small>
-          </time> : '—'}</td>}<td><span className="ms-status">{level.status.replaceAll('_', ' ')}</span>{level.status === 'PENDING_ARM' && <small className="ms-time">Current: {formatPrice(shownPrices[level.instrument]?.price)}<br />Distance: {formatPrice(shownPrices[level.instrument]?.price == null ? null : Math.abs(shownPrices[level.instrument].price - level.price))} / {formatPrice(liveState.indexes?.find(index => index.instrument === level.instrument)?.initial_arm_distance_points)} pts</small>}</td>{page === 'dashboard' ? <>
+          </time> : '—'}</td>}<td><span className="ms-status">{level.status.replaceAll('_', ' ')}</span><DecisionHelp code={level.status === 'PENDING_ARM' ? 'LEVEL_PENDING_ARM' : level.status === 'ACTIVE' ? 'LEVEL_ARMED' : `LEVEL_${level.status}`} level={level} currentPrice={shownPrices[level.instrument]?.price} armDistance={liveState.indexes?.find(index => index.instrument === level.instrument)?.initial_arm_distance_points} />{level.status === 'PENDING_ARM' && <small className="ms-time">Current: {formatPrice(shownPrices[level.instrument]?.price)}<br />Distance: {formatPrice(shownPrices[level.instrument]?.price == null ? null : Math.abs(shownPrices[level.instrument].price - level.price))} / {formatPrice(liveState.indexes?.find(index => index.instrument === level.instrument)?.initial_arm_distance_points)} pts</small>}</td>{page === 'dashboard' ? <>
             <td className="ms-num">{current == null ? '—' : `${level.price > current ? '+' : ''}${formatPrice(level.price - current)}`}</td>
             <td><span className={`ms-status ${levelStatus(level, events).toLowerCase()}`}>{levelStatus(level, events).replaceAll('_', ' ')}</span></td>
           </> : <><td><input className="ms-checkbox" type="checkbox" aria-label={`Enable level ${level.price}`} checked={level.enabled} disabled={busy || level.status === 'EXPIRED'} onChange={() => mutate(() => request(`/levels/${level.id}`, { method: 'PUT', body: JSON.stringify({ instrument: level.instrument, price: level.price, enabled: !level.enabled }) }))} /></td>

@@ -316,3 +316,55 @@ html,body{margin:0;background:#f7f9f7}
 @media(forced-colors:active){
   #ms-design select:not([multiple]):not([size]){appearance:auto;-webkit-appearance:auto;background-image:none;padding-right:12px}
 }
+
+/* Shared contextual help; the dialog is portalled outside clipped tables/forms. */
+#ms-design button.ms-context-help{display:inline-grid;place-items:center;vertical-align:middle;flex:0 0 auto;width:24px;min-width:24px;height:24px;min-height:24px;margin:0 2px;padding:0;border:1px solid transparent;border-radius:50%;background:transparent;color:#436c54;font-size:15px;line-height:1;cursor:pointer}
+#ms-design button.ms-context-help::before{content:'ⓘ'}
+#ms-design button.ms-context-help:hover,#ms-design button.ms-context-help[aria-expanded=true]{background:#e8f1e9;border-color:#bfd1c2}
+.ms-help-backdrop{position:fixed;inset:0;z-index:100;background:#13281c66;display:flex;align-items:center;justify-content:center;padding:20px;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#26332e;line-height:1.6;color-scheme:light}
+.ms-help-backdrop *{box-sizing:border-box}
+.ms-help-dialog{width:min(100%,640px);max-height:calc(100dvh - 40px);overflow-y:auto;overscroll-behavior:contain;background:#fff;border:1px solid #cfded1;border-radius:12px;padding:24px;box-shadow:0 18px 60px #10271940;font-size:13px}
+.ms-help-dialog-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.ms-help-dialog h2{margin:0;font-size:20px;font-weight:600;line-height:1.4}
+.ms-help-dialog h3{margin:22px 0 8px;font-size:13px;color:#34533e}
+.ms-help-dialog p{margin:8px 0 16px}
+.ms-help-dialog-heading button{flex:0 0 auto;border:1px solid #dce6dc;border-radius:6px;background:#fff;width:36px;height:36px;font-size:24px;cursor:pointer;color:#34533e}
+.ms-help-dialog dl{margin:0}
+.ms-help-dialog dl > div{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;padding:10px 0;border-bottom:1px solid #e8ede6}
+.ms-help-dialog dt{font-weight:500}
+.ms-help-dialog dt small{display:block;color:#748477;font-size:10px;font-weight:400}
+.ms-help-dialog dd{margin:0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.ms-help-calculation{padding:12px;background:#f2f6ef;border:1px solid #e1e9df;border-radius:6px;overflow-wrap:anywhere;font-family:ui-monospace,monospace;font-size:12px;line-height:1.7}
+.ms-help-unavailable{color:#6b6245;background:#faf7eb;padding:12px;border-radius:6px}
+.ms-help-guide-link{color:#285f45;display:inline-block;font-weight:600;margin-top:8px}
+.ms-help-dialog :focus-visible{outline:2px solid #367a58;outline-offset:3px}
+#ms-design .ms-help-center{display:grid;grid-template-columns:220px minmax(0,1fr);gap:32px;align-items:start;max-width:1320px;margin:auto}
+#ms-design .ms-help-categories{display:grid;gap:5px;position:sticky;top:24px;margin:0;border:0;padding-right:16px;border-right:1px solid #dfe5df;max-height:calc(100vh - 48px);overflow:auto}
+#ms-design .ms-help-categories strong{font-size:15px;margin-bottom:16px}
+#ms-design .ms-help-categories button{border:0;text-align:left;border-radius:6px;padding:10px 12px;background:transparent;color:#526a59;font-size:12px}
+#ms-design .ms-help-categories button[aria-pressed=true]{background:#e8f1e9;color:#255c43;font-weight:600}
+#ms-design .ms-help-content{min-width:0}
+#ms-design .ms-help-search{margin-bottom:24px;font-size:12px}
+#ms-design .ms-help-search input{font-size:14px;min-height:44px}
+#ms-design .ms-help-results{list-style:none;padding:0;display:grid;gap:12px}
+#ms-design .ms-help-results li,#ms-design .ms-help-article{border:1px solid #dfe5df;border-radius:9px;padding:20px;background:#fff}
+#ms-design .ms-help-results a,#ms-design .ms-help-article a{color:#285f45;text-underline-offset:3px}
+#ms-design .ms-help-results small{display:block;margin-top:5px;font-size:10px;color:#748477}
+#ms-design .ms-help-results p{margin:8px 0 0;font-size:12px;line-height:1.7}
+#ms-design .ms-help-article h2{font-size:24px;margin:10px 0 20px}
+#ms-design .ms-help-article h3{scroll-margin-top:24px;margin:24px 0 10px;font-size:15px}
+#ms-design .ms-help-article p,#ms-design .ms-help-article li{line-height:1.8;font-size:13px}
+#ms-design .ms-help-article li{margin-bottom:10px}
+#ms-design .ms-help-article nav{display:flex;flex-wrap:wrap;gap:10px 20px;padding-bottom:18px;margin:0;font-size:11px}
+@media(max-width:800px){
+  #ms-design .ms-help-center{grid-template-columns:minmax(0,1fr);gap:20px}
+  #ms-design .ms-help-categories{position:static;display:flex;flex-wrap:wrap;gap:5px;max-height:none;overflow:visible;border:0;padding:0}
+  #ms-design .ms-help-categories strong{flex:1 0 100%;margin-bottom:5px}
+  #ms-design .ms-help-categories button{border:1px solid #dfe5df;font-size:11px;padding:7px 9px}
+}
+@media(max-width:480px){
+  .ms-help-backdrop{padding:10px}
+  .ms-help-dialog{padding:18px;max-height:calc(100dvh - 20px)}
+  .ms-help-dialog dl > div{grid-template-columns:minmax(0,1fr);gap:3px}
+  #ms-design .ms-help-article{padding:16px}
+}

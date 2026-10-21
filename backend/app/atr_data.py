@@ -94,9 +94,10 @@ class AtrData:
         where = 'symbol=? AND source=? AND end<=? AND available_at<=?'
         params = (symbol, self.source, cutoff, cutoff)
         rows = connection.execute(f'SELECT high,low,close FROM atr_candles WHERE {where} ORDER BY start', params)
+        rows = list(rows)
         value = wilder_atr(rows, period)
         last = connection.execute(f'SELECT end,origin FROM atr_candles WHERE {where} ORDER BY start DESC LIMIT 1', params).fetchone()
-        return dict(value=value, candle_end=datetime.fromtimestamp(last['end'], timezone.utc) if last else None,
+        return dict(value=value, completed_candle_count=len(rows), required_candle_count=period, candle_end=datetime.fromtimestamp(last['end'], timezone.utc) if last else None,
                     source=self.source, origin=last['origin'] if last else None)
 
 

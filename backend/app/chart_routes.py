@@ -125,10 +125,12 @@ async def events(instrument: str, request: Request, date: Date):
                 result.append(dict(id=f"signal-{signal['id']}", event_type='SIGNAL_GENERATED' if signal['valid'] else 'SIGNAL_REJECTED',
                     timestamp=signal['timestamp'], price=signal['trigger_price'], level=signal['level'],
                     level_id=signal['level_id'], direction=signal['direction'], signal_id=signal['id'],
-                    rejection_reason=signal['rejection_reason']))
+                    rejection_reason=signal['rejection_reason'], approach_distance=signal['approach_distance'],
+                    decision_context=json.loads(signal['decision_context'])))
         for trade in associated_trades(state, item, date):
             signal = c.execute('SELECT * FROM signals WHERE id=?', (trade['signal_id'],)).fetchone()
-            metadata = dict(trade_id=trade['trade_id'], signal_id=trade['signal_id'],
+            metadata = dict(trade_context={key: json.loads(trade[key]) if isinstance(trade[key], str) and key in ('strategy_config_snapshot', 'strategy3_entry', 'decision_context') else trade[key]
+                for key in ('strategy_type', 'strategy_config_snapshot', 'strategy3_entry', 'decision_context', 'entry_price', 'initial_stop_loss', 'quantity', 'option_atr_at_entry')}, trade_id=trade['trade_id'], signal_id=trade['signal_id'],
                 level=trade['trigger_level'], direction=trade['direction'], option_symbol=trade['option_symbol'],
                 strike=trade['strike'], expiry=trade['expiry'], option_type=trade['option_type'], quantity=trade['quantity'],
                 index_price=signal['trigger_price'] if signal else None, entry_time=trade['entry_time'])

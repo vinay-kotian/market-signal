@@ -1,3 +1,4 @@
+import ContextHelp from './help/ContextHelp';
 import React, { useEffect, useState } from 'react';
 import { request } from './api';
 
@@ -11,7 +12,7 @@ export default function TimeframeSelect({ value, onChange, disabled, filter = fa
     return () => controller.abort();
   }, []);
   const choices = [...new Set([...options, ...(value && value !== 'UNKNOWN' ? [value] : [])])];
-  return <label>Timeframe<select value={value ?? ''} disabled={disabled} onChange={event => onChange(event.target.value)}>
+  return <label>Timeframe<ContextHelp topicId="levels/timeframe" /><select value={value ?? ''} disabled={disabled} onChange={event => onChange(event.target.value)}>
     <option value="">{filter ? 'All timeframes' : 'Not recorded'}</option>
     {filter && <option value="UNKNOWN">Not recorded</option>}
     {choices.map(option => <option key={option} value={option}>{option}</option>)}

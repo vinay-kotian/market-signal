@@ -1,3 +1,4 @@
+import json
 from contextlib import nullcontext
 from app.date_range import timestamp_scope
 
@@ -24,12 +25,12 @@ class SignalRepository:
                     """
                     INSERT INTO signals (
                         trigger_id, level_id, instrument, level, trigger_price,
-                        direction, approach_distance, valid, rejection_reason, timestamp, timeframe
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        direction, approach_distance, valid, rejection_reason, timestamp, timeframe, decision_context
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (signal.trigger_id, signal.level_id, signal.instrument, signal.level,
                      signal.trigger_price, signal.direction, signal.approach_distance,
-                     signal.valid, signal.rejection_reason, signal.timestamp.isoformat(), signal.timeframe),
+                     signal.valid, signal.rejection_reason, signal.timestamp.isoformat(), signal.timeframe, json.dumps(signal.decision_context)),
                 )
                 saved.append(SignalResult(id=cursor.lastrowid, **signal.model_dump()))
         return saved

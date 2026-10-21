@@ -30,6 +30,7 @@ class TradeRepository:
         context = connect(self.database_path) if connection is None else nullcontext(connection)
         with context as connection:
             values = entry.model_dump(mode="json")
+            values['decision_context'] = json.dumps(values['decision_context'])
             values['strategy3_entry'] = json.dumps(values['strategy3_entry'])
             values['settings_snapshot'] = json.dumps(values['settings_snapshot'])
             values['strategy_config_snapshot'] = json.dumps(values['strategy_config_snapshot'])
@@ -118,14 +119,14 @@ class TradeRepository:
     def record_result(self, result: TradeEntryResult, connection):
         connection.execute(
             """INSERT INTO trade_entry_results
-                (option_selection_id, trade_id, status, failure_reason, timestamp)
-                VALUES (?, ?, ?, ?, ?)
+                (option_selection_id, trade_id, status, failure_reason, timestamp, decision_context)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(option_selection_id) DO UPDATE SET
                     trade_id = excluded.trade_id, status = excluded.status,
-                    failure_reason = excluded.failure_reason, timestamp = excluded.timestamp
+                    failure_reason = excluded.failure_reason, timestamp = excluded.timestamp, decision_context = excluded.decision_context
             """,
             (result.option_selection_id, result.trade_id, result.status,
-             result.failure_reason, result.timestamp.isoformat()),
+             result.failure_reason, result.timestamp.isoformat(), json.dumps(result.decision_context)),
         )
         return result
 

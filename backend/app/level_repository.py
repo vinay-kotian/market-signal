@@ -39,7 +39,7 @@ class LevelRepository:
             )
             row = connection.execute('SELECT * FROM levels WHERE id = ?', (cursor.lastrowid,)).fetchone()
             if level_date == today:
-                record_arm(connection, row, current, timestamp)
+                record_arm(connection, row, current, timestamp, distance)
             return Level(**dict(row))
 
     def list(self, level_date=None) -> List[Level]:
@@ -96,7 +96,7 @@ class LevelRepository:
             updated = connection.execute('SELECT * FROM levels WHERE id = ?', (level_id,)).fetchone()
             if level_date == trading_date(timestamp) and (date_changed or row['status'] != 'ACTIVE'
                     or not row['enabled'] or row['price'] != updated['price'] or row['instrument'] != updated['instrument']):
-                record_arm(connection, updated, current, timestamp)
+                record_arm(connection, updated, current, timestamp, distance)
             return Level(**dict(updated))
 
     def delete(self, level_id: int) -> bool:
@@ -201,7 +201,7 @@ class LevelRepository:
                 connection.execute("""UPDATE levels SET status = ?, armed_from = ?,
                     activation_reference_price = COALESCE(activation_reference_price, ?), updated_at = ? WHERE id = ?""",
                     (status, self._arm_side(status, price, row['price']), price, timestamp.isoformat(), level.id))
-                record_arm(connection, connection.execute('SELECT * FROM levels WHERE id=?', (level.id,)).fetchone(), price, timestamp)
+                record_arm(connection, connection.execute('SELECT * FROM levels WHERE id=?', (level.id,)).fetchone(), price, timestamp, distance)
                 return True
         return False
 

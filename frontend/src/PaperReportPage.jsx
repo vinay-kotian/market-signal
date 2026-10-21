@@ -1,3 +1,5 @@
+import { eventReason } from './help/reasons';
+import ContextHelp, { DecisionHelp } from './help/ContextHelp';
 import { useDateRange } from './useDateRange';
 import React, { useEffect, useState } from 'react';
 import { supportedIndices } from './indices';
@@ -83,7 +85,7 @@ export default function PaperReportPage({ refreshKey }) {
     </div>
     {exportError && <p className="ms-error" role="alert">{exportError}</p>}
     <p className="ms-sub">Performance and trade history are calculated for the selected report view and date range, using trade entry time in Asia/Kolkata. Status and instrument filters apply to both sections.</p>
-    <div className="ms-sectionhead">Performance Summary</div>
+    <div className="ms-sectionhead">Performance Summary <ContextHelp topicId="reports/metrics" /></div>
     {error && <p className="ms-error" role="alert">{error} <button onClick={() => setRetry(value => value + 1)}>Retry</button></p>}
     {!report && !error && !validation && <p role="status">Loading report…</p>}
     {report && !validation && <>
@@ -134,7 +136,7 @@ export default function PaperReportPage({ refreshKey }) {
           <td className="ms-num">{formatPrice(trade.exit_price)}</td>
           <td className={`ms-num ms-report-pnl ${trade.realised_pnl > 0 ? 'ms-up' : trade.realised_pnl < 0 ? 'ms-down' : ''}`}>{formatPrice(trade.realised_pnl)}{trade.realised_pnl_percentage == null ? '' : ` (${formatPrice(trade.realised_pnl_percentage)}%)`}</td>
           <td><span className={`ms-status ${trade.status === 'OPEN' ? 'triggered' : 'disabled'}`}>{trade.status}</span><small className="ms-time">{trade.validity_status} · {trade.exclude_from_strategy_metrics ? 'Excluded' : 'Included'}</small></td>
-          <td className="ms-report-exit">{formatExitReason(trade.exit_reason)}</td>
+          <td className="ms-report-exit">{formatExitReason(trade.exit_reason)}{trade.exit_reason && <DecisionHelp code={trade.exit_reason} trade={trade} />}</td>
         </tr>)}{history.items.length === 0 && <tr><td colSpan={13}>No matching trades.</td></tr>}</tbody>
       </table></div>
       <div className="ms-report-pagination"><button className="ms-button" disabled={bulkBusy || page === 1} onClick={() => { setPage(page - 1); setSelected(null); }}>Previous</button><span>Page {page} · {history.total} trades</span><button className="ms-button" disabled={bulkBusy || page * history.page_size >= history.total} onClick={() => { setPage(page + 1); setSelected(null); }}>Next</button></div>
@@ -147,7 +149,7 @@ export default function PaperReportPage({ refreshKey }) {
         <p>{detail.trade.option_symbol} · {detail.trade.status} · Signal #{detail.trade.signal_id} · Selection #{detail.trade.option_selection_id} · Level {formatPrice(detail.trade.trigger_level)} · Timeframe: {detail.trade.timeframe ?? 'Not recorded'}</p>
         <TradeClassification key={`${detail.trade.trade_id}-${retry}`} trade={detail.trade} onSaved={() => setRetry(value => value + 1)} />
         <p className="ms-sub">Persisted trade events, in time order. Earlier level/signal/selection events are not recorded in this trade timeline.</p>
-        <ol>{detail.events.map(event => <li key={event.id}><strong>{event.event_type.replaceAll('_', ' ')}</strong><div>{new Date(event.timestamp).toLocaleString()} · Price {formatPrice(event.price)}</div>{event.current_stop != null && <div>Stop: {formatPrice(event.previous_stop)} → {formatPrice(event.current_stop)}</div>}{event.trailing_pct != null && <div>High: {formatPrice(event.highest_price)} · Trail: {event.trailing_pct}% · Step: {event.trailing_step}</div>}{event.reconstructed && <small>Reconstructed from a legacy trade record</small>}</li>)}</ol>
+        <ol>{detail.events.map(event => <li key={event.id}><strong>{event.event_type.replaceAll('_', ' ')}</strong><DecisionHelp code={eventReason(event, detail.trade)} trade={detail.trade} event={event} /><div>{new Date(event.timestamp).toLocaleString()} · Price {formatPrice(event.price)}</div>{event.current_stop != null && <div>Stop: {formatPrice(event.previous_stop)} → {formatPrice(event.current_stop)}</div>}{event.trailing_pct != null && <div>High: {formatPrice(event.highest_price)} · Trail: {event.trailing_pct}% · Step: {event.trailing_step}</div>}{event.reconstructed && <small>Reconstructed from a legacy trade record</small>}</li>)}</ol>
         {detail.events.length === 0 && <p>No persisted events.</p>}
       </>}
     </section>}
@@ -183,7 +185,7 @@ function TradeClassification({ trade, onSaved }) {
       <button className="ms-button" disabled={saving}>{saving ? 'Saving…' : 'Save classification'}</button>
     </form>
     {error && <p className="ms-error" role="alert">{error}</p>}
-    <details><summary>Exit strategy snapshot at entry</summary><pre>{JSON.stringify({ strategy: trade.strategy_type, configuration: trade.strategy_config_snapshot, strategy3: trade.strategy3_entry, option_atr: trade.option_atr_at_entry, index_atr: trade.index_atr_at_entry, initial_risk: trade.initial_risk_amount }, null, 2)}</pre></details>
+    <details><summary>Exit strategy snapshot at entry <DecisionHelp code="STRATEGY_SELECTED" trade={trade} /></summary><pre>{JSON.stringify({ strategy: trade.strategy_type, configuration: trade.strategy_config_snapshot, strategy3: trade.strategy3_entry, option_atr: trade.option_atr_at_entry, index_atr: trade.index_atr_at_entry, initial_risk: trade.initial_risk_amount }, null, 2)}</pre></details>
     <details><summary>Settings snapshot at entry</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify(trade.settings_snapshot, null, 2)}</pre></details>
   </section>;
 }

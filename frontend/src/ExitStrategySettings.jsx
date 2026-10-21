@@ -1,10 +1,12 @@
+import ContextHelp from './help/ContextHelp';
 import React, { useEffect, useRef, useState } from 'react';
 import { request } from './api';
 import { tradingDate } from './format';
+import { fieldTopic } from './help/registry';
 import { supportedIndices } from './indices';
 
 export function StrategySelect({ value, onChange, atrEnabled = true, optional = false, disabled = false, label, className }) {
-  return <label className={className}><span>{label}</span><select value={value ?? ''} disabled={disabled} onChange={event => onChange(event.target.value || null)}>
+  return <label className={className}><span>{label} <ContextHelp topicId="settings/strategy-selection" /></span><select value={value ?? ''} disabled={disabled} onChange={event => onChange(event.target.value || null)}>
     {optional && <option value="">Use default</option>}<option value="LEGACY">Current / Legacy</option><option value="ATR" disabled={!atrEnabled}>ATR</option><option value="ATR_FIXED">Strategy 3 · Fixed ATR</option>
   </select></label>;
 }
@@ -22,9 +24,9 @@ const choiceLabels = {
   FULL_CANDLE_APPROXIMATION: 'Use full entry minute',
 };
 
-export function ConfigurationFields({ settings, onChange, choices = atrChoices }) {
+export function ConfigurationFields({ settings, onChange, choices = atrChoices, strategy = '' }) {
   return <div className="ms-backtest-grid">{Object.entries(settings).map(([key, value]) => <label key={key}>
-    {key.replaceAll('_', ' ')}
+    {key.replaceAll('_', ' ')}<ContextHelp topicId={fieldTopic(key, strategy)} />
     {choices[key] ? <select value={value} onChange={event => onChange(key, event.target.value)}>{choices[key].map(choice => <option key={choice} value={choice}>{choiceLabels[choice] ?? choice}</option>)}</select>
       : typeof value === 'boolean' ? <input type="checkbox" checked={value} onChange={event => onChange(key, event.target.checked)} />
         : typeof value === 'string' && key === 'eod_exit_time' ? <input type="time" required value={value.slice(0, 5)} onChange={event => onChange(key, event.target.value)} />
@@ -84,7 +86,7 @@ export default function ExitStrategySettings() {
         <ConfigurationFields settings={atr} onChange={change} />
         <p className="ms-sub">Option ATR uses completed 5-minute candles with Wilder smoothing. Entry ATR is frozen, including for ATR trailing. Leave maximum SL percent empty to remove the risk guard. A stop above the guard skips entry. Breakeven thresholds use the selected unit (percent, ATR multiples or initial risk R).</p></details>
         {configuration.strategy3 && <details id="exit-fixed" tabIndex={-1} className="ms-settings-panel"><summary>Strategy 3 · Fixed ATR stop and risk/reward target<small>One-minute SMA ATR · fixed levels</small></summary>
-          <ConfigurationFields settings={configuration.strategy3} onChange={(key, value) => change('strategy3', { ...configuration.strategy3, [key]: value })} />
+          <ConfigurationFields strategy="ATR_FIXED" settings={configuration.strategy3} onChange={(key, value) => change('strategy3', { ...configuration.strategy3, [key]: value })} />
           <p className="ms-sub">Completed option minute candles, SMA true range, fixed stop and target. Insufficient history uses the configured fallback stop. No trailing or breakeven adjustments. Maximum initial risk is optional. PAPER exits use observed quotes.</p>
         </details>}
         <details><summary>Persistent instrument overrides</summary><div className="ms-exit-overrides">{supportedIndices.map(instrument => <StrategySelect key={instrument} className="ms-exit-instrument-row" label={instrument} optional atrEnabled={configuration.atr_enabled} value={configuration.instrument_overrides[instrument]} onChange={value => setConfiguration(previous => override(previous, instrument, value))} />)}</div></details>

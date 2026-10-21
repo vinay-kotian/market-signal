@@ -1,3 +1,4 @@
+import ContextHelp, { DecisionHelp } from './help/ContextHelp';
 import React, { useState } from 'react';
 import { request } from './api';
 import { authenticationStatus } from './connectionState';
@@ -21,7 +22,7 @@ export default function ConnectionPage({ connection, error, onRefresh, feedStatu
 
   return <section aria-label="Market data connection">
     <p className="ms-sub">Execution remains PAPER. Market data mode is configured in the backend environment and takes effect after restart.</p>
-    {(error || actionError) && <p className="ms-error" role="alert">{actionError || error}</p>}
+    {(error || actionError) && <p className="ms-error" role="alert">{actionError || error} <DecisionHelp code="CONNECTION_ERROR" connection={connection} message={actionError || error} /></p>}
     {!connection && !error && <p>Loading connection…</p>}
     <dl className="ms-report-metrics">
       <div><dt>Browser live feed</dt><dd>{feedStatus}</dd></div>
@@ -30,16 +31,16 @@ export default function ConnectionPage({ connection, error, onRefresh, feedStatu
     {connection && <>
       <dl className="ms-report-metrics">
         <div><dt>Market data</dt><dd>{connection.market_data_mode}</dd></div>
-        <div><dt>Connection</dt><dd>{status}</dd></div>
+        <div><dt>Connection <DecisionHelp code="CONNECTION_STATUS" connection={connection} /></dt><dd>{status}</dd></div>
         <div><dt>Zerodha WebSocket</dt><dd>{connection.market_data_mode === 'ZERODHA' ? (connection.connection_status === 'CONNECTED' ? 'CONNECTED' : 'DISCONNECTED') : 'NOT_APPLICABLE'}<small className="ms-time">{connection.connection_status}</small></dd></div>
         <div><dt>Last Zerodha tick (received)</dt><dd>{connection.last_tick_at ? new Date(connection.last_tick_at).toLocaleString() : '—'}</dd></div>
         <div><dt>Subscribed instruments</dt><dd>{connection.subscribed_instrument_count ?? 0}</dd></div>
         <div><dt>Ticks received / reconnects</dt><dd>{connection.ticks_received ?? 0} / {connection.reconnect_count ?? 0}</dd></div>
-        <div><dt>Instrument sync</dt><dd>{connection.instrument_sync_status}</dd></div>
+        <div><dt>Instrument sync <ContextHelp topicId="zerodha/instruments" /></dt><dd>{connection.instrument_sync_status}</dd></div>
         <div><dt>Last successful sync</dt><dd>{connection.last_successful_sync ? new Date(connection.last_successful_sync).toLocaleString() : '—'}</dd></div>
       </dl>
       {zerodhaEnabled ? <>
-        {connection.auth_error && <p className="ms-error" role="alert">{connection.auth_error.message}<small className="ms-time">{connection.auth_error.code}</small></p>}
+        {connection.auth_error && <p className="ms-error" role="alert">{connection.auth_error.message}<small className="ms-time">{connection.auth_error.code}</small><DecisionHelp code={connection.auth_error.code} connection={connection} message={connection.auth_error.message} /></p>}
         {status === 'CONNECTED' ? <p>Zerodha session connected. You can sync instruments.</p>
           : status === 'ERROR' ? <p role="alert">Zerodha login could not be completed. Connect again to retry.</p>
           : <p>Connect your Zerodha session to receive market data.</p>}

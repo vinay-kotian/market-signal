@@ -1,3 +1,4 @@
+import ContextHelp from './help/ContextHelp';
 import React, { useEffect, useRef, useState } from 'react';
 import { request } from './api';
 import ConnectionPage from './ConnectionPage';
@@ -133,7 +134,7 @@ function IndexRule({ index, onRefresh }) {
   }
   return <form className="ms-index-rule" onSubmit={save}>
     <div className="ms-index-name">{index.instrument}</div>
-    <label>Initial Arm Distance · points<input aria-label={`${index.instrument} Initial Arm Distance`} type="number" min="0" step="any" required value={distance} disabled={busy} onChange={event => setDistance(event.target.value)} /></label>
+    <label>Initial Arm Distance · points<ContextHelp topicId="signals/arm-distance" /><input aria-label={`${index.instrument} Initial Arm Distance`} type="number" min="0" step="any" required value={distance} disabled={busy} onChange={event => setDistance(event.target.value)} /></label>
     <button className="ms-button" disabled={busy}>{busy ? 'Saving…' : 'Save'}</button><span className="ms-index-message" role="status">{message}</span>
   </form>;
 }

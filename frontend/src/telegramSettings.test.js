@@ -69,7 +69,7 @@ test('load failure shows retry and recovers saved setting', async t => {
     : { ok: true, json: async () => ({ enabled: true, url: defaultUrl }) });
   assert.equal(toggle(), null);
   assert.match(document.querySelector('[role="alert"]').textContent, /Load unavailable/);
-  await click(document.querySelector('button'));
+  await click([...document.querySelectorAll('button')].find(button => button.textContent === 'Retry'));
   assert.equal(toggle().checked, true);
 });
 

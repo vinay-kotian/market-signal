@@ -177,6 +177,7 @@ class ZerodhaHistoricalDataLoader:
         minute_candles = list(index_candles)
         atr_candles = aggregate_five_minutes(index_candles)
         errors = {}
+        warning_details = []
         lookup = {r.trading_symbol: r for r in records}
         for symbol in sorted(candidates):
             try:
@@ -188,6 +189,7 @@ class ZerodhaHistoricalDataLoader:
                 errors[symbol] = str(error)
                 coverage[symbol] = dict(expected_minutes=len(index_candles), complete=False, error=str(error))
                 warnings.append(f'{symbol}: candidate data unavailable. A run selecting this contract will fail: {error}')
+                warning_details.append(dict(warning_index=len(warnings)-1, code='OPTION_HISTORY_UNAVAILABLE', message=warnings[-1], context=dict(option_symbol=symbol)))
                 continue
             # Fetch warmup for both strategies so comparisons use identical data.
             # Unavailable ATR warmup is a visible warning, not fabricated ATR.
@@ -195,6 +197,7 @@ class ZerodhaHistoricalDataLoader:
                 atr_candles.extend(await self.warmup(lookup[symbol], symbol, start))
             except ValueError as error:
                 warnings.append(f'{symbol}: ATR warmup unavailable: {error}; entries require sufficient completed option candles.')
+                warning_details.append(dict(warning_index=len(warnings)-1, code='ATR_WARMUP_UNAVAILABLE', message=warnings[-1], context=dict(option_symbol=symbol)))
         ticks = []
         for candle in minute_candles:
             if candle.symbol == config.instrument:
@@ -210,4 +213,4 @@ class ZerodhaHistoricalDataLoader:
         return HistoricalDataset(source='ZERODHA_HISTORICAL', contracts=contracts, ticks=ticks, candles=atr_candles,
             minute_candles=minute_candles, data_resolution='1_MINUTE_OHLC', execution_model='CANDLE_APPROXIMATION',
             coverage=dict(catalogue_observed_at=observed, symbols=coverage, assumptions=ASSUMPTIONS),
-            warnings=warnings, option_data_errors=errors)
+            warnings=warnings, warning_details=warning_details, option_data_errors=errors)

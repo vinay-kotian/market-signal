@@ -89,6 +89,18 @@ class ExitSettingsRepository:
             raise ValueError('ATR_STRATEGY_DISABLED')
         return strategy, settings
 
+    def selection_context(self, instrument, timestamp, connection, override=None):
+        """Audit winning selection source; does not select or change a strategy."""
+        settings = self.load(connection)
+        daily = self.daily(trading_date(timestamp), connection)
+        queued = connection.execute('SELECT strategy FROM next_trade_exit_selection WHERE trading_date=? AND instrument=?',
+                                    (str(trading_date(timestamp)), instrument)).fetchone()
+        candidates = [('EXPLICIT_OVERRIDE', override), ('NEXT_TRADE_OVERRIDE', queued[0] if queued else None),
+                      ('DAILY_INSTRUMENT_OVERRIDE', daily.instrument_overrides.get(instrument)),
+                      ('PERSISTENT_INSTRUMENT_OVERRIDE', settings.instrument_overrides.get(instrument)),
+                      ('DAILY_DEFAULT', daily.default_exit_strategy), ('PERSISTENT_DEFAULT', settings.default_exit_strategy)]
+        return next({'source': source, 'strategy': value} for source, value in candidates if value)
+
     def consume_override(self, instrument, timestamp, connection):
         connection.execute('DELETE FROM next_trade_exit_selection WHERE trading_date=? AND instrument=?',
                            (str(trading_date(timestamp)), instrument))

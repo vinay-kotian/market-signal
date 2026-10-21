@@ -1,3 +1,4 @@
+import ContextHelp, { DecisionHelp } from './help/ContextHelp';
 import { useDateRange } from './useDateRange';
 import DateRangeFilter from './DateRangeFilter';
 import { presetRange, rangeQuery } from './dateRange';
@@ -45,8 +46,8 @@ export default function SignalsTable({ signals, refreshKey }) {
           <td className="ms-num">{formatPrice(signal.level)}</td>
           <td>{signal.direction?.replaceAll('_', ' ') ?? 'Unknown'}</td>
           <td className="ms-num">{formatPrice(signal.approach_distance)}</td>
-          <td><span className={`ms-status ${signal.valid ? 'triggered' : 'rejected'}`}>{signal.valid ? 'VALID' : 'REJECTED'}</span>
-            {signal.rejection_reason && <small className="ms-reason">{signal.rejection_reason === 'INSUFFICIENT_PRICE_HISTORY' ? 'Insufficient price history' : 'Minimum distance not met'}</small>}
+          <td><span className={`ms-status ${signal.valid ? 'triggered' : 'rejected'}`}>{signal.valid ? 'VALID' : 'REJECTED'}</span><DecisionHelp code={signal.rejection_reason ?? (signal.valid ? 'SIGNAL_ACCEPTED' : 'UNKNOWN_REASON')} signal={signal} />
+            {signal.rejection_reason && <small className="ms-reason">{signal.rejection_reason.replaceAll('_', ' ').toLowerCase()}</small>}
           </td>
         </tr>)}{rows?.length === 0 && <tr><td colSpan="5" className="ms-empty">No signals match these filters.</td></tr>}</tbody>
       </table></div>}

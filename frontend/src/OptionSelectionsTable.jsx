@@ -1,3 +1,4 @@
+import ContextHelp, { DecisionHelp } from './help/ContextHelp';
 import { useDateRange } from './useDateRange';
 import React, { useEffect, useState } from 'react';
 import DateRangeFilter from './DateRangeFilter';
@@ -37,7 +38,7 @@ export default function OptionSelectionsTable({ selections: updates, refreshKey,
           <td className="ms-num">{formatPrice(selection.atm_strike)} → {formatPrice(selection.itm_strike)}</td>
           <td className="ms-num">{formatPrice(selection.entry_premium)}</td>
           <td>{new Date(selection.timestamp).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</td>
-          <td><span className={`ms-status ${selection.status === 'SELECTED' ? 'triggered' : 'rejected'}`}>{selection.status}</span>{selection.failure_reason && <small className="ms-reason">{selection.failure_reason.replaceAll('_', ' ').toLowerCase()}</small>}</td>
+          <td><span className={`ms-status ${selection.status === 'SELECTED' ? 'triggered' : 'rejected'}`}>{selection.status}</span><DecisionHelp code={selection.failure_reason ?? (selection.status === 'SELECTED' ? 'OPTION_SELECTED' : 'UNKNOWN_REASON')} message={selection.failure_reason ?? undefined} />{selection.failure_reason && <small className="ms-reason">{selection.failure_reason.replaceAll('_', ' ').toLowerCase()}</small>}</td>
         </tr>)}{selections?.length === 0 && <tr><td colSpan="6" className="ms-empty">No option selections recorded in the selected date range.</td></tr>}</tbody>
       </table></div>}
     {selections && <div className="ms-report-pagination">

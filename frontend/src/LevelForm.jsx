@@ -1,3 +1,4 @@
+import ContextHelp from './help/ContextHelp';
 import React, { useEffect, useState } from 'react';
 import { tradingDate } from './format';
 import { supportedIndices } from './indices';
@@ -25,10 +26,10 @@ export default function LevelForm({ level, instrument, instrumentOptions = [], l
         {!choices.includes(symbol) && <option value="">Select an instrument</option>}
         {choices.map(value => <option key={value} value={value}>{value}</option>)}
       </select></label>
-      <label>Trading date (Asia/Kolkata)<input type="date" required value={levelDate ?? tradingDate()} disabled={busy} onChange={event => setLevelDate(event.target.value)} /></label>
+      <label>Trading date (Asia/Kolkata)<ContextHelp topicId="levels/lifecycle" /><input type="date" required value={levelDate ?? tradingDate()} disabled={busy} onChange={event => setLevelDate(event.target.value)} /></label>
       <TimeframeSelect value={timeframe} onChange={setTimeframe} disabled={busy} />
-      <label>Level price<input required type="number" step="any" value={price} onChange={event => setPrice(event.target.value)} /></label>
-      <label className="ms-check"><input type="checkbox" checked={enabled} onChange={event => setEnabled(event.target.checked)} />Enabled</label>
+      <label>Level price<ContextHelp topicId="signals/touch-cross" /><input required type="number" step="any" value={price} onChange={event => setPrice(event.target.value)} /></label>
+      <label className="ms-check"><input type="checkbox" checked={enabled} onChange={event => setEnabled(event.target.checked)} />Enabled<ContextHelp topicId="levels/lifecycle" /></label>
     </div>
     {level && <p className="ms-sub">Date changes require a non-expired level with no existing signals or trades. Create a new level to retain historical references.</p>}
     {live && supportedIndices.some(index => !instrumentOptions.includes(index)) && <p className="ms-sub">Missing an index? Sync instruments in Settings → Connection to load all available indices, including SENSEX.</p>}

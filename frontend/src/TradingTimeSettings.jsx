@@ -1,5 +1,7 @@
+import ContextHelp from './help/ContextHelp';
 import React, { useEffect, useState } from 'react';
 import { request } from './api';
+import { fieldTopic } from './help/registry';
 import { tradingTimePreview } from './tradingTime';
 
 const fields = [
@@ -40,7 +42,7 @@ export default function TradingTimeSettings() {
     {!configuration && !error && <p role="status">Loading trading time settings…</p>}
     {configuration && <form onSubmit={save}>
       <fieldset disabled={busy} className="ms-trading-time-fields">
-        {fields.map(([key, label, type]) => <label key={key}>{label}<input type={type} required
+        {fields.map(([key, label, type]) => <label key={key}>{label}<ContextHelp topicId={fieldTopic(key)} /><input type={type} required
           step={type === 'time' ? '1' : 'any'} min={type === 'number' ? '0' : undefined}
           value={configuration[key]} onChange={event => {
             const value = event.target.value;

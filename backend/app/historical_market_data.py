@@ -50,7 +50,16 @@ class HistoricalContract(BaseModel):
     instrument_token: Optional[int] = Field(default=None, gt=0)
 
 
+class HistoricalWarning(BaseModel):
+    warning_index: Optional[int] = None
+    code: str
+    message: str
+    context: dict = Field(default_factory=dict)
+
+
 class HistoricalDataset(BaseModel):
+    warning_details: list[HistoricalWarning] = Field(default_factory=list)
+
     contracts: list[HistoricalContract] = Field(min_length=1, max_length=10000)
     ticks: list[HistoricalTick] = Field(min_length=1, max_length=100000)
     source: str = Field(default='USER_SUPPLIED', max_length=200)

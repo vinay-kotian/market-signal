@@ -37,6 +37,8 @@ class SignalEngine:
                 reason = "MINIMUM_DISTANCE_NOT_MET"
 
         return SignalAnalysis(
+            decision_context=dict(settings_snapshot=self.settings.model_dump(mode='json'),
+                                  approach_sample_count=len(approach)),
             trigger_id=trigger.id,
             level_id=trigger.level_id,
             instrument=trigger.instrument,

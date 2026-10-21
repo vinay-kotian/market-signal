@@ -65,15 +65,21 @@ class PaperExecutor:
                 return TradeEntryResult(option_selection_id=selection.id, trade_id=existing.trade_id,
                                         status=existing.status, failure_reason=None, timestamp=existing.entry_time)
 
+            decision_context = dict(signal_timestamp=signal.timestamp.isoformat(),
+                execution_timestamp=timestamp.isoformat(),
+                trading_start_time=self.settings.trading_start_time.isoformat(),
+                new_trade_cutoff_time=self.settings.new_trade_cutoff_time.isoformat())
+
             def fail(reason):
                 return self.repository.record_result(TradeEntryResult(
                     option_selection_id=selection.id, trade_id=None, status="FAILED",
-                    failure_reason=reason, timestamp=timestamp,
+                    failure_reason=reason, timestamp=timestamp, decision_context=decision_context,
                 ), connection)
 
             level_state = connection.execute('SELECT status, level_date FROM levels WHERE id = ?',
                                              (signal.level_id,)).fetchone()
             if level_state is not None:
+                decision_context.update(level_state=level_state['status'], level_date=level_state['level_date'])
                 if level_state['status'] == 'PENDING_ARM':
                     return fail('LEVEL_PENDING_ARM')
                 if level_state['status'] == 'EXPIRED' or level_state['level_date'] < trading_date(timestamp).isoformat():
@@ -109,28 +115,39 @@ class PaperExecutor:
             try:
                 strategy, exit_settings = self.exit_settings.resolve(selection.instrument, timestamp, connection,
                                                                       exit_strategy_override)
+                selection_context = self.exit_settings.selection_context(selection.instrument, timestamp, connection, exit_strategy_override)
+                decision_context.update(strategy_type=strategy, strategy_selection=selection_context, entry_price=price)
                 option_atr = self.atr_data.value(contract.symbol, timestamp, exit_settings.atr_period, connection)
                 index_atr = self.atr_data.value(selection.instrument, timestamp, exit_settings.atr_period, connection)
                 configuration = (self.settings.model_dump(mode='json') if strategy == 'LEGACY' else
                                  {key: getattr(exit_settings, key) for key in AtrSettings.model_fields})
+                decision_context.update(strategy_config_snapshot=configuration,
+                    option_atr=option_atr['value'], completed_candle_count=option_atr.get('completed_candle_count'),
+                    required_candle_count=exit_settings.atr_period, atr_candle_timeframe='5minute')
                 fixed_plan = {}
                 if strategy == 'ATR_FIXED':
                     configuration = exit_settings.strategy3.model_dump(mode='json')
                     history = self.fixed_atr_data.candles(contract.symbol, timestamp, connection)
+                    decision_context.update(strategy_config_snapshot=configuration,
+                        completed_candle_count=len(history), required_candle_count=exit_settings.strategy3.min_pre_entry_candles,
+                        atr_candle_timeframe='minute')
                     fixed_plan = entry_plan(price, timestamp, contract.symbol, history, exit_settings.strategy3)
+                    decision_context.update(strategy3_entry=fixed_plan, option_atr=fixed_plan['atr_value'])
                     option_atr = dict(value=fixed_plan['atr_value'], candle_end=history[-1].completed_at if history else None,
                                       source=self.fixed_atr_data.source)
                     initial_stop = Decimal(str(fixed_plan['initial_stop']))
                 else:
                     initial_stop = strategy_for(strategy).initial_stop(price, configuration, option_atr['value'])
             except ValueError as error:
+                decision_context.update(getattr(error, 'context', {}))
                 return fail(str(error))
             risk = Decimal(str(price)) - initial_stop
             risk_percent = float(risk / Decimal(str(price)) * 100)
+            decision_context.update(initial_stop=float(initial_stop), initial_risk_percent=risk_percent)
             if strategy in ('ATR', 'ATR_FIXED'):
                 initial_pct = risk_percent
             trade = self.repository.save(TradeEntry(
-                strategy3_entry=fixed_plan, strategy_type=strategy, strategy_config_snapshot=configuration,
+                decision_context=decision_context, strategy3_entry=fixed_plan, strategy_type=strategy, strategy_config_snapshot=configuration,
                 option_atr_at_entry=option_atr['value'], index_atr_at_entry=index_atr['value'],
                 atr_candle_end=option_atr['candle_end'], atr_data_source=option_atr['source'],
                 initial_risk_per_unit=float(risk), initial_risk_percent=risk_percent,
@@ -165,5 +182,5 @@ class PaperExecutor:
             )
             return self.repository.record_result(TradeEntryResult(
                 option_selection_id=selection.id, trade_id=trade.trade_id, status="OPEN",
-                failure_reason=None, timestamp=trade.entry_time,
+                failure_reason=None, timestamp=trade.entry_time, decision_context=decision_context,
             ), connection)

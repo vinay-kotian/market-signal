@@ -44,7 +44,9 @@ class BacktestExecutor(PaperExecutor):
     def fail(self, selection, timestamp, reason, connection):
         return self.repository.record_result(TradeEntryResult(
             option_selection_id=selection.id, trade_id=None, status='FAILED',
-            failure_reason=reason, timestamp=timestamp), connection)
+            failure_reason=reason, timestamp=timestamp, decision_context=dict(
+                execution_timestamp=timestamp.isoformat(), trading_start_time=self.settings.trading_start_time.isoformat(),
+                new_trade_cutoff_time=self.settings.new_trade_cutoff_time.isoformat())), connection)
 
     def execute(self, signal, selection, timestamp, connection=None):
         context = connect(self.repository.database_path) if connection is None else nullcontext(connection)

@@ -3,10 +3,18 @@ from typing import Literal, Optional
 
 from app.timeframes import Timeframe
 
-from pydantic import BaseModel
+import json
+from pydantic import BaseModel, Field, field_validator
 
 
 class SignalAnalysis(BaseModel):
+    decision_context: dict = Field(default_factory=dict)
+
+    @field_validator('decision_context', mode='before')
+    @classmethod
+    def decode_context(cls, value):
+        return json.loads(value) if isinstance(value, str) else value
+
     trigger_id: int
     level_id: int
     instrument: str

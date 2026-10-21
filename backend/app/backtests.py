@@ -98,6 +98,12 @@ class BacktestInput(TradeSettings, SignalSettings, OptionSettings):
         return self
 
 
+class IncompleteReplay(ValueError):
+    def __init__(self, message, code):
+        super().__init__(message)
+        self.code = code
+
+
 class ReplayClock:
     def __init__(self, timestamp):
         self.timestamp = timestamp
@@ -183,7 +189,7 @@ class BacktestRunner:
         snapshot.update(exit_strategy=config.exit_strategy, exit_configuration=config.exit_configuration.model_dump(mode='json'),
                         transaction_cost_per_order=config.transaction_cost_per_order, data_source=bundle.source,
                         data_resolution=bundle.data_resolution, execution_model=bundle.execution_model)
-        hash_data = bundle.model_dump(mode='json', exclude={'coverage', 'warnings'})
+        hash_data = bundle.model_dump(mode='json', exclude={'coverage', 'warnings', 'warning_details'})
         dataset_hash = hashlib.sha256(json.dumps(hash_data, sort_keys=True).encode()).hexdigest()
         created = datetime.now(timezone.utc).isoformat()
         result = dict(id=run_id, status='RUNNING', trading_date=config.trading_date.isoformat(),
@@ -193,7 +199,7 @@ class BacktestRunner:
                       created_at=created, started_at=created, completed_at=None, error_message=None,
                       data_source=bundle.source, dataset_hash=dataset_hash, data_resolution=bundle.data_resolution,
                       execution_model=bundle.execution_model, historical_data_coverage=bundle.coverage,
-                      data_warnings=bundle.warnings)
+                      data_warnings=bundle.warnings, warning_details=[w.model_dump(mode='json') for w in bundle.warning_details])
         initialize_database(path, config.stop_loss_percentage, config.model_dump())
         atr_data = AtrData(path, 'BACKTEST')
         atr_data.cache(bundle.candles)
@@ -274,7 +280,7 @@ class BacktestRunner:
                                 if candle.completed_at > cutoff:
                                     continue
                                 if candle.timestamp > expected:
-                                    raise ValueError('DATA_INCOMPLETE: missing post-entry minute candle')
+                                    raise IncompleteReplay('DATA_INCOMPLETE: missing post-entry minute candle', 'INCOMPLETE_POST_ENTRY_CANDLES')
                                 fixed_next_minute[trade.trade_id] = candle.completed_at
                                 hit = candle_exit(candle, trade.entry_time, trade.strategy3_entry)
                                 if hit:
@@ -329,15 +335,16 @@ class BacktestRunner:
             with connect(path) as connection:
                 open_trades = trades.all_open(connection)
             if any(t.strategy_type == 'ATR_FIXED' for t in open_trades):
-                raise ValueError('DATA_INCOMPLETE: Strategy 3 has no complete exit data through its EOD cutoff')
+                raise IncompleteReplay('DATA_INCOMPLETE: Strategy 3 has no complete exit data through its EOD cutoff', 'INCOMPLETE_EXIT_COVERAGE')
             if failed_entries or missing_entries or (open_trades and end >= datetime.combine(config.trading_date, settings.mandatory_exit_time, rules.timezone)):
                 raise ValueError('Historical option data incomplete: an entry or mandatory exit has no valid quote '
                                  'at or after its trigger within the selected session')
             result['status'] = 'COMPLETED'
         except Exception as error:
             logging.getLogger(__name__).exception('Backtest %s failed', run_id)
-            result.update(status='DATA_INCOMPLETE' if isinstance(error, ValueError) and str(error).startswith('DATA_INCOMPLETE') else 'FAILED', error_message=str(error) if isinstance(error, ValueError)
+            result.update(status='DATA_INCOMPLETE' if isinstance(error, IncompleteReplay) else 'FAILED', error_message=str(error) if isinstance(error, ValueError)
                           else 'Replay failed; inspect backend logs')
+            result['error_code'] = getattr(error, 'code', 'BACKTEST_REPLAY_ERROR')
             result['error'] = result['error_message']
             timeline.record('RUN_FAILED', dict(reason=result['error_message']))
         trade_rows = trades.recent(100000)
@@ -444,11 +451,11 @@ async def execute_backtest(runner, validated, *, compare=False, threaded=False, 
         result = await replay(candidate)
         fields = ('id', 'status', 'dataset_hash', 'total_trades', 'closed_trades', 'winning_trades', 'losing_trades',
                   'win_rate', 'average_profit', 'average_loss', 'profit_factor', 'net_pnl', 'max_drawdown',
-                  'average_r', 'sl_hits', 'transaction_costs', 'gross_pnl', 'error_message')
+                  'average_r', 'sl_hits', 'transaction_costs', 'gross_pnl', 'error_message', 'error_code')
         runs.append({**{key: result.get(key) for key in fields}, 'strategy': strategy, 'multiplier': multiplier})
     return dict(runs=runs, trading_date=str(validated.trading_date), instrument=validated.instrument,
                 data_source=bundle.source, data_resolution=bundle.data_resolution,
-                execution_model=bundle.execution_model, data_warnings=bundle.warnings,
+                execution_model=bundle.execution_model, warning_details=[w.model_dump(mode='json') for w in bundle.warning_details], data_warnings=bundle.warnings,
                 historical_data_coverage=bundle.coverage)
 
 

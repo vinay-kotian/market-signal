@@ -1506,3 +1506,11 @@ Uses completed option minute candles and SMA ATR, a frozen stop/target, fallback
 SL and optional risk guard. Historical OHLC collisions resolve to SL first;
 missing exit coverage returns `DATA_INCOMPLETE`. Full configuration, trade-record
 reuse and backtest API examples: [Strategy 3](docs/strategy-3.md).
+
+### Help & Guide and contextual decisions
+
+Open **Help & Guide** to search the shared documentation registry. Information
+buttons beside signals, skipped entries, trade exits, settings, charts, connection
+errors and backtest warnings explain the relevant rule and recorded values, with
+direct article links. Historical explanations use frozen snapshots; missing
+values stay unavailable. [Coverage and compatibility notes](docs/help-center.md).
